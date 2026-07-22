@@ -1,0 +1,300 @@
+import { createContext, useContext, useEffect, useReducer } from 'react';
+import type { ReactNode } from 'react';
+import type { AppState, Denomination, BlindLevel, Preset, Settings, SessionConfig, LedgerPlayer } from './types';
+
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+// SLOWPLAY Nash ceramic set — colours matched to the physical chips.
+function defaultDenoms(): Denomination[] {
+  const d = (value: number, color: string, accent: string, count: number): Denomination => ({
+    id: uid(),
+    value,
+    color,
+    accent,
+    count,
+    enabled: true,
+    shape: 'chip',
+    minPerPlayer: 0,
+  });
+  return [
+    d(1, '#ECE4D0', '#B49A54', 100),
+    d(5, '#C0392B', '#F0D083', 100),
+    d(10, '#17A398', '#EAF7F3', 80),
+    d(25, '#2E9E52', '#F2E7A8', 100),
+    d(50, '#E0782B', '#FCE3C4', 60),
+    d(100, '#191922', '#CBA85A', 100),
+    d(500, '#7A3D9C', '#ECD6F4', 50),
+    d(1000, '#E4B41F', '#6E5410', 40),
+    d(5000, '#9A5228', '#F3D6B4', 25),
+  ];
+}
+
+function defaultBlinds(sb = 10, bb = 20): BlindLevel[] {
+  const b = (smallBlind: number, bigBlind: number): BlindLevel => ({ id: uid(), smallBlind, bigBlind, ante: 0 });
+  return [b(sb, bb), b(sb * 2.5, bb * 2.5), b(sb * 5, bb * 5), b(sb * 10, bb * 10), b(sb * 20, bb * 20)].map((l) => ({
+    ...l,
+    smallBlind: Math.round(l.smallBlind),
+    bigBlind: Math.round(l.bigBlind),
+  }));
+}
+
+const defaultSettings: Settings = {
+  unitValue: 0.01,
+  currency: '€',
+  defaultSmallBlind: 10,
+  defaultBigBlind: 20,
+  minutesPerLevel: 20,
+  theme: 'gold',
+  chipArt: 'deco',
+};
+
+const defaultSession: SessionConfig = {
+  playerCount: 4,
+  buyIn: 20,
+  earlyRebuys: 2,
+  lateRebuyAmount: 30,
+  blindLevels: defaultBlinds(10, 20),
+  smallBias: 0.9, // default to maximising chip use; slider still adjusts
+  maxDenoms: 0, // 0 = use all available denominations
+  useAllChips: false,
+};
+
+const initialState: AppState = {
+  denominations: defaultDenoms(),
+  settings: defaultSettings,
+  session: defaultSession,
+  presets: [],
+  ledger: [],
+};
+
+type Action =
+  | { type: 'ADD_DENOM' }
+  | { type: 'UPDATE_DENOM'; id: string; patch: Partial<Denomination> }
+  | { type: 'REMOVE_DENOM'; id: string }
+  | { type: 'UPDATE_SETTINGS'; patch: Partial<AppState['settings']> }
+  | { type: 'UPDATE_SESSION'; patch: Partial<AppState['session']> }
+  | { type: 'SET_PLAYER_COUNT'; n: number }
+  | { type: 'ADD_BLIND' }
+  | { type: 'UPDATE_BLIND'; id: string; patch: Partial<BlindLevel> }
+  | { type: 'REMOVE_BLIND'; id: string }
+  | { type: 'SAVE_PRESET'; name: string }
+  | { type: 'LOAD_PRESET'; id: string }
+  | { type: 'DELETE_PRESET'; id: string }
+  | { type: 'IMPORT_SETUP'; denominations: Denomination[]; session: SessionConfig; settings: Settings }
+  | { type: 'LEDGER_ADD'; name?: string }
+  | { type: 'LEDGER_ADD_MANY'; n: number }
+  | { type: 'LEDGER_UPDATE'; id: string; patch: Partial<LedgerPlayer> }
+  | { type: 'LEDGER_REMOVE'; id: string }
+  | { type: 'LEDGER_CLEAR' }
+  | { type: 'RESET' };
+
+function reducer(state: AppState, action: Action): AppState {
+  switch (action.type) {
+    case 'ADD_DENOM': {
+      const next: Denomination = {
+        id: uid(),
+        value: 0,
+        color: '#3a3a44',
+        accent: '#CBA85A',
+        count: 0,
+        enabled: true,
+        shape: 'chip',
+        minPerPlayer: 0,
+      };
+      return { ...state, denominations: [...state.denominations, next] };
+    }
+    case 'UPDATE_DENOM':
+      return {
+        ...state,
+        denominations: state.denominations.map((d) => (d.id === action.id ? { ...d, ...action.patch } : d)),
+      };
+    case 'REMOVE_DENOM':
+      return { ...state, denominations: state.denominations.filter((d) => d.id !== action.id) };
+    case 'UPDATE_SETTINGS':
+      return { ...state, settings: { ...state.settings, ...action.patch } };
+    case 'UPDATE_SESSION':
+      return { ...state, session: { ...state.session, ...action.patch } };
+    case 'SET_PLAYER_COUNT': {
+      const n = Math.max(1, Math.min(30, Math.floor(action.n) || 1));
+      return { ...state, session: { ...state.session, playerCount: n } };
+    }
+    case 'ADD_BLIND': {
+      const last = state.session.blindLevels[state.session.blindLevels.length - 1];
+      const sb = last ? last.bigBlind : state.settings.defaultSmallBlind;
+      return {
+        ...state,
+        session: {
+          ...state.session,
+          blindLevels: [...state.session.blindLevels, { id: uid(), smallBlind: sb, bigBlind: sb * 2, ante: 0 }],
+        },
+      };
+    }
+    case 'UPDATE_BLIND':
+      return {
+        ...state,
+        session: {
+          ...state.session,
+          blindLevels: state.session.blindLevels.map((b) => (b.id === action.id ? { ...b, ...action.patch } : b)),
+        },
+      };
+    case 'REMOVE_BLIND':
+      return {
+        ...state,
+        session: {
+          ...state.session,
+          blindLevels: state.session.blindLevels.filter((b) => b.id !== action.id),
+        },
+      };
+    case 'SAVE_PRESET': {
+      const preset: Preset = {
+        id: uid(),
+        name: action.name.trim() || `Preset ${state.presets.length + 1}`,
+        denominations: JSON.parse(JSON.stringify(state.denominations)),
+        session: JSON.parse(JSON.stringify(state.session)),
+        settings: JSON.parse(JSON.stringify(state.settings)),
+      };
+      // replace a preset with the same name, else append
+      const existing = state.presets.findIndex((p) => p.name.toLowerCase() === preset.name.toLowerCase());
+      const presets = existing >= 0 ? state.presets.map((p, i) => (i === existing ? preset : p)) : [...state.presets, preset];
+      return { ...state, presets };
+    }
+    case 'LOAD_PRESET': {
+      const p = state.presets.find((x) => x.id === action.id);
+      if (!p) return state;
+      return {
+        ...state,
+        denominations: JSON.parse(JSON.stringify(p.denominations)),
+        session: JSON.parse(JSON.stringify(p.session)),
+        settings: JSON.parse(JSON.stringify(p.settings)),
+      };
+    }
+    case 'DELETE_PRESET':
+      return { ...state, presets: state.presets.filter((p) => p.id !== action.id) };
+    case 'IMPORT_SETUP':
+      return {
+        ...state,
+        denominations: action.denominations,
+        session: { ...defaultSession, ...action.session },
+        settings: { ...defaultSettings, ...action.settings },
+      };
+    case 'LEDGER_ADD':
+      return {
+        ...state,
+        ledger: [
+          ...state.ledger,
+          { id: uid(), name: action.name || `Player ${state.ledger.length + 1}`, buyIn: state.session.buyIn, cashOut: 0 },
+        ],
+      };
+    case 'LEDGER_ADD_MANY': {
+      const add: LedgerPlayer[] = [];
+      for (let i = 0; i < action.n; i++)
+        add.push({ id: uid(), name: `Player ${state.ledger.length + add.length + 1}`, buyIn: state.session.buyIn, cashOut: 0 });
+      return { ...state, ledger: [...state.ledger, ...add] };
+    }
+    case 'LEDGER_UPDATE':
+      return { ...state, ledger: state.ledger.map((p) => (p.id === action.id ? { ...p, ...action.patch } : p)) };
+    case 'LEDGER_REMOVE':
+      return { ...state, ledger: state.ledger.filter((p) => p.id !== action.id) };
+    case 'LEDGER_CLEAR':
+      return { ...state, ledger: [] };
+    case 'RESET':
+      return {
+        denominations: defaultDenoms(),
+        settings: { ...defaultSettings },
+        session: { ...defaultSession, blindLevels: defaultBlinds(10, 20) },
+        presets: state.presets,
+        ledger: state.ledger,
+      };
+    default:
+      return state;
+  }
+}
+
+const KEY = 'chipstack.state.v1';
+
+/**
+ * Merge saved state over current defaults so a user's chips / settings / session
+ * survive app updates, and any field added in a newer version gets a sensible
+ * default. Also migrates old shapes (players[] -> playerCount, rebuy -> rebuys).
+ */
+function migrate(raw: string | null): AppState {
+  if (!raw) return initialState;
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return initialState;
+  }
+  if (!parsed || typeof parsed !== 'object') return initialState;
+
+  const denomsRaw = parsed.denominations;
+  const denominations: Denomination[] =
+    Array.isArray(denomsRaw) && denomsRaw.length
+      ? denomsRaw.map((d) => ({
+          shape: 'chip' as const,
+          minPerPlayer: 0,
+          ...(d as Denomination),
+        }))
+      : defaultDenoms();
+
+  const settings = { ...defaultSettings, ...((parsed.settings as object) ?? {}) };
+  const validThemes = ['gold', 'emerald', 'crimson', 'retro', 'scifi', 'elite'];
+  if (!validThemes.includes(settings.theme)) settings.theme = 'gold';
+  const validArt = ['deco', 'classic', 'diamond', 'sunburst'];
+  if (!validArt.includes(settings.chipArt)) settings.chipArt = 'deco';
+
+  const savedSession = (parsed.session ?? {}) as Record<string, unknown>;
+  const session = { ...defaultSession, ...savedSession } as SessionConfig & {
+    players?: unknown[];
+    rebuy?: number;
+  };
+  if (Array.isArray(session.players)) {
+    if (typeof savedSession.playerCount !== 'number') session.playerCount = session.players.length || 4;
+    delete session.players;
+  }
+  if (typeof savedSession.lateRebuyAmount !== 'number' && typeof session.rebuy === 'number') {
+    session.lateRebuyAmount = session.rebuy;
+  }
+  delete session.rebuy;
+  session.playerCount = Math.max(1, Math.min(30, Math.floor(session.playerCount) || 4));
+  if (typeof session.earlyRebuys !== 'number') session.earlyRebuys = 2;
+  if (typeof session.maxDenoms !== 'number') session.maxDenoms = 0;
+  if (typeof session.useAllChips !== 'boolean') session.useAllChips = false;
+  if (!Array.isArray(session.blindLevels) || session.blindLevels.length === 0)
+    session.blindLevels = defaultBlinds(settings.defaultSmallBlind, settings.defaultBigBlind);
+
+  const presets = Array.isArray(parsed.presets) ? (parsed.presets as Preset[]) : [];
+  const ledger = Array.isArray(parsed.ledger) ? (parsed.ledger as LedgerPlayer[]) : [];
+
+  return { denominations, settings, session, presets, ledger };
+}
+
+const StoreContext = createContext<{ state: AppState; dispatch: React.Dispatch<Action> } | null>(null);
+
+export function StoreProvider({ children }: { children: ReactNode }) {
+  const [state, dispatch] = useReducer(reducer, initialState, () => {
+    try {
+      return migrate(localStorage.getItem(KEY));
+    } catch {
+      return initialState;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(state));
+    } catch {
+      /* ignore */
+    }
+  }, [state]);
+
+  return <StoreContext.Provider value={{ state, dispatch }}>{children}</StoreContext.Provider>;
+}
+
+export function useStore() {
+  const ctx = useContext(StoreContext);
+  if (!ctx) throw new Error('useStore must be used within StoreProvider');
+  return ctx;
+}
+
+export { defaultBlinds };

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="47" fill="#191922" stroke="#e4b41f" stroke-width="5" />
+  <polygon points="50,25 71,37 71,63 50,75 29,63 29,37" fill="none" stroke="#e4b41f" stroke-width="4" />
+  <text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="#f0cb54" font-size="34" font-weight="800" font-family="sans-serif">♣</text>
+</svg>
