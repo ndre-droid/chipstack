@@ -155,6 +155,7 @@
   --acc-wash: color-mix(in srgb, var(--acc) 16%, transparent);
   --acc-line: color-mix(in srgb, var(--acc) 46%, transparent);
   --app-bg: radial-gradient(130% 80% at 50% -12%, #0c1a4c 0%, #060a20 55%, #04060f 100%);
+  --font-display: 'Orbitron', var(--font);
   color-scheme: dark;
 }
 
@@ -1042,6 +1043,12 @@ input[type='color'] { cursor: pointer; }
   border-radius: 2px; background: var(--acc); box-shadow: 0 0 8px var(--acc);
 }
 :root[data-skin='scifi'] .section-label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 11.5px; }
+:root[data-skin='scifi'] .hero-depth .n,
+:root[data-skin='scifi'] .clock-time,
+:root[data-skin='scifi'] .clock-blinds { font-family: var(--font-display); }
+:root[data-skin='scifi'] .big-num,
+:root[data-skin='scifi'] .clock-time,
+:root[data-skin='scifi'] .app-header .wordmark { letter-spacing: 0; }
 
 /* ============================================================
    TV MODE — big-screen dashboard (mirror/cast the phone)
@@ -1078,7 +1085,12 @@ input[type='color'] { cursor: pointer; }
   --tv-bg: radial-gradient(130% 90% at 50% -10%, #0c1a4c 0%, #060a20 55%, #04060f 100%);
   --tv-fg: #e7f1ff; --tv-dim: #90a6d6; --tv-faint: #52659c;
   --tv-panel: rgba(80, 140, 255, 0.06); --tv-line: rgba(80, 140, 255, 0.2); --on-acc: #04121a;
+  --font-display: 'Orbitron', var(--font);
 }
+.tv[data-tv-skin='scifi'] .tv-time,
+.tv[data-tv-skin='scifi'] .tv-blinds,
+.tv[data-tv-skin='scifi'] .tv-level { font-family: var(--font-display); }
+.tv[data-tv-skin='scifi'] .tv-time { letter-spacing: 0; }
 .tv[data-tv-skin='scifi'] .tv-time,
 .tv[data-tv-skin='scifi'] .tv-blinds { text-shadow: 0 0 22px color-mix(in srgb, var(--acc) 50%, transparent); }
 .tv-grid {
