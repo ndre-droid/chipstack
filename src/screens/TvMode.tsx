@@ -269,7 +269,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         <button onClick={() => goLevel(levelIdx + 1)} aria-label="Next level"><IconChevron size={22} /></button>
         <button className="tv-txt" onClick={takeBreak}>Break</button>
         <button className="tv-txt" onClick={() => setShot(30)}>Shot clock</button>
-        <button className="tv-txt" onClick={spinRound}>Who buys?</button>
+        <button className="tv-txt" onClick={spinRound}>Who drinks?</button>
         <button className="tv-txt tv-exit" onClick={onClose}>Exit</button>
       </div>
 
@@ -285,7 +285,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       {/* who-buys spinner overlay */}
       {spin && (
         <div className="tv-overlay">
-          <div className="tv-overlay-label">Who buys the next round?</div>
+          <div className="tv-overlay-label">Who drinks next?</div>
           <div className={`tv-overlay-name ${spin.done ? 'won' : ''}`}>{spin.name}</div>
           {spin.done && <div className="tv-overlay-hint">🍻 you’re up!</div>}
         </div>

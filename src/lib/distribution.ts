@@ -152,8 +152,13 @@ export function computeStack(
   const floorMin: Record<string, number> = { ...userMin };
   floorMin[smallest.id] = Math.max(userMin[smallest.id] ?? 0, floorCount);
   reconcile(counts, pool, targetUnits, capOf, (d) => floorMin[d.id] ?? 0);
-  const landed = pool.reduce((s, d) => s + counts[d.id] * d.value, 0);
+  let landed = pool.reduce((s, d) => s + counts[d.id] * d.value, 0);
   if (landed !== targetUnits) reconcile(counts, pool, targetUnits, capOf, (d) => userMin[d.id] ?? 0);
+  // The greedy reconcile steps one whole chip at a time, so it can stall short by
+  // less than the base chip when the pool's gcd is smaller than the base (e.g. base
+  // 10 with 25s in play → a 5-unit gap). Close that with a two-denomination swap.
+  landed = pool.reduce((s, d) => s + counts[d.id] * d.value, 0);
+  if (landed !== targetUnits) closeResidual(counts, pool, targetUnits, capOf, (d) => userMin[d.id] ?? 0);
 
   return finalize(counts, denominations, pool, targetUnits, stacksNeeded, warnings, notes, baseValue, blindOk);
 }
@@ -273,6 +278,47 @@ function reconcile(
       if (!s) break;
       counts[s.id]--;
     }
+  }
+}
+
+/**
+ * Close a small exact-value gap the greedy reconcile can leave when the pool's gcd
+ * is smaller than the base chip (e.g. base 10 with 25s in play → a 5-unit gap).
+ * Tries a two-denomination swap (add x of one, remove y of another) that nets the
+ * gap, staying within caps and minimums.
+ */
+function closeResidual(
+  counts: Record<string, number>,
+  pool: Denomination[],
+  target: number,
+  capOf: (d: Denomination) => number,
+  minOf: (d: Denomination) => number = () => 0,
+) {
+  const valueOf = () => pool.reduce((s, d) => s + counts[d.id] * d.value, 0);
+  let guard = 0;
+  while (guard++ < 300) {
+    const diff = target - valueOf();
+    if (diff === 0) return;
+    let applied = false;
+    for (const a of pool) {
+      for (const b of pool) {
+        if (a.id === b.id) continue;
+        for (let x = 1; x <= 8; x++) {
+          const rem = x * a.value - diff; // must equal y * b.value with y >= 1
+          if (rem <= 0 || rem % b.value !== 0) continue;
+          const y = rem / b.value;
+          if (counts[a.id] + x > capOf(a)) continue;
+          if (counts[b.id] - y < minOf(b)) continue;
+          counts[a.id] += x;
+          counts[b.id] -= y;
+          applied = true;
+          break;
+        }
+        if (applied) break;
+      }
+      if (applied) break;
+    }
+    if (!applied) return;
   }
 }
 
