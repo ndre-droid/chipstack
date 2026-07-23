@@ -11,12 +11,6 @@ import { IconPlus, IconTrash, IconCheck, IconAlert, IconSpark, IconChevron, Icon
 import ShareSheet from '../components/ShareSheet';
 import { fmtMoney } from '../lib/money';
 
-const BIAS_PRESETS = [
-  { label: 'Fewer chips', value: 0.2 },
-  { label: 'Balanced', value: 0.55 },
-  { label: 'Max small', value: 0.9 },
-];
-
 export default function PlanScreen() {
   const { state, dispatch } = useStore();
   const { denominations, settings, session, presets } = state;
@@ -26,6 +20,7 @@ export default function PlanScreen() {
   const [startIdx, setStartIdx] = useState(0);
   const [showMins, setShowMins] = useState(false);
   const [showChips, setShowChips] = useState(false);
+  const [showLater, setShowLater] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
 
   const unit = settings.unitValue;
@@ -165,16 +160,16 @@ export default function PlanScreen() {
 
   return (
     <div>
-      {/* ---------------- Presets ---------------- */}
+      {/* ---------------- Top bar: save / share / presets ---------------- */}
       <div className="preset-bar">
         <button className="preset-save" onClick={savePreset}>
           <IconSpark size={14} /> Save
         </button>
-        <button className="preset-save" onClick={() => setShareOpen(true)} style={{ color: 'var(--blue)', background: 'rgba(61,155,255,0.1)', borderColor: 'rgba(61,155,255,0.35)' }}>
+        <button className="preset-save" onClick={() => setShareOpen(true)}>
           <IconShare size={14} /> Share
         </button>
         <div className="preset-list">
-          {presets.length === 0 && <span className="faint" style={{ fontSize: 12.5, fontWeight: 600 }}>No saved setups yet</span>}
+          {presets.length === 0 && <span className="faint" style={{ fontSize: 12, fontWeight: 500 }}>No saved setups</span>}
           {presets.map((p) => (
             <div className="preset-chip" key={p.id}>
               <button onClick={() => dispatch({ type: 'LOAD_PRESET', id: p.id })}>{p.name}</button>
@@ -184,15 +179,240 @@ export default function PlanScreen() {
         </div>
       </div>
 
-      {/* ---------------- Players ---------------- */}
-      <div className="section-label">
-        Players
-        <span className="hint">{numPlayers} at the table</span>
+      {/* ================ RESULT HERO — the answer ================ */}
+      <div className="result-hero">
+        <div className="hero-eyebrow">Each player starts with</div>
+        <div className="flex-between" style={{ alignItems: 'flex-end' }}>
+          <div className="big-num">
+            {effChips} <small>chips</small>
+          </div>
+          <div className="hero-depth">
+            <div className="n">
+              {bbCount}
+              <span> BB</span>
+            </div>
+            <div className="l">starting depth</div>
+          </div>
+        </div>
+        <div className="hero-sub">
+          {fmtMoney(effTotal * unit, cur)} · {effTotal.toLocaleString()} pts · {effUsed.length} {effUsed.length === 1 ? 'denomination' : 'denominations'}
+          {edited && <span className="badge-soft" style={{ marginLeft: 8 }}>edited</span>}
+        </div>
+
+        <ChipStackViz denoms={effUsed} counts={displayCounts} />
+
+        {/* small-chip slider — lives with the visual it controls */}
+        <div className="hero-slider">
+          <div className="hero-slider-head">
+            <span>Chip mix</span>
+            <span className="badge-soft">{Math.round(smallBias * 100)}% small</span>
+          </div>
+          <input
+            type="range"
+            className="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={smallBias}
+            style={{ ['--pct' as string]: `${smallBias * 100}%` }}
+            onChange={(e) => dispatch({ type: 'UPDATE_SESSION', patch: { smallBias: +e.target.value } })}
+            aria-label="Small-chip emphasis"
+          />
+          <div className="slider-ends">
+            <span>Fewer, bigger</span>
+            <span>More small</span>
+          </div>
+        </div>
+
+        {effUsed.length > 0 && effTotal > 0 && (
+          <div className="valbar" aria-hidden>
+            {effUsed.map((d) => (
+              <i
+                key={d.id}
+                style={{ flexGrow: (displayCounts[d.id] * d.value) / effTotal, background: d.color }}
+                title={`${d.value}: ${fmtMoney(displayCounts[d.id] * d.value * unit, cur)}`}
+              />
+            ))}
+          </div>
+        )}
+
+        {startBlind && (
+          <div className={`blind-check ${starting.blindOk ? 'ok' : 'bad'}`}>
+            {baseDenom && <Chip value={baseDenom.value} color={baseDenom.color} accent={baseDenom.accent} size={30} shape={baseDenom.shape} />}
+            <div>
+              <b>Smallest chip {starting.baseValue}</b>
+              <span>
+                {starting.blindOk
+                  ? ` posts the ${startBlind.smallBlind}/${startBlind.bigBlind} blinds and makes change.`
+                  : ` can’t post the ${startBlind.smallBlind}/${startBlind.bigBlind} blinds — add a smaller chip or raise the blinds.`}
+              </span>
+            </div>
+            {starting.blindOk ? <IconCheck size={18} /> : <IconAlert size={18} />}
+          </div>
+        )}
       </div>
+
+      {/* feasibility */}
+      {starting.feasible ? (
+        <div className="feas ok">
+          <IconCheck size={18} /> You have enough chips to deal all {numPlayers} players.
+        </div>
+      ) : (
+        <div className="feas warn">
+          <IconAlert size={18} /> Not enough chips for {numPlayers} full stacks — see setup below.
+        </div>
+      )}
+      {starting.warnings.length > 0 && (
+        <ul className="warn-list">
+          {starting.warnings.map((w, i) => (
+            <li key={i}>{w}</li>
+          ))}
+        </ul>
+      )}
+      {starting.notes.length > 0 && (
+        <ul className="note-list">
+          {starting.notes.map((n, i) => (
+            <li key={i}>{n}</li>
+          ))}
+        </ul>
+      )}
+
+      {/* live-adjust editor */}
+      <div className="section-label">
+        Fine-tune the stack
+        <span className="hint">± adjust · pin to hold</span>
+      </div>
+      <div className="card adjust-card">
+        {editorDenoms.map((d) => {
+          const c = displayCounts[d.id] ?? 0;
+          const isLocked = locked.has(d.id);
+          return (
+            <div className={`adjust-row ${isLocked ? 'locked' : ''} ${c === 0 ? 'zero' : ''}`} key={d.id}>
+              <button className={`lock-btn ${isLocked ? 'on' : ''}`} onClick={() => toggleLock(d.id)} aria-label="Pin count">
+                <IconLock size={14} />
+              </button>
+              <Chip value={d.value} color={d.color} accent={d.accent} size={28} shape={d.shape} />
+              <span className="adjust-val">{d.value}</span>
+              <div className="spacer" />
+              <div className="stepper sm">
+                <button onClick={() => stepDenom(d.id, -1)}>−</button>
+                <span className="val">{c}</span>
+                <button onClick={() => stepDenom(d.id, 1)}>+</button>
+              </div>
+            </div>
+          );
+        })}
+        <div className="adjust-foot">
+          <span className={effTotal === buyInUnits ? 'bal-ok' : 'bal-bad'}>
+            {effTotal === buyInUnits
+              ? 'Balances to the buy-in'
+              : `${effTotal > buyInUnits ? '+' : ''}${(effTotal - buyInUnits).toLocaleString()} pts vs buy-in`}
+          </span>
+          {edited && (
+            <button className="link-btn" onClick={() => setEdit(null)}>
+              Reset to auto
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* breakdown table */}
+      <div className="card mt12">
+        <StackTable
+          stack={{ ...starting, counts: displayCounts, denomsUsed: effUsed, chipCount: effChips, totalValue: effTotal }}
+          stacks={startingStacks}
+          unit={unit}
+          cur={cur}
+        />
+      </div>
+
+      {/* later levels & colour-up — collapsed by default (secondary to the starting stack) */}
+      {(laterStages.length > 0 || colorUps.length > 0) && (
+        <>
+          <button className="section-label collapsible-head" onClick={() => setShowLater((v) => !v)}>
+            Later levels &amp; colour-up
+            <span className="hint">{laterStages.length} later {laterStages.length === 1 ? 'level' : 'levels'}</span>
+            <span className={`chevron ${showLater ? 'rot90' : ''}`} style={{ marginLeft: 8 }}>
+              <IconChevron size={16} />
+            </span>
+          </button>
+          {showLater && (
+            <>
+              {laterStages.length > 0 && (
+                <>
+                  <div className="stage-scroll">
+                    {laterStages.map((s) => (
+                      <StageCard key={s.blind.id} blind={s.blind} level={startIdx + s.offset + 1} stack={s.stack} />
+                    ))}
+                  </div>
+                  <p className="faint" style={{ fontSize: 12, textAlign: 'center', margin: '6px 8px 0' }}>
+                    Rebuys at higher blinds use fewer little chips and more high-value chips.
+                  </p>
+                </>
+              )}
+              {colorUps.length > 0 && (
+                <>
+                  <div className="section-label">
+                    Colour-up guide
+                    <span className="hint">racing off small chips</span>
+                  </div>
+                  {colorUps.map((e) => (
+            <div className="card colorup-card" key={e.blind.id}>
+              <div className="colorup-head">
+                <span className="lvl">Level {e.levelIndex + 1}</span>
+                <span className="blinds">blinds reach {e.blind.smallBlind}/{e.blind.bigBlind}</span>
+              </div>
+              {e.retirements.map((r) => {
+                const fromD = denominations.find((d) => d.id === r.fromId);
+                const toD = r.toId ? denominations.find((d) => d.id === r.toId) : undefined;
+                return (
+                  <div className="retire-row" key={r.fromId}>
+                    <div className="retire-trade">
+                      {fromD && <Chip value={fromD.value} color={fromD.color} accent={fromD.accent} size={30} shape={fromD.shape} />}
+                      <IconChevron size={16} />
+                      {toD && <Chip value={toD.value} color={toD.color} accent={toD.accent} size={30} shape={toD.shape} />}
+                    </div>
+                    <div className="retire-text">
+                      <b>Retire the {r.fromValue}s</b>
+                      <span>
+                        {r.ratioClean
+                          ? `trade every ${r.ratio} × ${r.fromValue} for one ${r.toValue}`
+                          : `exchange for ${r.toValue} chips`}
+                      </span>
+                      <div className="retire-nums">
+                        {r.tableCount} × {r.fromValue} → <b>{r.bigOut} × {r.toValue}</b>
+                        {r.raceChips > 0 && <span className="race-tag">race {r.raceChips} odd</span>}
+                      </div>
+                      {!r.feasible && r.toId && (
+                        <div className="race-warn">You own only {r.bankHave} × {r.toValue} — may fall short.</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+                  ))}
+                  <p className="faint" style={{ fontSize: 12, textAlign: 'center', margin: '6px 8px 0', lineHeight: 1.5 }}>
+                    The race: deal one card per leftover chip; the highest card rounds up to the next chip.
+                  </p>
+                </>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      {/* ================ SESSION SETUP — the inputs ================ */}
+      <div className="section-label" style={{ marginTop: 26 }}>
+        Session setup
+        <span className="hint">the answer above updates live</span>
+      </div>
+
+      {/* Players */}
       <div className="card">
         <div className="row">
           <div>
-            <div style={{ fontWeight: 700 }}>Players at the table</div>
+            <div style={{ fontWeight: 600 }}>Players at the table</div>
             <div className="faint" style={{ fontSize: 12.5 }}>Stacks are dealt from your inventory for this many.</div>
           </div>
           <div className="spacer" />
@@ -204,8 +424,7 @@ export default function PlanScreen() {
         </div>
       </div>
 
-      {/* ---------------- Money ---------------- */}
-      <div className="section-label">Buy-in & rebuys</div>
+      {/* Buy-in & rebuys */}
       <div className="card">
         <div className="row">
           <div className="field">
@@ -237,7 +456,7 @@ export default function PlanScreen() {
         </div>
         <div className="row mt12">
           <div>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>Early rebuys at buy-in</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Early rebuys at buy-in</div>
             <div className="faint" style={{ fontSize: 12 }}>Same {fmtMoney(buyIn, cur)} at the starting blinds — they need small chips too.</div>
           </div>
           <div className="spacer" />
@@ -247,12 +466,12 @@ export default function PlanScreen() {
             <button onClick={() => dispatch({ type: 'UPDATE_SESSION', patch: { earlyRebuys: earlyRebuys + 1 } })}>+</button>
           </div>
         </div>
-        <p className="faint" style={{ fontSize: 12.5, margin: '10px 2px 0' }}>
-          {fmtMoney(buyIn, cur)} = <b style={{ color: 'var(--gold-soft)' }}>{buyInUnits.toLocaleString()} pts</b> · later rebuy {lateRebuyUnits.toLocaleString()} pts · dealing {startingStacks} starting stacks
+        <p className="faint" style={{ fontSize: 12, margin: '12px 2px 0' }}>
+          {fmtMoney(buyIn, cur)} = <b style={{ color: 'var(--acc)' }}>{buyInUnits.toLocaleString()} pts</b> · later rebuy {lateRebuyUnits.toLocaleString()} pts · dealing {startingStacks} starting stacks
         </p>
       </div>
 
-      {/* ---------------- Blinds ---------------- */}
+      {/* Blinds */}
       <div className="section-label">
         Blind levels
         <span className="hint">tap a row to start there</span>
@@ -304,16 +523,15 @@ export default function PlanScreen() {
         </div>
       </div>
 
-      {/* ---------------- Options ---------------- */}
+      {/* Distribution options */}
       <div className="section-label">
         <IconSpark size={14} /> Distribution options
       </div>
       <div className="card">
-        {/* Chips to use — collapsible, on top */}
         <button className="mins-toggle" onClick={() => setShowChips((v) => !v)}>
           <span>
             Chips to use{' '}
-            <span className="faint" style={{ fontWeight: 600 }}>· {enabledDenoms.length - excluded.size} active</span>
+            <span className="faint" style={{ fontWeight: 500 }}>· {enabledDenoms.length - excluded.size} active</span>
           </span>
           <span className={`chevron ${showChips ? 'rot90' : ''}`}>
             <IconChevron size={16} />
@@ -337,7 +555,7 @@ export default function PlanScreen() {
         <div className="divider" />
         <div className="row">
           <div>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>Use all my chip types</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Use all my chip types</div>
             <div className="faint" style={{ fontSize: 12 }}>Include chips that don't fit the blinds neatly (e.g. 25s at 10/20)</div>
           </div>
           <div className="spacer" />
@@ -352,7 +570,7 @@ export default function PlanScreen() {
         <div className="divider" />
         <div className="flex-between">
           <div>
-            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)' }}>Use up to … chip types</label>
+            <label style={{ fontSize: 13, fontWeight: 600 }}>Use up to … chip types</label>
             <div className="faint" style={{ fontSize: 12 }}>Cap how many kinds of chips the stack uses</div>
           </div>
           <div className="stepper">
@@ -403,6 +621,7 @@ export default function PlanScreen() {
                     <b>{d.value}</b>
                     <small>in stack: {inStack}</small>
                   </div>
+                  <div className="spacer" />
                   <div className="limit-ctl">
                     <label>min</label>
                     <div className="min-stepper">
@@ -425,224 +644,7 @@ export default function PlanScreen() {
           </div>
         )}
 
-        <div className="divider" />
-        {/* Small-chip slider — at the bottom, right above the live preview */}
-        <div className="flex-between" style={{ marginBottom: 8 }}>
-          <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)' }}>Small-chip emphasis</label>
-          <span className="badge-soft">{Math.round(smallBias * 100)}%</span>
-        </div>
-        <div className="slider-wrap">
-          <input
-            type="range"
-            className="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={smallBias}
-            style={{ ['--pct' as string]: `${smallBias * 100}%` }}
-            onChange={(e) => dispatch({ type: 'UPDATE_SESSION', patch: { smallBias: +e.target.value } })}
-          />
-          <div className="slider-ends">
-            <span>Fewer, bigger chips</span>
-            <span>More small chips</span>
-          </div>
-        </div>
-        <div className="segmented mt12">
-          {BIAS_PRESETS.map((p) => (
-            <button
-              key={p.value}
-              className={Math.abs(smallBias - p.value) < 0.03 ? 'active' : ''}
-              onClick={() => dispatch({ type: 'UPDATE_SESSION', patch: { smallBias: p.value } })}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
       </div>
-
-      {/* ---------------- Results ---------------- */}
-      <div className="section-label" style={{ marginTop: 22 }}>
-        <IconSpark size={14} /> Starting stack · each player
-      </div>
-
-      <div className="result-hero">
-        <div className="flex-between">
-          <div>
-            <div className="big-num">
-              {effChips} <small>chips</small>
-            </div>
-            <div className="muted" style={{ fontWeight: 600, fontSize: 13 }}>
-              {fmtMoney(effTotal * unit, cur)} · {effTotal.toLocaleString()} pts
-              {edited && <span className="badge-soft" style={{ marginLeft: 6 }}>edited</span>}
-            </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--gold-soft)' }}>{bbCount}<span style={{ fontSize: 14 }}> BB</span></div>
-            <div className="faint" style={{ fontSize: 12, fontWeight: 600 }}>starting depth</div>
-          </div>
-        </div>
-
-        <ChipStackViz denoms={effUsed} counts={displayCounts} />
-
-        {/* blind check — the smallest chip must be able to post the blinds */}
-        {startBlind && (
-          <div className={`blind-check ${starting.blindOk ? 'ok' : 'bad'}`}>
-            {baseDenom && <Chip value={baseDenom.value} color={baseDenom.color} accent={baseDenom.accent} size={30} shape={baseDenom.shape} />}
-            <div>
-              <b>Smallest chip {starting.baseValue}</b>
-              <span>
-                {starting.blindOk
-                  ? ` posts the ${startBlind.smallBlind}/${startBlind.bigBlind} blinds and makes change.`
-                  : ` can’t post the ${startBlind.smallBlind}/${startBlind.bigBlind} blinds — add a smaller chip or raise the blinds.`}
-              </span>
-            </div>
-            {starting.blindOk ? <IconCheck size={18} /> : <IconAlert size={18} />}
-          </div>
-        )}
-      </div>
-
-      {/* feasibility */}
-      {starting.feasible ? (
-        <div className="feas ok">
-          <IconCheck size={18} /> You have enough chips to deal all {numPlayers} players.
-        </div>
-      ) : (
-        <div className="feas warn">
-          <IconAlert size={18} /> Not enough chips for {numPlayers} full stacks — see below.
-        </div>
-      )}
-      {starting.warnings.length > 0 && (
-        <ul className="warn-list">
-          {starting.warnings.map((w, i) => (
-            <li key={i}>{w}</li>
-          ))}
-        </ul>
-      )}
-      {starting.notes.length > 0 && (
-        <ul className="note-list">
-          {starting.notes.map((n, i) => (
-            <li key={i}>{n}</li>
-          ))}
-        </ul>
-      )}
-
-      {/* live-adjust editor */}
-      <div className="section-label" style={{ marginTop: 8 }}>
-        Fine-tune the stack
-        <span className="hint">± to adjust · + a greyed chip to add it · pin to hold</span>
-      </div>
-      <div className="card adjust-card">
-        {editorDenoms.map((d) => {
-          const c = displayCounts[d.id] ?? 0;
-          const isLocked = locked.has(d.id);
-          return (
-            <div className={`adjust-row ${isLocked ? 'locked' : ''} ${c === 0 ? 'zero' : ''}`} key={d.id}>
-              <button className={`lock-btn ${isLocked ? 'on' : ''}`} onClick={() => toggleLock(d.id)} aria-label="Pin count">
-                <IconLock size={15} />
-              </button>
-              <Chip value={d.value} color={d.color} accent={d.accent} size={28} shape={d.shape} />
-              <span className="adjust-val">{d.value}</span>
-              <div className="spacer" />
-              <div className="stepper sm">
-                <button onClick={() => stepDenom(d.id, -1)}>−</button>
-                <span className="val">{c}</span>
-                <button onClick={() => stepDenom(d.id, 1)}>+</button>
-              </div>
-            </div>
-          );
-        })}
-        <div className="adjust-foot">
-          <span className={effTotal === buyInUnits ? 'bal-ok' : 'bal-bad'}>
-            {effTotal === buyInUnits
-              ? 'Balances to the buy-in'
-              : `${effTotal > buyInUnits ? '+' : ''}${(effTotal - buyInUnits).toLocaleString()} pts vs buy-in`}
-          </span>
-          {edited && (
-            <button className="link-btn" onClick={() => setEdit(null)}>
-              Reset to auto
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* table */}
-      <div className="card mt12">
-        <StackTable
-          stack={{ ...starting, counts: displayCounts, denomsUsed: effUsed, chipCount: effChips, totalValue: effTotal }}
-          stacks={startingStacks}
-          unit={unit}
-          cur={cur}
-        />
-      </div>
-
-      {/* later stages */}
-      {laterStages.length > 0 && (
-        <>
-          <div className="section-label" style={{ marginTop: 8 }}>
-            Later buy-ins · colour up
-            <span className="hint">as blinds rise</span>
-          </div>
-          <div className="stage-scroll">
-            {laterStages.map((s) => (
-              <StageCard key={s.blind.id} blind={s.blind} level={startIdx + s.offset + 1} stack={s.stack} />
-            ))}
-          </div>
-          <p className="faint" style={{ fontSize: 12, textAlign: 'center', margin: '2px 8px 0' }}>
-            Rebuys at higher blinds use fewer little chips and more high-value chips.
-          </p>
-        </>
-      )}
-
-      {/* ---------------- Colour-up / chip race ---------------- */}
-      {colorUps.length > 0 && (
-        <>
-          <div className="section-label" style={{ marginTop: 20 }}>
-            Colour-up guide
-            <span className="hint">racing off small chips</span>
-          </div>
-          {colorUps.map((e) => (
-            <div className="card colorup-card" key={e.blind.id}>
-              <div className="colorup-head">
-                <span className="lvl">Level {e.levelIndex + 1}</span>
-                <span className="blinds">blinds reach {e.blind.smallBlind}/{e.blind.bigBlind}</span>
-              </div>
-              {e.retirements.map((r) => {
-                const fromD = denominations.find((d) => d.id === r.fromId);
-                const toD = r.toId ? denominations.find((d) => d.id === r.toId) : undefined;
-                return (
-                  <div className="retire-row" key={r.fromId}>
-                    <div className="retire-trade">
-                      {fromD && <Chip value={fromD.value} color={fromD.color} accent={fromD.accent} size={30} shape={fromD.shape} />}
-                      <IconChevron size={16} />
-                      {toD && <Chip value={toD.value} color={toD.color} accent={toD.accent} size={30} shape={toD.shape} />}
-                    </div>
-                    <div className="retire-text">
-                      <b>Retire the {r.fromValue}s</b>
-                      <span>
-                        {r.ratioClean
-                          ? `trade every ${r.ratio} × ${r.fromValue} for one ${r.toValue}`
-                          : `exchange for ${r.toValue} chips`}
-                      </span>
-                      <div className="retire-nums">
-                        {r.tableCount} × {r.fromValue} → <b>{r.bigOut} × {r.toValue}</b>
-                        {r.raceChips > 0 && (
-                          <span className="race-tag">race {r.raceChips} odd</span>
-                        )}
-                      </div>
-                      {!r.feasible && r.toId && (
-                        <div className="race-warn">You own only {r.bankHave} × {r.toValue} — may fall short.</div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-          <p className="faint" style={{ fontSize: 12, textAlign: 'center', margin: '2px 8px 0', lineHeight: 1.5 }}>
-            The race: deal one card per leftover chip; the highest card rounds up to the next chip.
-          </p>
-        </>
-      )}
 
       {shareOpen && (
         <ShareSheet

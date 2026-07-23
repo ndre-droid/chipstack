@@ -1,8 +1,8 @@
 name: Build Android APK
 
 on:
-  push:
-    branches: [main]
+  # manual only — build an APK on demand with `gh workflow run "Build Android APK"`
+  # (kept off auto-push so Pages deploys don't also build APKs while iterating)
   workflow_dispatch:
 
 permissions:

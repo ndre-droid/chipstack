@@ -88,7 +88,7 @@ export default function ChipsScreen() {
                     style={{
                       width: 34,
                       height: 30,
-                      border: '1px solid var(--border)',
+                      border: '1px solid var(--line)',
                       borderRadius: 8,
                       background: 'none',
                       padding: 2,

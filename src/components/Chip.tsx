@@ -12,8 +12,9 @@ interface ChipProps {
 }
 
 /**
- * Poker chip / plaque in the SLOWPLAY Nash style. Round chips get edge spots and
- * one of several art styles (deco / classic / diamond / sunburst); plaques render
+ * Poker chip / plaque in the SLOWPLAY Nash ceramic style: smooth edge (no clay
+ * edge spots), with a full-face gold art-deco lattice and the value in a central
+ * octagon cartouche. Round chips take one of several art styles; plaques render
  * as a rectangular art-deco tile. Rendered as scalable SVG.
  */
 export default function Chip({ value, color, accent, size = 44, className, shape = 'chip', art }: ChipProps) {
@@ -24,30 +25,27 @@ export default function Chip({ value, color, accent, size = 44, className, shape
   return <RoundChip value={value} color={color} accent={accent} size={sz} className={className} art={a} />;
 }
 
-/** Art-style line-work drawn in the chip's inner face. */
+function octaPoints(r: number, rot = 0) {
+  return Array.from({ length: 8 }, (_, i) => {
+    const ang = (i / 8) * Math.PI * 2 + Math.PI / 8 + rot;
+    return `${50 + Math.cos(ang) * r},${50 + Math.sin(ang) * r}`;
+  }).join(' ');
+}
+
+/** Full-face gold line-work drawn on the chip. */
 function ChipArtwork({ art, accent }: { art: ChipArt; accent: string }) {
-  const octagon = (r: number) =>
-    Array.from({ length: 8 }, (_, i) => {
-      const ang = (i / 8) * Math.PI * 2 + Math.PI / 8;
-      return `${50 + Math.cos(ang) * r},${50 + Math.sin(ang) * r}`;
-    }).join(' ');
   const diamond = (r: number) => `50,${50 - r} ${50 + r},50 50,${50 + r} ${50 - r},50`;
 
   if (art === 'classic') {
     return (
-      <g fill="none" stroke={accent} strokeWidth="1.2" opacity="0.85">
-        <circle cx="50" cy="50" r="33" />
-        <circle cx="50" cy="50" r="29" strokeWidth="0.8" />
-        {Array.from({ length: 16 }, (_, i) => {
-          const ang = (i / 16) * Math.PI * 2;
+      <g fill="none" stroke={accent} strokeWidth="1" opacity="0.82">
+        <circle cx="50" cy="50" r="44" strokeWidth="1.1" />
+        <circle cx="50" cy="50" r="40" strokeWidth="0.6" opacity="0.6" />
+        <circle cx="50" cy="50" r="30" strokeWidth="0.8" />
+        {Array.from({ length: 24 }, (_, i) => {
+          const ang = (i / 24) * Math.PI * 2;
           return (
-            <line
-              key={i}
-              x1={50 + Math.cos(ang) * 29}
-              y1={50 + Math.sin(ang) * 29}
-              x2={50 + Math.cos(ang) * 33}
-              y2={50 + Math.sin(ang) * 33}
-            />
+            <line key={i} x1={50 + Math.cos(ang) * 40} y1={50 + Math.sin(ang) * 40} x2={50 + Math.cos(ang) * 44} y2={50 + Math.sin(ang) * 44} strokeWidth="0.7" />
           );
         })}
       </g>
@@ -55,68 +53,50 @@ function ChipArtwork({ art, accent }: { art: ChipArt; accent: string }) {
   }
   if (art === 'diamond') {
     return (
-      <g fill="none" stroke={accent} strokeWidth="1.2" opacity="0.85">
-        <polygon points={diamond(34)} />
-        <polygon points={diamond(27)} strokeWidth="0.9" />
-        <polygon points={diamond(20)} strokeWidth="0.8" />
-        <circle cx="50" cy="50" r="34" strokeWidth="0.7" opacity="0.5" />
+      <g fill="none" stroke={accent} strokeWidth="1" opacity="0.82">
+        <polygon points={diamond(45)} strokeWidth="1.1" />
+        <polygon points={diamond(36)} strokeWidth="0.7" />
+        <polygon points={diamond(26)} strokeWidth="0.6" opacity="0.6" />
+        <circle cx="50" cy="50" r="45" strokeWidth="0.6" opacity="0.4" />
       </g>
     );
   }
   if (art === 'sunburst') {
     return (
-      <g fill="none" stroke={accent} strokeWidth="1" opacity="0.85">
-        <circle cx="50" cy="50" r="34" />
-        {Array.from({ length: 16 }, (_, i) => {
-          const ang = (i / 16) * Math.PI * 2;
+      <g fill="none" stroke={accent} strokeWidth="0.9" opacity="0.82">
+        <circle cx="50" cy="50" r="44" strokeWidth="1.1" />
+        {Array.from({ length: 24 }, (_, i) => {
+          const ang = (i / 24) * Math.PI * 2;
           return (
-            <line
-              key={i}
-              x1={50 + Math.cos(ang) * 16}
-              y1={50 + Math.sin(ang) * 16}
-              x2={50 + Math.cos(ang) * 33}
-              y2={50 + Math.sin(ang) * 33}
-            />
+            <line key={i} x1={50 + Math.cos(ang) * 22} y1={50 + Math.sin(ang) * 22} x2={50 + Math.cos(ang) * 43} y2={50 + Math.sin(ang) * 43} strokeWidth="0.7" />
           );
         })}
       </g>
     );
   }
-  // deco (default)
+  // deco (default) — SLOWPLAY-style full-face gold lattice
   return (
-    <g fill="none" stroke={accent} strokeWidth="1.3" opacity="0.85">
-      <polygon points={octagon(33)} />
-      <polygon points={octagon(27)} strokeWidth="0.9" />
-      <rect x="30" y="30" width="40" height="40" transform="rotate(45 50 50)" strokeWidth="0.9" />
+    <g fill="none" stroke={accent} strokeWidth="0.9" opacity="0.85" strokeLinejoin="round">
+      <polygon points={octaPoints(44)} strokeWidth="1" />
+      <polygon points={octaPoints(40)} strokeWidth="0.5" opacity="0.55" />
+      {Array.from({ length: 16 }, (_, i) => {
+        const ang = (i / 16) * Math.PI * 2;
+        return (
+          <line key={i} x1={50 + Math.cos(ang) * 29} y1={50 + Math.sin(ang) * 29} x2={50 + Math.cos(ang) * 43} y2={50 + Math.sin(ang) * 43} strokeWidth="0.6" />
+        );
+      })}
+      <polygon points={octaPoints(29)} strokeWidth="0.8" />
+      <polygon points={octaPoints(25, Math.PI / 8)} strokeWidth="0.5" opacity="0.5" />
     </g>
   );
 }
 
 function RoundChip({ value, color, accent, size = 44, className, art = 'deco' }: ChipProps) {
   const uidRef = `c${String(value)}${color.replace('#', '')}`;
-  // 8 edge spots
-  const spots = Array.from({ length: 8 }, (_, i) => {
-    const a = (i / 8) * Math.PI * 2;
-    const r = 44;
-    const cx = 50 + Math.cos(a) * r;
-    const cy = 50 + Math.sin(a) * r;
-    return (
-      <rect
-        key={i}
-        x={cx - 5.5}
-        y={cy - 3.5}
-        width={11}
-        height={7}
-        rx={3.5}
-        fill={accent}
-        transform={`rotate(${(i / 8) * 360} ${cx} ${cy})`}
-        opacity={0.95}
-      />
-    );
-  });
-
   const isLight = isLightColor(color);
   const textColor = isLight ? '#2a2205' : '#fff';
+  const digits = String(value).length;
+  const medR = digits >= 4 ? 22 : digits === 3 ? 19 : 16;
 
   return (
     <svg
@@ -128,25 +108,23 @@ function RoundChip({ value, color, accent, size = 44, className, art = 'deco' }:
       aria-label={`${value} chip`}
     >
       <defs>
-        <radialGradient id={`${uidRef}-body`} cx="38%" cy="32%" r="80%">
-          <stop offset="0%" stopColor={lighten(color, 0.16)} />
-          <stop offset="70%" stopColor={color} />
-          <stop offset="100%" stopColor={darken(color, 0.18)} />
+        <radialGradient id={`${uidRef}-body`} cx="40%" cy="34%" r="82%">
+          <stop offset="0%" stopColor={lighten(color, 0.14)} />
+          <stop offset="72%" stopColor={color} />
+          <stop offset="100%" stopColor={darken(color, 0.16)} />
         </radialGradient>
       </defs>
 
-      {/* body */}
-      <circle cx="50" cy="50" r="49" fill={`url(#${uidRef}-body)`} stroke={darken(color, 0.25)} strokeWidth="1.5" />
-      {spots}
+      {/* smooth ceramic body — no edge spots */}
+      <circle cx="50" cy="50" r="49" fill={`url(#${uidRef}-body)`} stroke={darken(color, 0.24)} strokeWidth="1.2" />
+      <circle cx="50" cy="50" r="46.5" fill="none" stroke={accent} strokeWidth="0.9" opacity="0.75" />
 
-      {/* inner face */}
-      <circle cx="50" cy="50" r="37" fill={darken(color, 0.06)} stroke={accent} strokeWidth="1.4" opacity="0.9" />
-
-      {/* art-style line work */}
+      {/* full-face gold art-deco lattice */}
       <ChipArtwork art={art ?? 'deco'} accent={accent} />
 
-      {/* centre banner */}
-      <rect x="24" y="40" width="52" height="20" rx="3" fill={darken(color, 0.28)} stroke={accent} strokeWidth="1" />
+      {/* central octagon cartouche + value */}
+      <polygon points={octaPoints(medR)} fill={darken(color, 0.22)} stroke={accent} strokeWidth="1" />
+      <polygon points={octaPoints(medR - 2.4)} fill="none" stroke={accent} strokeWidth="0.5" opacity="0.6" />
       <text
         x="50"
         y="50"
@@ -155,7 +133,7 @@ function RoundChip({ value, color, accent, size = 44, className, art = 'deco' }:
         fill={textColor}
         fontSize={fontFor(String(value))}
         fontWeight="800"
-        fontFamily="Inter, sans-serif"
+        fontFamily="system-ui, -apple-system, sans-serif"
         letterSpacing="-0.5"
       >
         {value}
@@ -169,7 +147,6 @@ function Plaque({ value, color, accent, size = 44, className }: ChipProps) {
   const uidRef = `p${String(value)}${color.replace('#', '')}`;
   const isLight = isLightColor(color);
   const textColor = isLight ? '#2a2205' : '#fff';
-  // rendered wider than tall within the same square footprint
   const w = 96;
   const h = 62;
   const x = 2;
@@ -190,13 +167,21 @@ function Plaque({ value, color, accent, size = 44, className }: ChipProps) {
           <stop offset="100%" stopColor={darken(color, 0.2)} />
         </linearGradient>
       </defs>
-      <rect x={x} y={y} width={w} height={h} rx="8" fill={`url(#${uidRef}-body)`} stroke={darken(color, 0.28)} strokeWidth="1.5" />
-      <g fill="none" stroke={accent} strokeWidth="1.2" opacity="0.85">
+      <rect x={x} y={y} width={w} height={h} rx="8" fill={`url(#${uidRef}-body)`} stroke={darken(color, 0.26)} strokeWidth="1.2" />
+      <g fill="none" stroke={accent} strokeWidth="1" opacity="0.85">
         <rect x={x + 5} y={y + 5} width={w - 10} height={h - 10} rx="5" />
-        <rect x={x + 9} y={y + 9} width={w - 18} height={h - 18} rx="3" strokeWidth="0.8" />
-        <path d={`M${x + 5} ${y + 16} L${x + 16} ${y + 5} M${x + w - 5} ${y + 16} L${x + w - 16} ${y + 5} M${x + 5} ${y + h - 16} L${x + 16} ${y + h - 5} M${x + w - 5} ${y + h - 16} L${x + w - 16} ${y + h - 5}`} strokeWidth="0.8" />
+        <rect x={x + 9} y={y + 9} width={w - 18} height={h - 18} rx="3" strokeWidth="0.6" opacity="0.6" />
+        <path
+          d={`M${x + 5} ${y + 16} L${x + 16} ${y + 5} M${x + w - 5} ${y + 16} L${x + w - 16} ${y + 5} M${x + 5} ${y + h - 16} L${x + 16} ${y + h - 5} M${x + w - 5} ${y + h - 16} L${x + w - 16} ${y + h - 5}`}
+          strokeWidth="0.6"
+        />
       </g>
-      <rect x={x + 22} y={y + h / 2 - 11} width={w - 44} height="22" rx="3" fill={darken(color, 0.28)} stroke={accent} strokeWidth="1" />
+      <polygon
+        points={`${x + w / 2 - 16},${y + h / 2} ${x + w / 2 - 11},${y + h / 2 - 10} ${x + w / 2 + 11},${y + h / 2 - 10} ${x + w / 2 + 16},${y + h / 2} ${x + w / 2 + 11},${y + h / 2 + 10} ${x + w / 2 - 11},${y + h / 2 + 10}`}
+        fill={darken(color, 0.22)}
+        stroke={accent}
+        strokeWidth="0.9"
+      />
       <text
         x={x + w / 2}
         y={y + h / 2}
@@ -205,7 +190,7 @@ function Plaque({ value, color, accent, size = 44, className }: ChipProps) {
         fill={textColor}
         fontSize={fontFor(String(value)) - 1}
         fontWeight="800"
-        fontFamily="Inter, sans-serif"
+        fontFamily="system-ui, -apple-system, sans-serif"
         letterSpacing="-0.5"
       >
         {value}

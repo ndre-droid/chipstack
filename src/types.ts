@@ -21,7 +21,9 @@ export interface BlindLevel {
   ante: number;         // in chip-units (0 = none)
 }
 
-export type ThemeId = 'gold' | 'emerald' | 'crimson' | 'retro' | 'scifi' | 'elite';
+export type Appearance = 'system' | 'light' | 'dark';
+export type AccentId = 'amber' | 'gold' | 'emerald' | 'cyan' | 'cobalt' | 'violet' | 'crimson' | 'coral';
+export type Skin = 'minimal' | 'casino' | 'playful' | 'scifi';
 export type ChipArt = 'deco' | 'classic' | 'diamond' | 'sunburst';
 
 export interface Settings {
@@ -30,7 +32,10 @@ export interface Settings {
   defaultSmallBlind: number; // small blind used for new sessions / suggested ladders
   defaultBigBlind: number;
   minutesPerLevel: number;  // blind-timer length per level
-  theme: ThemeId;           // app colour/typography theme
+  skin: Skin;               // overall visual style (minimal / casino / playful / scifi)
+  accents: Record<Skin, AccentId>; // accent colour per style
+  tvSkin: Skin | 'match';   // TV-broadcast style; 'match' follows the phone skin
+  appearance: Appearance;   // system / light / dark — applies to the minimal skin
   chipArt: ChipArt;         // chip face art style
 }
 

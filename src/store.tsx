@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useReducer } from 'react';
 import type { ReactNode } from 'react';
-import type { AppState, Denomination, BlindLevel, Preset, Settings, SessionConfig, LedgerPlayer } from './types';
+import type { AppState, Denomination, BlindLevel, Preset, Settings, SessionConfig, LedgerPlayer, AccentId, Skin } from './types';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -44,9 +44,15 @@ const defaultSettings: Settings = {
   defaultSmallBlind: 10,
   defaultBigBlind: 20,
   minutesPerLevel: 20,
-  theme: 'gold',
+  skin: 'minimal',
+  accents: { minimal: 'amber', casino: 'gold', playful: 'coral', scifi: 'cyan' },
+  tvSkin: 'match',
+  appearance: 'dark',
   chipArt: 'deco',
 };
+
+const SKINS = ['minimal', 'casino', 'playful', 'scifi'];
+const ACCENTS = ['amber', 'gold', 'emerald', 'cyan', 'cobalt', 'violet', 'crimson', 'coral'];
 
 const defaultSession: SessionConfig = {
   playerCount: 4,
@@ -237,9 +243,32 @@ function migrate(raw: string | null): AppState {
         }))
       : defaultDenoms();
 
-  const settings = { ...defaultSettings, ...((parsed.settings as object) ?? {}) };
-  const validThemes = ['gold', 'emerald', 'crimson', 'retro', 'scifi', 'elite'];
-  if (!validThemes.includes(settings.theme)) settings.theme = 'gold';
+  const savedSettings = (parsed.settings ?? {}) as Record<string, unknown>;
+  const settings = { ...defaultSettings, ...savedSettings } as Settings & { theme?: string; accent?: string };
+
+  // build the per-skin accents map, migrating from the old single `accent`
+  // (and, before that, from the legacy 6-theme model)
+  const legacyThemeToAccent: Record<string, AccentId> = {
+    gold: 'amber', emerald: 'emerald', crimson: 'crimson', retro: 'emerald', scifi: 'cyan', elite: 'gold',
+  };
+  const oldAccent =
+    (typeof settings.accent === 'string' && ACCENTS.includes(settings.accent) && (settings.accent as AccentId)) ||
+    (typeof settings.theme === 'string' ? legacyThemeToAccent[settings.theme] : undefined);
+  const savedAccents = (savedSettings.accents ?? {}) as Record<string, unknown>;
+  const accents = { ...defaultSettings.accents } as Record<Skin, AccentId>;
+  for (const s of SKINS) {
+    const v = savedAccents[s];
+    if (typeof v === 'string' && ACCENTS.includes(v)) accents[s as Skin] = v as AccentId;
+  }
+  if (oldAccent && !(typeof savedAccents.minimal === 'string')) accents.minimal = oldAccent;
+  settings.accents = accents;
+  delete settings.theme;
+  delete settings.accent;
+
+  if (!SKINS.includes(settings.skin)) settings.skin = 'minimal';
+  if (settings.tvSkin !== 'match' && !SKINS.includes(settings.tvSkin)) settings.tvSkin = 'match';
+  const validAppear = ['system', 'light', 'dark'];
+  if (!validAppear.includes(settings.appearance)) settings.appearance = 'dark';
   const validArt = ['deco', 'classic', 'diamond', 'sunburst'];
   if (!validArt.includes(settings.chipArt)) settings.chipArt = 'deco';
 

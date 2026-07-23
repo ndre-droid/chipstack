@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { IconPlay, IconPause, IconReset, IconChevron, IconDice, IconExpand } from '../components/Icons';
+import TvMode from './TvMode';
 
 const fmt = (s: number) => {
   const m = Math.floor(s / 60);
@@ -16,8 +17,7 @@ export default function TableScreen() {
   const [levelIdx, setLevelIdx] = useState(0);
   const [seconds, setSeconds] = useState(mins * 60);
   const [running, setRunning] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
-  const [rotated, setRotated] = useState(false);
+  const [tv, setTv] = useState(false);
   const tick = useRef<number | null>(null);
 
   const level = blindLevels[Math.min(levelIdx, blindLevels.length - 1)];
@@ -103,7 +103,7 @@ export default function TableScreen() {
           <button className="icon-btn" onClick={() => goLevel(levelIdx + 1)} aria-label="Next level">
             <IconChevron size={20} />
           </button>
-          <button className="icon-btn" onClick={() => setFullscreen(true)} aria-label="Table mode">
+          <button className="icon-btn" onClick={() => setTv(true)} aria-label="Big screen">
             <IconExpand size={18} />
           </button>
         </div>
@@ -120,29 +120,20 @@ export default function TableScreen() {
         </div>
       </div>
 
+      <button className="btn btn-primary btn-block" onClick={() => setTv(true)}>
+        <IconExpand size={18} /> Big screen · TV mode
+      </button>
+      <p className="faint" style={{ fontSize: 12, textAlign: 'center', margin: '8px 8px 0' }}>
+        Cast or mirror your phone to a TV — big clock, chip values, standings &amp; more.
+      </p>
+
       <DealerAndSeats />
 
       <p className="faint" style={{ fontSize: 12, textAlign: 'center', marginTop: 6 }}>
         Set the ladder & starting level on the Plan tab; the clock plays through it.
       </p>
 
-      {fullscreen && (
-        <div className="table-mode" onClick={() => setFullscreen(false)}>
-          <div className={`table-mode-inner ${rotated ? 'rot' : ''}`}>{clock}</div>
-          <div className="table-mode-controls" onClick={(e) => e.stopPropagation()}>
-            <button className="tm-btn" onClick={() => setRotated((r) => !r)} aria-label="Rotate">
-              ⟳
-            </button>
-            <button className="clock-play big" onClick={() => setRunning((r) => !r)}>
-              {running ? <IconPause size={34} /> : <IconPlay size={34} />}
-            </button>
-            <button className="tm-btn" onClick={() => setFullscreen(false)} aria-label="Exit">
-              ✕
-            </button>
-          </div>
-          <div className="table-mode-hint">tap the dark area to exit</div>
-        </div>
-      )}
+      {tv && <TvMode onClose={() => setTv(false)} />}
     </div>
   );
 }
@@ -203,7 +194,7 @@ function DealerAndSeats() {
               <IconDice size={18} /> Spin the dealer button
             </button>
             {dealerId && (
-              <p style={{ textAlign: 'center', marginTop: 10, marginBottom: 0, fontWeight: 800, color: 'var(--gold-soft)' }}>
+              <p style={{ textAlign: 'center', marginTop: 10, marginBottom: 0, fontWeight: 700, color: 'var(--acc)' }}>
                 {nameOf(dealerId)} is on the button
               </p>
             )}

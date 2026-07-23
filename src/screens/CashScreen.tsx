@@ -58,7 +58,7 @@ export default function CashScreen() {
           </div>
           <div className="stat">
             <div className="k">On table</div>
-            <div className="v" style={{ color: 'var(--gold-soft)' }}>{fmtMoney(totalIn - totalOut, cur)}</div>
+            <div className="v" style={{ color: 'var(--acc)' }}>{fmtMoney(totalIn - totalOut, cur)}</div>
           </div>
         </div>
       </div>

@@ -159,13 +159,13 @@ export function computeStack(
 }
 
 /**
- * Pick the base (smallest) chip and a blind-compatible pool.
+ * Pick the base (smallest) chip and the eligible pool.
  *
- * Poker rule: the smallest chip must be able to POST the blinds and MAKE CHANGE.
- * So the base chip is the largest owned denomination that is ≤ the small blind
- * *and divides it exactly*. Larger chips are only kept if they are whole multiples
- * of that base — a 25 chip simply doesn't belong in a 10/20 game (you can't break
- * it into blind-sized bets), so it's set aside until the blinds reach 25/50.
+ * Poker rule: only the SMALLEST chip has to be able to post the small blind, so the
+ * base is the largest owned denomination that is ≤ the small blind and divides it.
+ * Larger chips do NOT need to be multiples of the base — a 25 is perfectly usable in
+ * a 10/20 game — so every chip from the base upward is kept. (Chips *below* the base
+ * are dropped for this blind level unless "use all my chips" is on.)
  */
 function selectPool(
   owned: Denomination[],
@@ -216,19 +216,11 @@ function selectPool(
     );
   }
 
-  // Keep base + larger chips that are exact multiples of the base (fit the structure).
-  const pool = owned.filter((d) => d.value >= base.value && d.value % base.value === 0);
-  const skipped = owned.filter((d) => d.value > base.value && d.value % base.value !== 0);
+  // Keep the base and every larger chip. Bigger chips need not be multiples of the
+  // base — only the smallest chip has to post the blind.
+  const pool = owned.filter((d) => d.value >= base.value);
 
-  if (skipped.length) {
-    const list = skipped.map((d) => d.value).join(', ');
-    const many = skipped.length > 1;
-    notes.push(
-      `Set aside the ${list} chip${many ? 's' : ''} — ${many ? "they don't" : "it doesn't"} fit ${sb}/${bb} blinds (not a multiple of ${base.value}). ${many ? 'They come' : 'It comes'} into play once the blinds reach that size.`,
-    );
-  }
-
-  return { pool: pool.length ? pool : owned.filter((d) => d.value >= base.value), base, blindOk, warnings, notes };
+  return { pool, base, blindOk, warnings, notes };
 }
 
 function clampCount(raw: number, cap: number) {

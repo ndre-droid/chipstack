@@ -1,7 +1,7 @@
 import { useStore } from '../store';
 import { fmtMoney } from '../lib/money';
 import Chip from '../components/Chip';
-import type { ThemeId, ChipArt } from '../types';
+import type { Appearance, AccentId, Skin, ChipArt } from '../types';
 
 const CURRENCIES = ['€', '$', '£', 'zł', 'Fr'];
 const UNIT_PRESETS = [
@@ -10,13 +10,28 @@ const UNIT_PRESETS = [
   { label: '1 point = €1', value: 1 },
 ];
 
-const THEMES: { id: ThemeId; name: string; sub: string; bg: string; accent: string; text: string }[] = [
-  { id: 'gold', name: 'Midnight Gold', sub: 'the original', bg: '#0a0a0c', accent: '#e4b41f', text: '#f6f6f8' },
-  { id: 'emerald', name: 'Emerald Felt', sub: 'casino green', bg: '#06120c', accent: '#e4b41f', text: '#e8f3ec' },
-  { id: 'crimson', name: 'Crimson Velvet', sub: 'deep red', bg: '#130607', accent: '#e4b41f', text: '#f6e8ea' },
-  { id: 'retro', name: 'Terminal', sub: 'retro CRT', bg: '#030803', accent: '#b6ff3a', text: '#86ff7a' },
-  { id: 'scifi', name: 'Neon Drive', sub: 'sci-fi', bg: '#04060f', accent: '#21e6ff', text: '#e3ecff' },
-  { id: 'elite', name: 'Maison', sub: 'elegant serif', bg: '#111013', accent: '#c8a44e', text: '#efe9df' },
+const STYLES: { id: Skin; name: string; bg: string; note: string }[] = [
+  { id: 'minimal', name: 'Minimal', bg: '#16161a', note: 'Neutral canvas — also pick light / dark below.' },
+  { id: 'casino', name: 'Casino Felt', bg: 'radial-gradient(120% 90% at 50% 0%, #275a3d, #0a1c12)', note: 'Warm green felt & brass, with a serif touch.' },
+  { id: 'playful', name: 'Playful', bg: '#fbe9c8', note: 'Bright, bold and chunky.' },
+  { id: 'scifi', name: 'Sci-Fi', bg: 'radial-gradient(120% 90% at 50% 0%, #0c1a4c, #05060f)', note: 'Deep space with a neon glow.' },
+];
+
+const APPEARANCES: { id: Appearance; name: string }[] = [
+  { id: 'system', name: 'System' },
+  { id: 'light', name: 'Light' },
+  { id: 'dark', name: 'Dark' },
+];
+
+const ACCENTS: { id: AccentId; name: string; color: string }[] = [
+  { id: 'amber', name: 'Amber', color: '#f0b429' },
+  { id: 'gold', name: 'Gold', color: '#e6c878' },
+  { id: 'emerald', name: 'Emerald', color: '#34d399' },
+  { id: 'cyan', name: 'Cyan', color: '#3fe6ff' },
+  { id: 'cobalt', name: 'Cobalt', color: '#5aa0ff' },
+  { id: 'violet', name: 'Violet', color: '#b18cff' },
+  { id: 'crimson', name: 'Crimson', color: '#ff6b6b' },
+  { id: 'coral', name: 'Coral', color: '#ff7a4d' },
 ];
 
 const CHIP_ARTS: { id: ChipArt; name: string }[] = [
@@ -30,27 +45,106 @@ export default function SettingsScreen() {
   const { state, dispatch } = useStore();
   const { settings } = state;
 
+  const activeStyle = STYLES.find((s) => s.id === settings.skin) ?? STYLES[0];
+  const accentColor = (id: AccentId) => ACCENTS.find((a) => a.id === id)?.color ?? '#f0b429';
+  const currentAccent = settings.accents?.[settings.skin] ?? 'amber';
+  const setAccent = (id: AccentId) =>
+    dispatch({ type: 'UPDATE_SETTINGS', patch: { accents: { ...settings.accents, [settings.skin]: id } } });
+
   return (
     <div>
-      <div className="section-label">Theme</div>
+      <div className="section-label">Style</div>
       <div className="card">
-        <div className="theme-grid">
-          {THEMES.map((t) => (
+        <div className="style-grid">
+          {STYLES.map((s) => (
             <button
-              key={t.id}
-              className={`theme-swatch ${settings.theme === t.id ? 'active' : ''}`}
-              style={{ background: t.bg }}
-              onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { theme: t.id } })}
+              key={s.id}
+              className={`style-opt ${settings.skin === s.id ? 'active' : ''}`}
+              onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { skin: s.id } })}
             >
-              <span className="theme-dots">
-                <i style={{ background: t.accent }} />
-                <i style={{ background: t.text }} />
+              <span className="style-swatch" style={{ background: s.bg }}>
+                <span className="sw-dot" style={{ background: accentColor(settings.accents?.[s.id] ?? 'amber') }} />
               </span>
-              <span className="theme-name" style={{ color: t.text }}>{t.name}</span>
-              <span className="theme-sub" style={{ color: t.accent }}>{t.sub}</span>
+              <span className="style-name">{s.name}</span>
             </button>
           ))}
         </div>
+        <p className="faint" style={{ fontSize: 12.5, margin: '12px 2px 0' }}>{activeStyle.note}</p>
+      </div>
+
+      {settings.skin === 'minimal' && (
+        <>
+          <div className="section-label">Appearance</div>
+          <div className="card">
+            <div className="segmented">
+              {APPEARANCES.map((a) => (
+                <button
+                  key={a.id}
+                  className={settings.appearance === a.id ? 'active' : ''}
+                  onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { appearance: a.id } })}
+                >
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      <div className="section-label">
+        Accent
+        <span className="hint">{activeStyle.name}</span>
+      </div>
+      <div className="card">
+        <div className="accent-grid">
+          {ACCENTS.map((a) => (
+            <button
+              key={a.id}
+              className={`accent-opt ${currentAccent === a.id ? 'active' : ''}`}
+              onClick={() => setAccent(a.id)}
+            >
+              <span className="dot" style={{ background: a.color }} />
+              {a.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="section-label">
+        TV broadcast style
+        <span className="hint">match phone or pick</span>
+      </div>
+      <div className="card">
+        <div className="style-grid">
+          {[{ id: 'match' as const, name: 'Match phone', bg: activeStyle.bg }, ...STYLES].map((s) => (
+            <button
+              key={s.id}
+              className={`style-opt ${(settings.tvSkin ?? 'match') === s.id ? 'active' : ''}`}
+              onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvSkin: s.id } })}
+            >
+              <span className="style-swatch" style={{ background: s.bg }}>
+                <span
+                  className="sw-dot"
+                  style={{ background: s.id === 'match' ? accentColor(currentAccent) : accentColor(settings.accents?.[s.id] ?? 'amber') }}
+                />
+              </span>
+              <span className="style-name">{s.name}</span>
+            </button>
+          ))}
+        </div>
+        <p className="faint" style={{ fontSize: 12.5, margin: '12px 2px 0' }}>
+          The big-screen look on the Table tab’s TV mode. Defaults to matching your phone; pick a style to make it independent.
+        </p>
+      </div>
+
+      <div className="section-label">Cast to TV</div>
+      <div className="card">
+        <p className="faint" style={{ fontSize: 13, margin: 0, lineHeight: 1.65 }}>
+          Open <b>Table → Big screen · TV mode</b>, turn the phone <b>landscape</b>, then mirror the screen:
+          <br />• <b>Android:</b> swipe down → <b>Smart View / Cast</b> → your LG TV.
+          <br />• <b>iPhone:</b> Control Centre → <b>Screen Mirroring</b> → your LG TV (AirPlay).
+          <br />It stays awake while casting.
+        </p>
       </div>
 
       <div className="section-label">Chip art</div>

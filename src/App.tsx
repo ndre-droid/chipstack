@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StoreProvider, useStore } from './store';
 import PlanScreen from './screens/PlanScreen';
 import ChipsScreen from './screens/ChipsScreen';
@@ -7,47 +7,45 @@ import CashScreen from './screens/CashScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import { IconPlan, IconChips, IconTable, IconCash, IconSettings } from './components/Icons';
 
-type Tab = 'plan' | 'chips' | 'table' | 'cash' | 'settings';
+type Tab = 'plan' | 'chips' | 'table' | 'cash';
+type View = Tab | 'settings';
 
 const TABS: { id: Tab; label: string; icon: (p: { size?: number }) => React.ReactNode }[] = [
   { id: 'plan', label: 'Plan', icon: IconPlan },
   { id: 'chips', label: 'Chips', icon: IconChips },
   { id: 'table', label: 'Table', icon: IconTable },
   { id: 'cash', label: 'Cash', icon: IconCash },
-  { id: 'settings', label: 'Settings', icon: IconSettings },
 ];
 
-const HEADER_SUB: Record<Tab, string> = {
+const HEADER_SUB: Record<View, string> = {
   plan: 'Session',
   chips: 'Inventory',
   table: 'At the table',
   cash: 'Settle up',
-  settings: 'Preferences',
+  settings: 'Settings',
 };
 
 function LogoMark() {
   return (
-    <svg className="logo-mark" viewBox="0 0 100 100" aria-hidden>
-      <circle cx="50" cy="50" r="47" fill="#191922" stroke="#e4b41f" strokeWidth="4" />
-      {Array.from({ length: 6 }, (_, i) => {
-        const a = (i / 6) * Math.PI * 2;
+    <svg className="logo-mark" viewBox="0 0 24 24" aria-hidden>
+      <rect width="24" height="24" rx="7" fill="var(--acc)" />
+      <circle cx="12" cy="12" r="6.5" fill="none" stroke="var(--on-acc)" strokeWidth="1.6" opacity="0.9" />
+      <circle cx="12" cy="12" r="2.4" fill="var(--on-acc)" />
+      {Array.from({ length: 4 }, (_, i) => {
+        const a = (i / 4) * Math.PI * 2;
         return (
           <rect
             key={i}
-            x={50 + Math.cos(a) * 40 - 5}
-            y={50 + Math.sin(a) * 40 - 3}
-            width="10"
-            height="6"
-            rx="3"
-            fill="#e4b41f"
-            transform={`rotate(${(i / 6) * 360} ${50 + Math.cos(a) * 40} ${50 + Math.sin(a) * 40})`}
+            x={12 + Math.cos(a) * 6.5 - 1.4}
+            y={12 + Math.sin(a) * 6.5 - 0.9}
+            width="2.8"
+            height="1.8"
+            rx="0.9"
+            fill="var(--on-acc)"
+            transform={`rotate(${(i / 4) * 360} ${12 + Math.cos(a) * 6.5} ${12 + Math.sin(a) * 6.5})`}
           />
         );
       })}
-      <polygon points="50,25 71,37 71,63 50,75 29,63 29,37" fill="none" stroke="#e4b41f" strokeWidth="3" />
-      <text x="50" y="57" textAnchor="middle" fill="#f0cb54" fontSize="26" fontWeight="800" fontFamily="Inter, sans-serif">
-        ♣
-      </text>
     </svg>
   );
 }
@@ -61,45 +59,70 @@ export default function App() {
 }
 
 function AppShell() {
-  const [tab, setTab] = useState<Tab>('plan');
+  const [view, setView] = useState<View>('plan');
+  const lastTab = useRef<Tab>('plan');
   const { state } = useStore();
-  const theme = state.settings.theme;
+  const { skin, accents, appearance } = state.settings;
+  const activeSkin = skin ?? 'minimal';
+  const activeAccent = accents?.[activeSkin] ?? 'amber';
 
+  // apply skin + accent (+ appearance for minimal) to <html>.
+  // each skin carries its own accent; 'minimal' also honours light/dark, the other
+  // skins are self-contained colour worlds.
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
+    const root = document.documentElement;
+    root.setAttribute('data-skin', activeSkin);
+    root.setAttribute('data-accent', activeAccent);
+    if (activeSkin === 'minimal' && appearance !== 'system') root.setAttribute('data-theme', appearance);
+    else root.removeAttribute('data-theme');
+  }, [activeSkin, activeAccent, appearance]);
+
+  const toSettings = () => {
+    if (view === 'settings') setView(lastTab.current);
+    else setView('settings');
+  };
+  const goTab = (t: Tab) => {
+    lastTab.current = t;
+    setView(t);
+  };
 
   return (
-    <>
-      <div className="app">
-        <header className="app-header">
-          <LogoMark />
-          <span className="wordmark">
-            Chip<b>Stack</b>
-          </span>
-          <span className="header-sub">{HEADER_SUB[tab]}</span>
-        </header>
+    <div className="app">
+      <header className="app-header">
+        <LogoMark />
+        <span className="wordmark">
+          Chip<b>Stack</b>
+        </span>
+        <span className="header-sub">{HEADER_SUB[view]}</span>
+        <button
+          className={`header-gear ${view === 'settings' ? 'on' : ''}`}
+          onClick={toSettings}
+          aria-label="Settings"
+          aria-pressed={view === 'settings'}
+        >
+          <IconSettings size={19} />
+        </button>
+      </header>
 
-        <main className="screen" key={tab}>
-          {tab === 'plan' && <PlanScreen />}
-          {tab === 'chips' && <ChipsScreen />}
-          {tab === 'table' && <TableScreen />}
-          {tab === 'cash' && <CashScreen />}
-          {tab === 'settings' && <SettingsScreen />}
-        </main>
+      <main className="screen" key={view}>
+        {view === 'plan' && <PlanScreen />}
+        {view === 'chips' && <ChipsScreen />}
+        {view === 'table' && <TableScreen />}
+        {view === 'cash' && <CashScreen />}
+        {view === 'settings' && <SettingsScreen />}
+      </main>
 
-        <nav className="bottom-nav">
-          {TABS.map((t) => {
-            const Icon = t.icon;
-            return (
-              <button key={t.id} className={`nav-item ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
-                <Icon size={24} />
-                {t.label}
-              </button>
-            );
-          })}
-        </nav>
-      </div>
-    </>
+      <nav className="bottom-nav">
+        {TABS.map((t) => {
+          const Icon = t.icon;
+          return (
+            <button key={t.id} className={`nav-item ${view === t.id ? 'active' : ''}`} onClick={() => goTab(t.id)}>
+              <Icon size={22} />
+              {t.label}
+            </button>
+          );
+        })}
+      </nav>
+    </div>
   );
 }
