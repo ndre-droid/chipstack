@@ -27,8 +27,8 @@ jobs:
         with:
           enablement: true
       - run: npm ci
-      # base must match the repo name so assets resolve at /ChipStack/
-      - run: npx tsc -b && npx vite build --base=/ChipStack/
+      # base must match the (lowercase) repo name so assets resolve at /chipstack/
+      - run: npx tsc -b && npx vite build --base=/chipstack/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

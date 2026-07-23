@@ -1,8 +1,12 @@
+import { useMemo, useState } from 'react';
+import qrcode from 'qrcode-generator';
 import { useStore } from '../store';
 import { fmtMoney } from '../lib/money';
 import Chip from '../components/Chip';
+import { IconCheck } from '../components/Icons';
 import type { Appearance, AccentId, Skin, ChipArt } from '../types';
 
+const WEB_URL = 'https://ndre-droid.github.io/chipstack/';
 const CURRENCIES = ['€', '$', '£', 'zł', 'Fr'];
 const UNIT_PRESETS = [
   { label: '1 point = 1¢', value: 0.01 },
@@ -50,6 +54,27 @@ export default function SettingsScreen() {
   const currentAccent = settings.accents?.[settings.skin] ?? 'amber';
   const setAccent = (id: AccentId) =>
     dispatch({ type: 'UPDATE_SETTINGS', patch: { accents: { ...settings.accents, [settings.skin]: id } } });
+
+  const [urlCopied, setUrlCopied] = useState(false);
+  const copyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(WEB_URL);
+      setUrlCopied(true);
+      setTimeout(() => setUrlCopied(false), 1600);
+    } catch {
+      setUrlCopied(false);
+    }
+  };
+  const urlQr = useMemo(() => {
+    try {
+      const qr = qrcode(0, 'M');
+      qr.addData(WEB_URL);
+      qr.make();
+      return qr.createDataURL(5, 16);
+    } catch {
+      return null;
+    }
+  }, []);
 
   return (
     <div>
@@ -137,13 +162,32 @@ export default function SettingsScreen() {
         </p>
       </div>
 
-      <div className="section-label">Cast to TV</div>
+      <div className="section-label">Show on TV</div>
       <div className="card">
-        <p className="faint" style={{ fontSize: 13, margin: 0, lineHeight: 1.65 }}>
-          Open <b>Table → Big screen · TV mode</b>, turn the phone <b>landscape</b>, then mirror the screen:
-          <br />• <b>Android:</b> swipe down → <b>Smart View / Cast</b> → your LG TV.
-          <br />• <b>iPhone:</b> Control Centre → <b>Screen Mirroring</b> → your LG TV (AirPlay).
-          <br />It stays awake while casting.
+        <p className="faint" style={{ fontSize: 13, margin: '0 0 12px', lineHeight: 1.6 }}>
+          Best way — the phone stays free: open this address in your <b>TV’s web browser</b>, then go to
+          <b> Table → Big screen</b> and run it with the TV remote.
+        </p>
+        <div className="code-box" style={{ textAlign: 'center', fontSize: 14, letterSpacing: '0.02em' }}>{WEB_URL}</div>
+        <button className="btn btn-ghost btn-block btn-sm mt8" onClick={copyUrl}>
+          {urlCopied ? (
+            <>
+              <IconCheck size={16} /> Copied
+            </>
+          ) : (
+            'Copy link'
+          )}
+        </button>
+        {urlQr && (
+          <div className="qr-wrap">
+            <img src={urlQr} alt="Web app QR code" />
+            <span className="faint" style={{ fontSize: 11.5 }}>Scan with a phone to open, or bookmark on the TV</span>
+          </div>
+        )}
+        <p className="faint" style={{ fontSize: 12.5, margin: '12px 0 0', lineHeight: 1.6 }}>
+          It updates automatically and runs offline after the first load.
+          <br />
+          <b>Or mirror the phone:</b> Android → Smart View / Cast; iPhone → Screen Mirroring (AirPlay) — but then the phone must stay on this screen.
         </p>
       </div>
 
