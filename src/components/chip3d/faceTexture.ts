@@ -2,10 +2,11 @@ import * as THREE from 'three';
 
 /**
  * Draws a SLOWPLAY Nash ceramic chip face onto a canvas and returns it as a
- * THREE.CanvasTexture: a full-face gold art-deco lattice (octagon frame +
- * octagram + radial ticks), the SLOWPLAY wordmark up top, and the value in a
- * horizontal cartouche across the middle. Textures are cached per denom so a
- * whole stack shares one.
+ * THREE.CanvasTexture: a matte body, a full-face gold art-deco lattice (octagon
+ * frame + octagram + nested diamonds + radial ticks), the SLOWPLAY wordmark up
+ * top, and the value in a horizontal double-bordered cartouche. The whole canvas
+ * is painted with the body colour so the round cylinder cap has NO dark rim.
+ * Cached per denom so a whole stack shares one texture.
  */
 
 const cache = new Map<string, THREE.CanvasTexture>();
@@ -27,83 +28,101 @@ function drawFace(color: string, accent: string, value: string): HTMLCanvasEleme
   c.width = c.height = S;
   const g = c.getContext('2d')!;
   const C = S / 2;
-  const R = S * 0.47;
+  const RR = S * 0.5; // the cylinder cap samples the full inscribed circle
 
-  // --- ceramic body with a soft top-left sheen ---
-  const body = g.createRadialGradient(C - R * 0.34, C - R * 0.4, R * 0.1, C, C, R * 1.15);
-  body.addColorStop(0, mix(color, 0.17));
-  body.addColorStop(0.72, color);
-  body.addColorStop(1, mix(color, -0.2));
-  g.fillStyle = body;
-  g.beginPath();
-  g.arc(C, C, R, 0, Math.PI * 2);
-  g.fill();
+  // --- body: fill the ENTIRE canvas so the cap edge is never bare (no black rim) ---
+  g.fillStyle = color;
+  g.fillRect(0, 0, S, S);
+  // soft top-left ceramic sheen (lighten only — never a dark edge)
+  const sheen = g.createRadialGradient(C - RR * 0.32, C - RR * 0.36, RR * 0.05, C - RR * 0.1, C - RR * 0.1, RR * 1.15);
+  sheen.addColorStop(0, hexA(mix(color, 0.18), 0.9));
+  sheen.addColorStop(0.5, hexA(mix(color, 0.06), 0.35));
+  sheen.addColorStop(1, hexA(color, 0));
+  g.fillStyle = sheen;
+  g.fillRect(0, 0, S, S);
 
   // --- gold art-deco line-work ---
   g.strokeStyle = accent;
-  g.lineJoin = 'round';
-  g.lineCap = 'round';
+  g.lineJoin = 'miter';
+  g.lineCap = 'butt';
 
-  ring(g, C, octaPath(C, R * 0.985, 0), S * 0.012, 0.95);
-  ring(g, C, octaPath(C, R * 0.9, 0), S * 0.005, 0.55);
+  ring(g, octaPath(C, RR * 0.9, 0), S * 0.011, 0.95);
+  ring(g, octaPath(C, RR * 0.82, 0), S * 0.004, 0.5);
   // octagram = two overlapping squares
-  ring(g, C, squarePath(C, R * 0.82, 0), S * 0.006, 0.85);
-  ring(g, C, squarePath(C, R * 0.82, Math.PI / 4), S * 0.006, 0.85);
-  // radial ticks
-  g.globalAlpha = 0.7;
-  g.lineWidth = S * 0.005;
+  ring(g, squarePath(C, RR * 0.82, 0), S * 0.006, 0.82);
+  ring(g, squarePath(C, RR * 0.82, Math.PI / 4), S * 0.006, 0.82);
+  // even radial ticks between the star and the inner frame
+  g.globalAlpha = 0.65;
+  g.lineWidth = S * 0.0045;
+  g.beginPath();
   for (let i = 0; i < 16; i++) {
     const a = (i / 16) * Math.PI * 2 + Math.PI / 16;
-    g.beginPath();
-    g.moveTo(C + Math.cos(a) * R * 0.55, C + Math.sin(a) * R * 0.55);
-    g.lineTo(C + Math.cos(a) * R * 0.8, C + Math.sin(a) * R * 0.8);
-    g.stroke();
+    g.moveTo(C + Math.cos(a) * RR * 0.6, C + Math.sin(a) * RR * 0.6);
+    g.lineTo(C + Math.cos(a) * RR * 0.76, C + Math.sin(a) * RR * 0.76);
   }
+  g.stroke();
   g.globalAlpha = 1;
-  ring(g, C, octaPath(C, R * 0.5, Math.PI / 8), S * 0.006, 0.8);
+  // nested diamonds (rotated squares) — the art-deco centre frame
+  ring(g, squarePath(C, RR * 0.6, Math.PI / 4), S * 0.006, 0.78);
+  ring(g, squarePath(C, RR * 0.52, Math.PI / 4), S * 0.004, 0.5);
 
-  // --- SLOWPLAY wordmark ---
+  // --- SLOWPLAY wordmark in a slim pill ---
   g.save();
-  g.fillStyle = accent;
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  g.font = `700 ${S * 0.05}px system-ui, -apple-system, sans-serif`;
+  g.font = `700 ${S * 0.046}px system-ui, -apple-system, sans-serif`;
   try {
-    (g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${S * 0.008}px`;
+    (g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${S * 0.007}px`;
   } catch { /* older engines ignore letterSpacing */ }
-  g.fillText('SLOWPLAY', C, C - R * 0.6);
+  const wy = C - RR * 0.6;
+  const wm = g.measureText('SLOWPLAY');
+  const pw = wm.width + S * 0.05;
+  const ph = S * 0.078;
+  roundRect(g, C - pw / 2, wy - ph / 2, pw, ph, ph * 0.5);
+  g.fillStyle = hexA(mix(color, -0.28), 0.55);
+  g.fill();
+  g.strokeStyle = accent;
+  g.lineWidth = S * 0.0035;
+  g.globalAlpha = 0.75;
+  g.stroke();
+  g.globalAlpha = 1;
+  g.fillStyle = accent;
+  g.fillText('SLOWPLAY', C, wy + S * 0.002);
   g.restore();
 
-  // --- value cartouche across the middle ---
-  const bw = R * 1.12;
-  const bh = R * 0.46;
+  // --- value cartouche across the middle (double gold border) ---
+  const bw = RR * 1.08;
+  const bh = RR * 0.44;
   const bx = C - bw / 2;
-  const by = C - bh / 2;
-  const bfill = mix(color, -0.34);
-  roundRect(g, bx, by, bw, bh, bh * 0.16);
+  const by = C - bh / 2 + RR * 0.04;
+  const bfill = mix(color, -0.32);
+  roundRect(g, bx, by, bw, bh, bh * 0.18);
   g.fillStyle = bfill;
   g.fill();
   g.strokeStyle = accent;
-  g.lineWidth = S * 0.007;
+  g.lineWidth = S * 0.008;
   g.stroke();
-  roundRect(g, bx + bh * 0.14, by + bh * 0.14, bw - bh * 0.28, bh - bh * 0.28, bh * 0.1);
+  roundRect(g, bx + bh * 0.16, by + bh * 0.16, bw - bh * 0.32, bh - bh * 0.32, bh * 0.1);
   g.lineWidth = S * 0.003;
   g.globalAlpha = 0.6;
   g.stroke();
   g.globalAlpha = 1;
 
-  const ink = luminance(bfill) > 150 ? '#2a2205' : '#ffffff';
+  const ink = luminance(bfill) > 150 ? '#241d04' : '#ffffff';
   g.fillStyle = ink;
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  const vSize = value.length <= 2 ? R * 0.4 : value.length === 3 ? R * 0.32 : value.length === 4 ? R * 0.26 : R * 0.2;
+  const vSize = value.length <= 2 ? bh * 0.62 : value.length === 3 ? bh * 0.5 : value.length === 4 ? bh * 0.4 : bh * 0.32;
   g.font = `800 ${vSize}px system-ui, -apple-system, sans-serif`;
-  g.fillText(value, C, C + bh * 0.02);
+  try {
+    (g as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = '0px';
+  } catch { /* ignore */ }
+  g.fillText(value, C, by + bh / 2 + bh * 0.02);
 
   return c;
 }
 
-// --- path helpers (build a closed path; caller sets stroke) ---
+// --- path helpers ---
 function octaPath(C: number, r: number, rot: number): Path2D {
   const p = new Path2D();
   for (let i = 0; i < 8; i++) {
@@ -115,7 +134,6 @@ function octaPath(C: number, r: number, rot: number): Path2D {
   p.closePath();
   return p;
 }
-
 function squarePath(C: number, r: number, rot: number): Path2D {
   const p = new Path2D();
   for (let i = 0; i < 4; i++) {
@@ -127,14 +145,12 @@ function squarePath(C: number, r: number, rot: number): Path2D {
   p.closePath();
   return p;
 }
-
-function ring(g: CanvasRenderingContext2D, _C: number, path: Path2D, lw: number, alpha: number) {
+function ring(g: CanvasRenderingContext2D, path: Path2D, lw: number, alpha: number) {
   g.globalAlpha = alpha;
   g.lineWidth = lw;
   g.stroke(path);
   g.globalAlpha = 1;
 }
-
 function roundRect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   g.beginPath();
   g.moveTo(x + r, y);
@@ -156,6 +172,10 @@ function mix(hex: string, amt: number) {
   const f = (v: number) => Math.max(0, Math.min(255, Math.round(amt < 0 ? v * (1 + amt) : v + (255 - v) * amt)));
   const c = (v: number) => f(v).toString(16).padStart(2, '0');
   return `#${c(r)}${c(g)}${c(b)}`;
+}
+function hexA(hex: string, a: number) {
+  const { r, g, b } = toRgb(hex);
+  return `rgba(${r},${g},${b},${a})`;
 }
 function luminance(hex: string) {
   const { r, g, b } = toRgb(hex);
