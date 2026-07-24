@@ -1,4 +1,4 @@
-import { doc, setDoc, updateDoc, onSnapshot, getDoc, serverTimestamp, type Unsubscribe } from 'firebase/firestore';
+import { doc, setDoc, onSnapshot, getDoc, serverTimestamp, type Unsubscribe } from 'firebase/firestore';
 import { getDb, firebaseConfigured } from './firebase';
 import type { AppState, Denomination, SessionConfig, LedgerPlayer } from '../types';
 import type { ClockState } from './clockLogic';
@@ -10,6 +10,10 @@ export interface LiveData {
   ledger: LedgerPlayer[];
   currency: string;
   unitValue: number;
+  /** big-screen background photo + its smart-placement analysis, so a phone upload shows on the TV */
+  tvBackground: string | null;
+  tvBackgroundFocus: { x: number; y: number } | null;
+  tvBackgroundTone: number | null;
 }
 
 export interface LiveDoc {
@@ -36,6 +40,9 @@ function dataOf(state: AppState): LiveData {
     ledger: state.ledger,
     currency: state.settings.currency,
     unitValue: state.settings.unitValue,
+    tvBackground: state.settings.tvBackground ?? null,
+    tvBackgroundFocus: state.settings.tvBackgroundFocus ?? null,
+    tvBackgroundTone: state.settings.tvBackgroundTone ?? null,
   };
 }
 
@@ -44,14 +51,22 @@ export async function hostCreate(code: string, state: AppState, clock: ClockStat
   await setDoc(sessionRef(code), { data: dataOf(state), clock, updatedAt: serverTimestamp() });
 }
 
-/** Host (phone): push the latest players/rebuys/blinds/inventory — called on every relevant change. */
+/**
+ * Host (phone): push the latest players/rebuys/blinds/inventory — called on every
+ * relevant change. Uses a merge write so it self-heals if the session document was
+ * lost (e.g. the host reloaded after the doc expired) instead of failing forever.
+ */
 export async function hostPushData(code: string, state: AppState): Promise<void> {
-  await updateDoc(sessionRef(code), { data: dataOf(state), updatedAt: serverTimestamp() });
+  await setDoc(sessionRef(code), { data: dataOf(state), updatedAt: serverTimestamp() }, { merge: true });
 }
 
-/** Either side: push a new clock state (play/pause/next/prev/break/auto-advance). */
+/**
+ * Either side: push a new clock state (play/pause/next/prev/break/auto-advance).
+ * Merge write so a missing document is re-created rather than throwing — keeps the
+ * phone remote working even after a reload.
+ */
 export async function pushClock(code: string, clock: ClockState): Promise<void> {
-  await updateDoc(sessionRef(code), { clock, updatedAt: serverTimestamp() });
+  await setDoc(sessionRef(code), { clock, updatedAt: serverTimestamp() }, { merge: true });
 }
 
 /** TV: verify a code exists before joining, so a mistyped code fails fast with a clear message. */

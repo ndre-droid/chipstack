@@ -107,50 +107,78 @@ export function computeStack(
   const smallest = pool[0];
   const bigBlind = opts.blind ? opts.blind.bigBlind : Math.max(2, smallest.value * 2);
 
-  // 2. Pyramid shape. decay<1 => higher denoms get fewer chips.
-  //    High bias => STEEPER decay => value must come from many small chips.
-  //    Wide range so "fewer, bigger chips" genuinely thins the small chips out.
-  const decay = lerp(0.86, 0.38, opts.smallBias);
-  const shape = pool.map((_, i) => Math.pow(decay, i));
-
-  // 3. Scale the shape so its value equals the target, then round to whole chips.
-  const shapeValue = pool.reduce((s, d, i) => s + shape[i] * d.value, 0);
-  const scale = shapeValue > 0 ? targetUnits / shapeValue : 0;
-  pool.forEach((d, i) => {
-    const raw = Math.round(shape[i] * scale);
-    counts[d.id] = clampCount(raw, capOf(d));
-  });
-
-  // Guarantee at least one of the smallest chip for change-making (if affordable/owned).
-  if (counts[smallest.id] === 0 && capOf(smallest) > 0 && smallest.value <= targetUnits) {
-    counts[smallest.id] = 1;
-  }
-
-  // 4a. User's per-denomination minimums are HARD (reconcile will not drop below).
+  // User's per-denomination minimums are HARD (reconcile will not drop below).
   const userMin: Record<string, number> = {};
   pool.forEach((d) => (userMin[d.id] = clampCount(Math.max(0, Math.floor(d.minPerPlayer ?? 0)), capOf(d))));
-  pool.forEach((d) => {
-    if (counts[d.id] < userMin[d.id]) counts[d.id] = userMin[d.id];
-  });
   const minValue = pool.reduce((s, d) => s + userMin[d.id] * d.value, 0);
   if (minValue > targetUnits) {
     warnings.push(`Your minimum chips add up to ${minValue} — more than the ${targetUnits}-point buy-in. Lower a minimum.`);
   }
 
-  // 4b. Playability floor on the smallest chip: keep enough small chips to post
-  //     blinds and make change. Seeded, then protected in a first reconcile pass.
+  // The slider at (or near) its top means "use as many physical chips as possible".
+  // Seed that mode by genuinely emptying the smallest denomination into the stacks
+  // first, then the next-smallest, and so on — capped only by inventory / per-chip
+  // max — so the result maximises chip count instead of following a smooth pyramid.
+  const maxChips = opts.smallBias >= 0.999;
+
+  // The floor on the smallest chip (used by both the seed and the reconcile guard)
+  // keeps enough small chips around to post blinds and make change.
   const floorBudget = opts.blind
     ? bigBlind * lerp(1, 16, opts.smallBias)
     : targetUnits * lerp(0.03, 0.4, opts.smallBias);
   const floorValue = Math.min(targetUnits * 0.5, floorBudget);
   const floorCount = clampCount(Math.round(floorValue / smallest.value), capOf(smallest));
-  if (counts[smallest.id] < floorCount) counts[smallest.id] = floorCount;
 
-  // 5. Reconcile to the exact target. Pass 1 protects the playability floor so
-  //    small chips survive; if that can't land exactly, pass 2 relaxes to the
-  //    user's hard minimums only.
+  if (maxChips) {
+    // Greedy smallest-first fill. Start at the user's minimums, then pour each
+    // denomination in ascending order up to its cap without overshooting the target.
+    let remaining = targetUnits;
+    pool.forEach((d) => {
+      counts[d.id] = userMin[d.id];
+      remaining -= userMin[d.id] * d.value;
+    });
+    for (const d of pool) {
+      if (remaining <= 0) break;
+      const room = capOf(d) - counts[d.id];
+      if (room <= 0) continue;
+      const add = Math.min(room, Math.floor(remaining / d.value));
+      counts[d.id] += add;
+      remaining -= add * d.value;
+    }
+  } else {
+    // Pyramid shape. decay<1 => higher denoms get fewer chips.
+    // High bias => STEEPER decay => value must come from many small chips.
+    // Wide range so "fewer, bigger chips" genuinely thins the small chips out.
+    const decay = lerp(0.86, 0.38, opts.smallBias);
+    const shape = pool.map((_, i) => Math.pow(decay, i));
+
+    // Scale the shape so its value equals the target, then round to whole chips.
+    const shapeValue = pool.reduce((s, d, i) => s + shape[i] * d.value, 0);
+    const scale = shapeValue > 0 ? targetUnits / shapeValue : 0;
+    pool.forEach((d, i) => {
+      const raw = Math.round(shape[i] * scale);
+      counts[d.id] = clampCount(raw, capOf(d));
+    });
+
+    // Guarantee at least one of the smallest chip for change-making.
+    if (counts[smallest.id] === 0 && capOf(smallest) > 0 && smallest.value <= targetUnits) {
+      counts[smallest.id] = 1;
+    }
+
+    // Apply the user's hard minimums and the playability floor on the smallest chip.
+    pool.forEach((d) => {
+      if (counts[d.id] < userMin[d.id]) counts[d.id] = userMin[d.id];
+    });
+    if (counts[smallest.id] < floorCount) counts[smallest.id] = floorCount;
+  }
+
+  // Reconcile to the exact target. In max mode the greedy seed already holds all the
+  // small chips it can, so the reconcile only tops up with larger chips (its undershoot
+  // path adds big chips first) and never strips the smalls. In pyramid mode, pass 1
+  // protects the playability floor so small chips survive; if that can't land exactly,
+  // pass 2 relaxes to the user's hard minimums only.
   const floorMin: Record<string, number> = { ...userMin };
-  floorMin[smallest.id] = Math.max(userMin[smallest.id] ?? 0, floorCount);
+  if (!maxChips) floorMin[smallest.id] = Math.max(userMin[smallest.id] ?? 0, floorCount);
   reconcile(counts, pool, targetUnits, capOf, (d) => floorMin[d.id] ?? 0);
   let landed = pool.reduce((s, d) => s + counts[d.id] * d.value, 0);
   if (landed !== targetUnits) reconcile(counts, pool, targetUnits, capOf, (d) => userMin[d.id] ?? 0);

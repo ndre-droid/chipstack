@@ -7,6 +7,7 @@ import { IconCheck } from '../components/Icons';
 import { useT } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 import { initialClock } from '../lib/clockLogic';
+import { analyzeBackground } from '../lib/imageAnalysis';
 import type { Appearance, AccentId, Skin, ChipArt } from '../types';
 
 const WEB_URL = 'https://ndre-droid.github.io/chipstack/';
@@ -82,8 +83,9 @@ export default function SettingsScreen() {
     reader.onload = () => {
       img.onload = () => {
         try {
-          // downscale so the stored data URL stays well within localStorage limits
-          const maxW = 1920;
+          // downscale so the stored data URL stays within localStorage limits AND small
+          // enough to sync through Firestore (1 MiB doc cap) so it reaches the TV
+          const maxW = 1600;
           const scale = Math.min(1, maxW / img.naturalWidth);
           const w = Math.round(img.naturalWidth * scale);
           const h = Math.round(img.naturalHeight * scale);
@@ -93,8 +95,13 @@ export default function SettingsScreen() {
           const ctx = canvas.getContext('2d');
           if (!ctx) throw new Error('canvas unavailable');
           ctx.drawImage(img, 0, 0, w, h);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
-          dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: dataUrl } });
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.74);
+          // analyse this specific photo so the TV lays its text out around the subject
+          const { focus, tone } = analyzeBackground(ctx, w, h);
+          dispatch({
+            type: 'UPDATE_SETTINGS',
+            patch: { tvBackground: dataUrl, tvBackgroundFocus: focus, tvBackgroundTone: tone },
+          });
         } catch {
           setBgError('Could not process that image — try a different photo.');
         } finally {
@@ -277,7 +284,7 @@ export default function SettingsScreen() {
           {settings.tvBackground && (
             <button
               className="btn btn-ghost btn-sm"
-              onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: null } })}
+              onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: null, tvBackgroundFocus: null, tvBackgroundTone: null } })}
             >
               {t('settings.remove')}
             </button>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { useStore } from '../store';
 import Chip from '../components/Chip';
 import { IconPlay, IconPause, IconChevron, IconReset } from '../components/Icons';
@@ -63,7 +64,12 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useStore();
   const t = useT();
   const { blindLevels } = state.session;
-  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvBackground, liveSessionCode, liveSessionRole } = state.settings;
+  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvBackground, tvBackgroundFocus, tvBackgroundTone, liveSessionCode, liveSessionRole } = state.settings;
+  // per-photo smart placement: crop toward the subject, keep it clear, and nudge the
+  // clock to the calm side; brighter photos get a stronger scrim so text stays legible.
+  const focus = tvBackgroundFocus ?? { x: 50, y: 50 };
+  const scrim = tvBackgroundTone == null ? 0.5 : Math.max(0.32, Math.min(0.74, 0.3 + tvBackgroundTone * 0.5));
+  const focusV = focus.y < 42 ? 'top' : focus.y > 58 ? 'bottom' : 'mid'; // where the subject sits vertically
   const effTvSkin = (tvSkin ?? 'match') === 'match' ? skin ?? 'minimal' : (tvSkin as Exclude<typeof tvSkin, 'match'>);
   const tvAccent = accents?.[effTvSkin] ?? 'amber';
   const { playerCount, buyIn } = state.session;
@@ -103,6 +109,9 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           ledger: doc.data.ledger,
           currency: doc.data.currency,
           unitValue: doc.data.unitValue,
+          tvBackground: doc.data.tvBackground ?? null,
+          tvBackgroundFocus: doc.data.tvBackgroundFocus ?? null,
+          tvBackgroundTone: doc.data.tvBackgroundTone ?? null,
         });
         setLevelIdx(doc.clock.levelIdx);
         setOnBreak(doc.clock.onBreak);
@@ -321,7 +330,18 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       className={`tv ${tvBackground ? 'has-bg' : ''}`}
       data-tv-skin={effTvSkin}
       data-tv-accent={tvAccent}
-      style={tvBackground ? { backgroundImage: `url(${tvBackground})` } : undefined}
+      data-tv-focus-v={tvBackground ? focusV : undefined}
+      style={
+        tvBackground
+          ? ({
+              backgroundImage: `url(${tvBackground})`,
+              backgroundPosition: `${focus.x}% ${focus.y}%`,
+              ['--tv-focus-x' as string]: `${focus.x}%`,
+              ['--tv-focus-y' as string]: `${focus.y}%`,
+              ['--tv-scrim' as string]: scrim,
+            } as CSSProperties)
+          : undefined
+      }
     >
       {tvBackground && <div className="tv-bg-scrim" />}
 

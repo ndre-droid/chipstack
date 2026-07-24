@@ -38,5 +38,8 @@ export function useLiveHostSync() {
     state.ledger,
     state.settings.currency,
     state.settings.unitValue,
+    state.settings.tvBackground,
+    state.settings.tvBackgroundFocus,
+    state.settings.tvBackgroundTone,
   ]);
 }

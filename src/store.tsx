@@ -49,6 +49,8 @@ const defaultSettings: Settings = {
   tvSkin: 'match',
   tvQuips: true,
   tvBackground: null,
+  tvBackgroundFocus: null,
+  tvBackgroundTone: null,
   appearance: 'dark',
   chipArt: 'deco',
   language: 'en',
@@ -99,6 +101,9 @@ type Action =
       ledger: LedgerPlayer[];
       currency: string;
       unitValue: number;
+      tvBackground?: string | null;
+      tvBackgroundFocus?: { x: number; y: number } | null;
+      tvBackgroundTone?: number | null;
     }
   | { type: 'LEDGER_ADD'; name?: string }
   | { type: 'LEDGER_ADD_MANY'; n: number }
@@ -202,7 +207,15 @@ function reducer(state: AppState, action: Action): AppState {
         denominations: action.denominations,
         session: action.session,
         ledger: action.ledger,
-        settings: { ...state.settings, currency: action.currency, unitValue: action.unitValue },
+        settings: {
+          ...state.settings,
+          currency: action.currency,
+          unitValue: action.unitValue,
+          // The host owns the big-screen photo so a phone upload shows on the TV.
+          ...(action.tvBackground !== undefined ? { tvBackground: action.tvBackground } : {}),
+          ...(action.tvBackgroundFocus !== undefined ? { tvBackgroundFocus: action.tvBackgroundFocus } : {}),
+          ...(action.tvBackgroundTone !== undefined ? { tvBackgroundTone: action.tvBackgroundTone } : {}),
+        },
       };
     case 'LEDGER_ADD':
       return {
@@ -290,6 +303,14 @@ function migrate(raw: string | null): AppState {
   if (settings.tvSkin !== 'match' && !SKINS.includes(settings.tvSkin)) settings.tvSkin = 'match';
   if (typeof settings.tvQuips !== 'boolean') settings.tvQuips = true;
   if (typeof settings.tvBackground !== 'string') settings.tvBackground = null;
+  {
+    const f = settings.tvBackgroundFocus as unknown;
+    settings.tvBackgroundFocus =
+      f && typeof f === 'object' && typeof (f as { x: unknown }).x === 'number' && typeof (f as { y: unknown }).y === 'number'
+        ? (f as { x: number; y: number })
+        : null;
+  }
+  if (typeof settings.tvBackgroundTone !== 'number') settings.tvBackgroundTone = null;
   if (settings.language !== 'en' && settings.language !== 'de') settings.language = 'en';
   if (typeof settings.liveSessionCode !== 'string') settings.liveSessionCode = null;
   if (settings.liveSessionRole !== 'host' && settings.liveSessionRole !== 'tv') settings.liveSessionRole = null;

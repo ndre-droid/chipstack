@@ -4,6 +4,7 @@ import { IconPlay, IconPause, IconReset, IconChevron, IconDice, IconExpand } fro
 import TvMode from './TvMode';
 import RemoteControl from './RemoteControl';
 import { useT } from '../lib/i18n';
+import { firebaseConfigured } from '../lib/firebaseConfig';
 
 const fmt = (s: number) => {
   const m = Math.floor(s / 60);
@@ -16,6 +17,11 @@ export default function TableScreen() {
   const t = useT();
   const { blindLevels } = state.session;
   const mins = state.settings.minutesPerLevel;
+  // While this phone is hosting a Live Session the TV owns the countdown, so the
+  // local timer here would just be a confusing second clock. Hand the whole clock
+  // over to the RemoteControl panel, which drives the TV's clock directly.
+  const isHost =
+    firebaseConfigured && state.settings.liveSessionRole === 'host' && !!state.settings.liveSessionCode;
 
   const [levelIdx, setLevelIdx] = useState(0);
   const [seconds, setSeconds] = useState(mins * 60);
@@ -84,53 +90,58 @@ export default function TableScreen() {
 
   return (
     <div>
-      <div className="section-label">
-        {t('table.blindClock')}
-        <span className="hint">{t('table.perLevel', { n: mins })}</span>
-      </div>
-
-      <div className="card clock-card">
-        {clock}
-        <div className="clock-controls">
-          <button className="icon-btn" onClick={() => goLevel(levelIdx - 1)} aria-label="Previous level">
-            <span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}>
-              <IconChevron size={20} />
-            </span>
-          </button>
-          <button className="clock-play" onClick={() => setRunning((r) => !r)}>
-            {running ? <IconPause size={26} /> : <IconPlay size={26} />}
-          </button>
-          <button className="icon-btn" onClick={() => setSeconds(mins * 60)} aria-label="Reset timer">
-            <IconReset size={19} />
-          </button>
-          <button className="icon-btn" onClick={() => goLevel(levelIdx + 1)} aria-label="Next level">
-            <IconChevron size={20} />
-          </button>
-          <button className="icon-btn" onClick={() => setTv(true)} aria-label="Big screen">
-            <IconExpand size={18} />
-          </button>
-        </div>
-
-        <div className="clock-adjust">
-          <button className="adj10" onClick={() => setMins(mins - 10)}>−10</button>
-          <button className="adj1" onClick={() => setMins(mins - 1)}>−1</button>
-          <div className="mpl-center">
-            <b>{mins}</b>
-            <small>min / level</small>
+      {!isHost && (
+        <>
+          <div className="section-label">
+            {t('table.blindClock')}
+            <span className="hint">{t('table.perLevel', { n: mins })}</span>
           </div>
-          <button className="adj1" onClick={() => setMins(mins + 1)}>+1</button>
-          <button className="adj10" onClick={() => setMins(mins + 10)}>+10</button>
-        </div>
-      </div>
 
-      <button className="btn btn-primary btn-block" onClick={() => setTv(true)}>
+          <div className="card clock-card">
+            {clock}
+            <div className="clock-controls">
+              <button className="icon-btn" onClick={() => goLevel(levelIdx - 1)} aria-label="Previous level">
+                <span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}>
+                  <IconChevron size={20} />
+                </span>
+              </button>
+              <button className="clock-play" onClick={() => setRunning((r) => !r)}>
+                {running ? <IconPause size={26} /> : <IconPlay size={26} />}
+              </button>
+              <button className="icon-btn" onClick={() => setSeconds(mins * 60)} aria-label="Reset timer">
+                <IconReset size={19} />
+              </button>
+              <button className="icon-btn" onClick={() => goLevel(levelIdx + 1)} aria-label="Next level">
+                <IconChevron size={20} />
+              </button>
+              <button className="icon-btn" onClick={() => setTv(true)} aria-label="Big screen">
+                <IconExpand size={18} />
+              </button>
+            </div>
+
+            <div className="clock-adjust">
+              <button className="adj10" onClick={() => setMins(mins - 10)}>−10</button>
+              <button className="adj1" onClick={() => setMins(mins - 1)}>−1</button>
+              <div className="mpl-center">
+                <b>{mins}</b>
+                <small>min / level</small>
+              </div>
+              <button className="adj1" onClick={() => setMins(mins + 1)}>+1</button>
+              <button className="adj10" onClick={() => setMins(mins + 10)}>+10</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Hosting a Live Session: this panel is the single clock and drives the TV. */}
+      <RemoteControl />
+
+      <button className="btn btn-primary btn-block" style={{ marginTop: isHost ? 14 : 0 }} onClick={() => setTv(true)}>
         <IconExpand size={18} /> {t('table.bigScreen')}
       </button>
       <p className="faint" style={{ fontSize: 12, textAlign: 'center', margin: '8px 8px 0' }}>
-        {t('table.castHint')}
+        {isHost ? t('table.hostHint') : t('table.castHint')}
       </p>
-
-      <RemoteControl />
 
       <DealerAndSeats />
 

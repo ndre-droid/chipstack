@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-single/
+package-lock.json
+android/build/
+android/app/build/
+android/.gradle/
+android/.idea/
+android/local.properties
+android/app/*.apk
+android/app/*.aab
+keystore
+*.keystore
+*.jks
+ChipStack-PWA.zip
+ChipStack-standalone.html

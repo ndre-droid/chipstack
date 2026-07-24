@@ -76,4 +76,29 @@ console.log(`\n== Same 25-min set but blinds raised to 25/50 — now fine ==`);
 const b2550 = { id: 'y', smallBlind: 25, bigBlind: 50, ante: 0 };
 show('25-min @25/50', computeStack(2000, noSmall, { smallBias: 0.6, blind: b2550, stacksNeeded: 6 }));
 
+// ---- Max-chips mode: slider at the top must empty the smallest chips first ----
+console.log(`\n== Max chips (bias=1): smallest-first fill, most physical chips ==`);
+{
+  const b510 = { id: 'm', smallBlind: 5, bigBlind: 10, ante: 0 };
+  const maxR = computeStack(2000, denoms, { smallBias: 1, blind: b510, stacksNeeded: 6 });
+  const midR = computeStack(2000, denoms, { smallBias: 0.75, blind: b510, stacksNeeded: 6 });
+  show('bias=1 (max)', maxR);
+  show('bias=0.75', midR);
+
+  const fails: string[] = [];
+  if (!maxR.exact) fails.push('max stack is not exact');
+  // must use at least as many physical chips as the lower bias
+  if (maxR.chipCount <= midR.chipCount) fails.push(`max chips ${maxR.chipCount} not > mid ${midR.chipCount}`);
+  // smallest usable chip here is the 5 (base for a 5/10 blind); per-player cap = floor(100/6)=16.
+  // greedy max fill should hold it at (or within a chip of) its cap after the exact reconcile.
+  const fiveCap = Math.floor(100 / 6);
+  if ((maxR.counts['5'] ?? 0) < fiveCap - 2) fails.push(`expected 5-chip near cap ${fiveCap}, got ${maxR.counts['5']}`);
+
+  if (fails.length) {
+    console.log('   FAIL: ' + fails.join('; '));
+    throw new Error('max-chips mode assertions failed: ' + fails.join('; '));
+  }
+  console.log(`   OK: exact, ${maxR.chipCount} chips (> ${midR.chipCount}), 5-chip at ${maxR.counts['5']}/${fiveCap}`);
+}
+
 console.log('\nDone.');

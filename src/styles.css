@@ -1076,17 +1076,53 @@ input[type='color'] { cursor: pointer; }
   background-position: center;
   background-repeat: no-repeat;
 }
+/* Adaptive scrim: transparent over the photo's subject (the salience focal point)
+   and darkening outward toward the panels, so the AI art stays visible in the middle
+   while the text at the edges gets a readable ground. Strength (--tv-scrim, 0..1) and
+   the focal centre (--tv-focus-x/y) are computed per-upload and set inline. */
 .tv-bg-scrim {
   position: absolute; inset: 0; z-index: 0;
-  background: radial-gradient(120% 90% at 50% -6%, color-mix(in srgb, var(--tv-bg-base, #05060f) 55%, transparent) 0%, color-mix(in srgb, var(--tv-bg-base, #05060f) 88%, transparent) 62%, var(--tv-bg-base, #05060f) 100%);
+  background:
+    radial-gradient(135% 125% at var(--tv-focus-x, 50%) var(--tv-focus-y, 50%),
+      transparent 0%,
+      color-mix(in srgb, var(--tv-bg-base, #05060f) calc(var(--tv-scrim, 0.5) * 45%), transparent) 44%,
+      color-mix(in srgb, var(--tv-bg-base, #05060f) calc(var(--tv-scrim, 0.5) * 100%), transparent) 100%),
+    linear-gradient(to top, color-mix(in srgb, var(--tv-bg-base, #05060f) calc(var(--tv-scrim, 0.5) * 70%), transparent) 0%, transparent 34%);
 }
 /* scrim is z-index:0 and painted first; every other direct child (already
    positioned or given position:relative here) naturally paints above it */
 .tv-grid, .tv-quip, .tv-controls { position: relative; }
-/* panels get a touch more body over a photo so text stays crisp */
+/* over a photo, text sits on its own frosted plate so it stays crisp without
+   covering the whole image — reads as intentional, not a flat overlay */
 .tv.has-bg .tv-stat,
-.tv.has-bg .tv-colorup,
+.tv.has-bg .tv-colorup {
+  background: color-mix(in srgb, var(--tv-bg-base, #05060f) 60%, transparent);
+  backdrop-filter: blur(8px);
+}
+.tv.has-bg .tv-legend {
+  background: color-mix(in srgb, var(--tv-bg-base, #05060f) 52%, transparent);
+  border: 1px solid var(--tv-line);
+  border-radius: 16px;
+  padding: clamp(8px, 1.5vmin, 22px) clamp(10px, 1.8vmin, 24px);
+  backdrop-filter: blur(8px);
+}
+.tv.has-bg .tv-quip {
+  align-self: center;
+  width: fit-content; max-width: 92%;
+  background: color-mix(in srgb, var(--tv-bg-base, #05060f) 48%, transparent);
+  border-radius: 999px;
+  padding-left: clamp(16px, 3vmin, 44px); padding-right: clamp(16px, 3vmin, 44px);
+  backdrop-filter: blur(6px);
+}
 .tv.has-bg .tv-controls button { backdrop-filter: blur(6px); }
+.tv.has-bg .tv-time,
+.tv.has-bg .tv-blinds,
+.tv.has-bg .tv-level { text-shadow: 0 clamp(2px, 0.4vmin, 8px) clamp(12px, 2.2vmin, 46px) rgba(0, 0, 0, 0.72); }
+/* Focal-aware clock: push the big clock to the calm side, away from the subject.
+   Grid rows are tall (align-items:center), so align-self moves the content-height
+   clock block within its cell. */
+.tv.has-bg[data-tv-focus-v='top'] .tv-clock { align-self: end; }
+.tv.has-bg[data-tv-focus-v='bottom'] .tv-clock { align-self: start; }
 /* TV broadcast styles (chosen independently of the phone UI) */
 .tv[data-tv-skin='casino'] {
   --tv-bg: radial-gradient(135% 90% at 50% -10%, #275a3d 0%, #123a24 46%, #08170e 100%);

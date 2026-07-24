@@ -37,6 +37,8 @@ export interface Settings {
   tvSkin: Skin | 'match';   // TV-broadcast style; 'match' follows the phone skin
   tvQuips: boolean;         // show the rotating cheeky sayings on the TV
   tvBackground: string | null; // optional custom TV background image (data URL)
+  tvBackgroundFocus: { x: number; y: number } | null; // salience focal point (0..100%) for smart placement
+  tvBackgroundTone: number | null; // mean luminance 0..1 of the background, drives scrim strength
   appearance: Appearance;   // system / light / dark — applies to the minimal skin
   chipArt: ChipArt;         // chip face art style
   language: 'en' | 'de';
