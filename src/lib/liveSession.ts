@@ -1,6 +1,6 @@
 import { doc, setDoc, onSnapshot, getDoc, serverTimestamp, type Unsubscribe } from 'firebase/firestore';
 import { getDb, firebaseConfigured } from './firebase';
-import type { AppState, Denomination, SessionConfig, LedgerPlayer } from '../types';
+import type { AppState, Denomination, SessionConfig, LedgerPlayer, Skin, AccentId } from '../types';
 import type { ClockState } from './clockLogic';
 
 /** The portion of app state the host phone pushes and the TV mirrors. */
@@ -14,6 +14,13 @@ export interface LiveData {
   tvBackground: string | null;
   tvBackgroundFocus: { x: number; y: number } | null;
   tvBackgroundTone: number | null;
+  /** TV look + behaviour the host controls remotely (design, timer length, toggles) */
+  minutesPerLevel: number;
+  skin: Skin;
+  tvSkin: Skin | 'match';
+  accents: Record<Skin, AccentId>;
+  tvQuips: boolean;
+  tvShowPlayers: boolean;
 }
 
 export interface LiveDoc {
@@ -43,6 +50,12 @@ function dataOf(state: AppState): LiveData {
     tvBackground: state.settings.tvBackground ?? null,
     tvBackgroundFocus: state.settings.tvBackgroundFocus ?? null,
     tvBackgroundTone: state.settings.tvBackgroundTone ?? null,
+    minutesPerLevel: state.settings.minutesPerLevel,
+    skin: state.settings.skin,
+    tvSkin: state.settings.tvSkin,
+    accents: state.settings.accents,
+    tvQuips: state.settings.tvQuips,
+    tvShowPlayers: state.settings.tvShowPlayers ?? true,
   };
 }
 

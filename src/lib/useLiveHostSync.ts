@@ -58,5 +58,11 @@ export function useLiveHostSync() {
     state.settings.tvBackground,
     state.settings.tvBackgroundFocus,
     state.settings.tvBackgroundTone,
+    state.settings.minutesPerLevel,
+    state.settings.skin,
+    state.settings.tvSkin,
+    state.settings.accents,
+    state.settings.tvQuips,
+    state.settings.tvShowPlayers,
   ]);
 }

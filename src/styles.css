@@ -1258,11 +1258,16 @@ input[type='color'] { cursor: pointer; }
 }
 
 /* phone remote — players & prize-pool editor (host only) */
-.remote-players { display: flex; flex-direction: column; gap: 8px; }
-.remote-player-row { display: flex; align-items: center; gap: 8px; }
-.remote-player-row .ledger-name { flex: 1; min-width: 0; }
-.remote-buyin { width: 108px; flex: 0 0 auto; }
+.remote-players { display: flex; flex-direction: column; gap: 10px; }
+.remote-player { display: flex; flex-direction: column; gap: 7px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.remote-player:last-child { border-bottom: 0; padding-bottom: 0; }
+.remote-player.out .ledger-name { text-decoration: line-through; opacity: 0.6; }
+.remote-player-top { display: flex; align-items: center; gap: 8px; }
+.remote-player-top .ledger-name { flex: 1; min-width: 0; }
+.remote-buyin { width: 104px; flex: 0 0 auto; }
 .remote-buyin .input { text-align: right; }
+.remote-player-actions { display: flex; align-items: center; gap: 8px; }
+.remote-player-actions .btn { white-space: nowrap; }
 
 /* ============================================================
    SETTINGS — style picker

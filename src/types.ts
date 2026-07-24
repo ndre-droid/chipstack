@@ -36,6 +36,7 @@ export interface Settings {
   accents: Record<Skin, AccentId>; // accent colour per style
   tvSkin: Skin | 'match';   // TV-broadcast style; 'match' follows the phone skin
   tvQuips: boolean;         // show the rotating cheeky sayings on the TV
+  tvShowPlayers: boolean;   // show the live players roster on the TV
   tvBackground: string | null; // optional custom TV background image (data URL)
   tvBackgroundFocus: { x: number; y: number } | null; // salience focal point (0..100%) for smart placement
   tvBackgroundTone: number | null; // mean luminance 0..1 of the background, drives scrim strength
@@ -74,6 +75,7 @@ export interface LedgerPlayer {
   name: string;
   buyIn: number;   // total money bought in (sum of buy-ins + rebuys)
   cashOut: number; // final chip value cashed out
+  out?: boolean;   // busted / eliminated this game (drives "players left" + struck-through on the TV)
 }
 
 export interface AppState {

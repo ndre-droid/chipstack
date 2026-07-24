@@ -40,6 +40,15 @@ export function goLevel(c: ClockState, delta: number, maxIdx: number): ClockStat
   return { ...c, levelIdx: idx, onBreak: false, remaining: dur, periodEndsAt: c.running ? Date.now() + dur * 1000 : null };
 }
 
+/** Change the per-level length. Resets the current level's countdown to the new
+ *  length (break time is left alone), so the TV reflects it immediately. */
+export function setMinutesPerLevel(c: ClockState, minutes: number): ClockState {
+  const m = Math.max(1, Math.min(180, Math.floor(minutes)));
+  if (c.onBreak) return { ...c, minutesPerLevel: m };
+  const dur = m * 60;
+  return { ...c, minutesPerLevel: m, remaining: dur, periodEndsAt: c.running ? Date.now() + dur * 1000 : null };
+}
+
 export function resetLevel(c: ClockState): ClockState {
   const dur = c.onBreak ? 5 * 60 : c.minutesPerLevel * 60;
   return { ...c, remaining: dur, periodEndsAt: c.running ? Date.now() + dur * 1000 : null };

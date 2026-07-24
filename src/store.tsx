@@ -48,6 +48,7 @@ const defaultSettings: Settings = {
   accents: { minimal: 'amber', casino: 'gold', playful: 'coral', scifi: 'cyan' },
   tvSkin: 'match',
   tvQuips: true,
+  tvShowPlayers: true,
   tvBackground: null,
   tvBackgroundFocus: null,
   tvBackgroundTone: null,
@@ -104,6 +105,12 @@ type Action =
       tvBackground?: string | null;
       tvBackgroundFocus?: { x: number; y: number } | null;
       tvBackgroundTone?: number | null;
+      minutesPerLevel?: number;
+      skin?: Skin;
+      tvSkin?: Skin | 'match';
+      accents?: Record<Skin, AccentId>;
+      tvQuips?: boolean;
+      tvShowPlayers?: boolean;
     }
   | { type: 'LEDGER_ADD'; name?: string }
   | { type: 'LEDGER_ADD_MANY'; n: number }
@@ -215,6 +222,13 @@ function reducer(state: AppState, action: Action): AppState {
           ...(action.tvBackground !== undefined ? { tvBackground: action.tvBackground } : {}),
           ...(action.tvBackgroundFocus !== undefined ? { tvBackgroundFocus: action.tvBackgroundFocus } : {}),
           ...(action.tvBackgroundTone !== undefined ? { tvBackgroundTone: action.tvBackgroundTone } : {}),
+          // The host also drives the TV look, timer length and toggles remotely.
+          ...(action.minutesPerLevel !== undefined ? { minutesPerLevel: action.minutesPerLevel } : {}),
+          ...(action.skin !== undefined ? { skin: action.skin } : {}),
+          ...(action.tvSkin !== undefined ? { tvSkin: action.tvSkin } : {}),
+          ...(action.accents !== undefined ? { accents: action.accents } : {}),
+          ...(action.tvQuips !== undefined ? { tvQuips: action.tvQuips } : {}),
+          ...(action.tvShowPlayers !== undefined ? { tvShowPlayers: action.tvShowPlayers } : {}),
         },
       };
     case 'LEDGER_ADD':
@@ -302,6 +316,7 @@ function migrate(raw: string | null): AppState {
   if (!SKINS.includes(settings.skin)) settings.skin = 'minimal';
   if (settings.tvSkin !== 'match' && !SKINS.includes(settings.tvSkin)) settings.tvSkin = 'match';
   if (typeof settings.tvQuips !== 'boolean') settings.tvQuips = true;
+  if (typeof settings.tvShowPlayers !== 'boolean') settings.tvShowPlayers = true;
   if (typeof settings.tvBackground !== 'string') settings.tvBackground = null;
   {
     const f = settings.tvBackgroundFocus as unknown;

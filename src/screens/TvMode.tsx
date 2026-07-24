@@ -64,7 +64,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useStore();
   const t = useT();
   const { blindLevels } = state.session;
-  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvBackground, tvBackgroundFocus, tvBackgroundTone, liveSessionCode, liveSessionRole } = state.settings;
+  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvShowPlayers, tvBackground, tvBackgroundFocus, tvBackgroundTone, liveSessionCode, liveSessionRole } = state.settings;
   // per-photo smart placement: crop toward the subject, keep it clear, and nudge the
   // clock to the calm side; brighter photos get a stronger scrim so text stays legible.
   const focus = tvBackgroundFocus ?? { x: 50, y: 50 };
@@ -112,6 +112,12 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           tvBackground: doc.data.tvBackground ?? null,
           tvBackgroundFocus: doc.data.tvBackgroundFocus ?? null,
           tvBackgroundTone: doc.data.tvBackgroundTone ?? null,
+          minutesPerLevel: doc.data.minutesPerLevel,
+          skin: doc.data.skin,
+          tvSkin: doc.data.tvSkin,
+          accents: doc.data.accents,
+          tvQuips: doc.data.tvQuips,
+          tvShowPlayers: doc.data.tvShowPlayers,
         });
         setLevelIdx(doc.clock.levelIdx);
         setOnBreak(doc.clock.onBreak);
@@ -313,7 +319,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
 
   // standings
   const poolMoney = ledger.length ? ledger.reduce((s, p) => s + (p.buyIn || 0), 0) : playerCount * buyIn;
-  const playersLeft = ledger.length ? Math.max(1, ledger.filter((p) => (p.cashOut || 0) === 0).length) : playerCount;
+  const playersLeft = ledger.length ? Math.max(1, ledger.filter((p) => !p.out && (p.cashOut || 0) === 0).length) : playerCount;
   const poolPoints = unitValue > 0 ? Math.round(poolMoney / unitValue) : 0;
   const avgStack = Math.round(poolPoints / playersLeft);
   const avgBB = currentBB > 0 ? Math.round(avgStack / currentBB) : 0;
@@ -326,7 +332,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const roster = useMemo(
     () =>
       ledger.length
-        ? ledger.map((p) => ({ id: p.id, name: p.name || 'Player', amount: p.buyIn || 0, out: (p.cashOut || 0) > 0 }))
+        ? ledger.map((p) => ({ id: p.id, name: p.name || 'Player', amount: p.buyIn || 0, out: !!p.out || (p.cashOut || 0) > 0 }))
         : Array.from({ length: playerCount }, (_, i) => ({ id: String(i), name: `Seat ${i + 1}`, amount: buyIn, out: false })),
     [ledger, playerCount, buyIn],
   );
@@ -389,7 +395,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             <span className="tv-stat-k">{t('tv.avgStack')}</span>
             <span className="tv-stat-v">{avgStack.toLocaleString()}<small> · {avgBB} BB</small></span>
           </div>
-          {roster.length > 0 && (
+          {tvShowPlayers && roster.length > 0 && (
             <div className="tv-players">
               <div className="tv-players-h">{t('tv.players')}</div>
               <div className="tv-players-list">
