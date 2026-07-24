@@ -52,6 +52,21 @@ export async function hostCreate(code: string, state: AppState, clock: ClockStat
 }
 
 /**
+ * Host (phone): make sure the session document actually exists on the server.
+ * Self-heals the case where a `host` code was persisted in localStorage from an
+ * earlier run but its server document is gone — without which the TV's join reads
+ * "code not found". Creates the doc (with a fresh clock) only if it's missing; an
+ * existing doc's clock is left untouched.
+ */
+export async function hostEnsureExists(code: string, state: AppState, clock: ClockState): Promise<void> {
+  const ref = sessionRef(code);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) {
+    await setDoc(ref, { data: dataOf(state), clock, updatedAt: serverTimestamp() });
+  }
+}
+
+/**
  * Host (phone): push the latest players/rebuys/blinds/inventory — called on every
  * relevant change. Uses a merge write so it self-heals if the session document was
  * lost (e.g. the host reloaded after the doc expired) instead of failing forever.

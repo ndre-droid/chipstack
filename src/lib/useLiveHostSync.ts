@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useStore } from '../store';
 import { firebaseConfigured } from './firebaseConfig';
+import { initialClock } from './clockLogic';
 
 /**
  * Mounted once at the app root. Whenever this device is hosting a Live
@@ -15,6 +16,22 @@ export function useLiveHostSync() {
   const { state } = useStore();
   const { liveSessionCode, liveSessionRole } = state.settings;
   const timer = useRef<number | null>(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  // When this device becomes (or resumes as) the host, make sure the server
+  // document exists — recreates it if a stale code was persisted from a past run,
+  // so the TV can always find a code shown on the phone.
+  useEffect(() => {
+    if (!firebaseConfigured || liveSessionRole !== 'host' || !liveSessionCode) return;
+    import('./liveSession')
+      .then(({ hostEnsureExists }) =>
+        hostEnsureExists(liveSessionCode, stateRef.current, initialClock(stateRef.current.settings.minutesPerLevel)),
+      )
+      .catch(() => {
+        /* offline or transient — a later data push (setDoc merge) will heal it */
+      });
+  }, [liveSessionCode, liveSessionRole]);
 
   useEffect(() => {
     if (!firebaseConfigured || liveSessionRole !== 'host' || !liveSessionCode) return;

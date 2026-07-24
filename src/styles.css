@@ -1095,7 +1095,7 @@ input[type='color'] { cursor: pointer; }
 /* over a photo, text sits on its own frosted plate so it stays crisp without
    covering the whole image — reads as intentional, not a flat overlay */
 .tv.has-bg .tv-stat,
-.tv.has-bg .tv-colorup {
+.tv.has-bg .tv-players {
   background: color-mix(in srgb, var(--tv-bg-base, #05060f) 60%, transparent);
   backdrop-filter: blur(8px);
 }
@@ -1168,14 +1168,21 @@ input[type='color'] { cursor: pointer; }
 .tv-stat-v { font-family: var(--mono); font-weight: 700; font-size: clamp(22px, 4vmin, 82px); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .tv-stat-v small { font-size: 0.48em; color: var(--tv-dim); font-weight: 600; }
 
-.tv-colorup {
-  background: color-mix(in srgb, var(--acc) 15%, transparent);
-  border: 1px solid color-mix(in srgb, var(--acc) 42%, transparent);
-  border-radius: 16px; padding: clamp(10px, 1.8vmin, 20px);
-  display: flex; flex-direction: column; gap: 4px;
+/* live players roster on the TV (names + amounts, mirrored from the host) */
+.tv-players {
+  background: var(--tv-panel);
+  border: 1px solid var(--tv-line);
+  border-radius: 16px;
+  padding: clamp(10px, 1.8vmin, 22px);
+  display: flex; flex-direction: column; gap: clamp(4px, 0.8vmin, 10px);
+  min-height: 0;
 }
-.tv-colorup-h { color: var(--acc); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: clamp(11px, 1.5vmin, 28px); }
-.tv-colorup span:last-child { font-size: clamp(12px, 1.6vmin, 30px); color: #d4d3cd; line-height: 1.35; }
+.tv-players-h { font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--tv-dim); font-size: clamp(10px, 1.4vmin, 24px); }
+.tv-players-list { display: flex; flex-direction: column; gap: clamp(2px, 0.5vmin, 8px); overflow-y: auto; min-height: 0; }
+.tv-players-row { display: flex; align-items: baseline; gap: clamp(6px, 1.2vmin, 18px); }
+.tv-players-row.out { opacity: 0.42; text-decoration: line-through; }
+.tv-players-name { font-weight: 600; font-size: clamp(13px, 1.8vmin, 40px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-players-amt { margin-left: auto; font-family: var(--mono); color: var(--tv-dim); font-size: clamp(12px, 1.6vmin, 34px); }
 
 .tv-clock { text-align: center; display: flex; flex-direction: column; align-items: center; }
 .tv-level { font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.18em; color: var(--tv-dim); font-size: clamp(14px, 2.3vmin, 46px); }
@@ -1225,6 +1232,7 @@ input[type='color'] { cursor: pointer; }
   padding: clamp(6px, 1vmin, 12px) clamp(12px, 1.6vmin, 20px); border-radius: 999px;
 }
 .tv-connect-pill.live { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
+.tv-connect-pill.host { color: var(--acc); border-color: color-mix(in srgb, var(--acc) 45%, transparent); }
 .tv-join-hint { color: var(--tv-dim); font-size: clamp(12px, 1.6vmin, 22px); margin: 6px 0 0; text-align: center; max-width: 60vmin; }
 .tv-join-display {
   font-family: var(--mono); font-weight: 700; letter-spacing: 0.3em;
@@ -1248,6 +1256,13 @@ input[type='color'] { cursor: pointer; }
   .tv-clock { order: -1; }
   .tv-time { font-size: clamp(64px, 24vmin, 180px); }
 }
+
+/* phone remote — players & prize-pool editor (host only) */
+.remote-players { display: flex; flex-direction: column; gap: 8px; }
+.remote-player-row { display: flex; align-items: center; gap: 8px; }
+.remote-player-row .ledger-name { flex: 1; min-width: 0; }
+.remote-buyin { width: 108px; flex: 0 0 auto; }
+.remote-buyin .input { text-align: right; }
 
 /* ============================================================
    SETTINGS — style picker

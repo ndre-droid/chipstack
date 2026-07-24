@@ -144,13 +144,17 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   };
 
   const connectWithCode = async () => {
-    if (joinDigits.length < 4) return;
+    if (joinDigits.length < 6) {
+      setJoinErr(t('tv.joinTooShort'));
+      return;
+    }
     setJoinErr(null);
     setJoinBusy(true);
     try {
       const { checkCodeExists } = await import('../lib/liveSession');
       const exists = await checkCodeExists(joinDigits);
       if (!exists) {
+        // reached the server fine, the code simply isn't there
         setJoinErr(t('tv.joinNotFound'));
         return;
       }
@@ -158,7 +162,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       setShowJoin(false);
       setJoinDigits('');
     } catch {
-      setJoinErr(t('tv.joinNotFound'));
+      // couldn't reach Firestore at all — a network/config problem, not a wrong code
+      setJoinErr(t('tv.joinError'));
     } finally {
       setJoinBusy(false);
     }
@@ -167,7 +172,6 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
 
   const level = blindLevels[Math.min(levelIdx, blindLevels.length - 1)];
   const next = blindLevels[levelIdx + 1];
-  const currentSB = level?.smallBlind ?? 1;
   const currentBB = level?.bigBlind ?? 1;
 
   // keep screen awake while the TV is showing
@@ -318,9 +322,13 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     () => denominations.filter((d) => d.enabled && d.value > 0).sort((a, b) => a.value - b.value),
     [denominations],
   );
-  const tooSmall = useMemo(
-    () => denominations.filter((d) => d.enabled && d.value > 0 && d.value < currentSB).sort((a, b) => a.value - b.value),
-    [denominations, currentSB],
+  // roster shown on the TV — names + amounts, live from the host's ledger
+  const roster = useMemo(
+    () =>
+      ledger.length
+        ? ledger.map((p) => ({ id: p.id, name: p.name || 'Player', amount: p.buyIn || 0, out: (p.cashOut || 0) > 0 }))
+        : Array.from({ length: playerCount }, (_, i) => ({ id: String(i), name: `Seat ${i + 1}`, amount: buyIn, out: false })),
+    [ledger, playerCount, buyIn],
   );
 
   const pct = Math.max(0, Math.min(100, (seconds / ((onBreak ? 5 : minutesPerLevel) * 60)) * 100));
@@ -345,7 +353,12 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     >
       {tvBackground && <div className="tv-bg-scrim" />}
 
-      {firebaseConfigured && (
+      {/* This device is the host (the phone) — it's the source, so it never "joins". */}
+      {firebaseConfigured && liveSessionRole === 'host' && (
+        <div className="tv-connect-pill host">● {t('tv.hostingHere')}</div>
+      )}
+      {/* A display device (the TV): join a session, or show it's live. */}
+      {firebaseConfigured && liveSessionRole !== 'host' && (
         <button
           className={`tv-connect-pill ${connected ? 'live' : ''}`}
           onClick={() => (connected ? disconnectLive() : setShowJoin(true))}
@@ -376,10 +389,17 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             <span className="tv-stat-k">{t('tv.avgStack')}</span>
             <span className="tv-stat-v">{avgStack.toLocaleString()}<small> · {avgBB} BB</small></span>
           </div>
-          {tooSmall.length > 0 && (
-            <div className="tv-colorup">
-              <span className="tv-colorup-h">{t('tv.colorUp')}</span>
-              <span>{t('tv.colorUpDesc', { list: tooSmall.map((d) => d.value).join(', '), sb: currentSB })}</span>
+          {roster.length > 0 && (
+            <div className="tv-players">
+              <div className="tv-players-h">{t('tv.players')}</div>
+              <div className="tv-players-list">
+                {roster.map((p) => (
+                  <div className={`tv-players-row ${p.out ? 'out' : ''}`} key={p.id}>
+                    <span className="tv-players-name">{p.name}</span>
+                    <span className="tv-players-amt">{fmtMoney(p.amount, currency)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </aside>
