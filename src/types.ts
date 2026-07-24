@@ -40,6 +40,11 @@ export interface Settings {
   appearance: Appearance;   // system / light / dark — applies to the minimal skin
   chipArt: ChipArt;         // chip face art style
   language: 'en' | 'de';
+  /** Live Session (cloud sync): 'host' = this phone pushes data + sends clock commands;
+   *  'tv' = this device owns the clock and mirrors incoming data. Set by whichever
+   *  flow (Settings "Start" vs TvMode "Join") created the connection. */
+  liveSessionCode: string | null;
+  liveSessionRole: 'host' | 'tv' | null;
 }
 
 export interface SessionConfig {

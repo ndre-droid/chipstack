@@ -7,6 +7,7 @@ import CashScreen from './screens/CashScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import { IconPlan, IconChips, IconTable, IconCash, IconSettings } from './components/Icons';
 import { useT } from './lib/i18n';
+import { useLiveHostSync } from './lib/useLiveHostSync';
 
 type Tab = 'plan' | 'chips' | 'table' | 'cash';
 type View = Tab | 'settings';
@@ -59,6 +60,7 @@ function AppShell() {
   const activeSkin = skin ?? 'minimal';
   const activeAccent = accents?.[activeSkin] ?? 'amber';
   const t = useT();
+  useLiveHostSync();
   const HEADER_SUB: Record<View, string> = {
     plan: t('header.plan'),
     chips: t('header.chips'),

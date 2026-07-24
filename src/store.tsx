@@ -52,6 +52,8 @@ const defaultSettings: Settings = {
   appearance: 'dark',
   chipArt: 'deco',
   language: 'en',
+  liveSessionCode: null,
+  liveSessionRole: null,
 };
 
 const SKINS = ['minimal', 'casino', 'playful', 'scifi'];
@@ -90,6 +92,14 @@ type Action =
   | { type: 'LOAD_PRESET'; id: string }
   | { type: 'DELETE_PRESET'; id: string }
   | { type: 'IMPORT_SETUP'; denominations: Denomination[]; session: SessionConfig; settings: Settings }
+  | {
+      type: 'LIVE_APPLY_REMOTE';
+      denominations: Denomination[];
+      session: SessionConfig;
+      ledger: LedgerPlayer[];
+      currency: string;
+      unitValue: number;
+    }
   | { type: 'LEDGER_ADD'; name?: string }
   | { type: 'LEDGER_ADD_MANY'; n: number }
   | { type: 'LEDGER_UPDATE'; id: string; patch: Partial<LedgerPlayer> }
@@ -186,6 +196,14 @@ function reducer(state: AppState, action: Action): AppState {
         session: { ...defaultSession, ...action.session },
         settings: { ...defaultSettings, ...action.settings },
       };
+    case 'LIVE_APPLY_REMOTE':
+      return {
+        ...state,
+        denominations: action.denominations,
+        session: action.session,
+        ledger: action.ledger,
+        settings: { ...state.settings, currency: action.currency, unitValue: action.unitValue },
+      };
     case 'LEDGER_ADD':
       return {
         ...state,
@@ -273,6 +291,8 @@ function migrate(raw: string | null): AppState {
   if (typeof settings.tvQuips !== 'boolean') settings.tvQuips = true;
   if (typeof settings.tvBackground !== 'string') settings.tvBackground = null;
   if (settings.language !== 'en' && settings.language !== 'de') settings.language = 'en';
+  if (typeof settings.liveSessionCode !== 'string') settings.liveSessionCode = null;
+  if (settings.liveSessionRole !== 'host' && settings.liveSessionRole !== 'tv') settings.liveSessionRole = null;
   const validAppear = ['system', 'light', 'dark'];
   if (!validAppear.includes(settings.appearance)) settings.appearance = 'dark';
   const validArt = ['deco', 'classic', 'diamond', 'sunburst'];

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { IconPlay, IconPause, IconReset, IconChevron, IconDice, IconExpand } from '../components/Icons';
 import TvMode from './TvMode';
+import RemoteControl from './RemoteControl';
 import { useT } from '../lib/i18n';
 
 const fmt = (s: number) => {
@@ -128,6 +129,8 @@ export default function TableScreen() {
       <p className="faint" style={{ fontSize: 12, textAlign: 'center', margin: '8px 8px 0' }}>
         {t('table.castHint')}
       </p>
+
+      <RemoteControl />
 
       <DealerAndSeats />
 

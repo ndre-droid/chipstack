@@ -5,6 +5,8 @@ import { fmtMoney } from '../lib/money';
 import Chip from '../components/Chip';
 import { IconCheck } from '../components/Icons';
 import { useT } from '../lib/i18n';
+import { firebaseConfigured } from '../lib/firebaseConfig';
+import { initialClock } from '../lib/clockLogic';
 import type { Appearance, AccentId, Skin, ChipArt } from '../types';
 
 const WEB_URL = 'https://ndre-droid.github.io/chipstack/';
@@ -111,6 +113,24 @@ export default function SettingsScreen() {
     };
     reader.readAsDataURL(file);
   };
+
+  const [liveBusy, setLiveBusy] = useState(false);
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const startLive = async () => {
+    setLiveError(null);
+    setLiveBusy(true);
+    try {
+      const { hostCreate, genCode } = await import('../lib/liveSession');
+      const code = genCode();
+      await hostCreate(code, state, initialClock(settings.minutesPerLevel));
+      dispatch({ type: 'UPDATE_SETTINGS', patch: { liveSessionCode: code, liveSessionRole: 'host' } });
+    } catch {
+      setLiveError(t('settings.liveError'));
+    } finally {
+      setLiveBusy(false);
+    }
+  };
+  const stopLive = () => dispatch({ type: 'UPDATE_SETTINGS', patch: { liveSessionCode: null, liveSessionRole: null } });
 
   const urlQr = useMemo(() => {
     try {
@@ -292,6 +312,29 @@ export default function SettingsScreen() {
           <br />
           <b>Or mirror the phone:</b> Android → Smart View / Cast; iPhone → Screen Mirroring (AirPlay) — but then the phone must stay on this screen.
         </p>
+      </div>
+
+      <div className="section-label">{t('settings.liveSession')}</div>
+      <div className="card">
+        <p className="faint" style={{ fontSize: 13, margin: '0 0 12px', lineHeight: 1.6 }}>{t('settings.liveSessionDesc')}</p>
+        {!firebaseConfigured ? (
+          <p style={{ color: 'var(--text-dim)', fontSize: 12.5, margin: 0 }}>{t('settings.liveUnconfigured')}</p>
+        ) : settings.liveSessionRole === 'host' && settings.liveSessionCode ? (
+          <>
+            <div className="code-box" style={{ textAlign: 'center', fontSize: 28, fontFamily: 'var(--mono)', fontWeight: 700, letterSpacing: '0.08em' }}>
+              {settings.liveSessionCode}
+            </div>
+            <p className="faint" style={{ fontSize: 12, textAlign: 'center', margin: '8px 0 0' }}>{t('settings.liveCodeHint')}</p>
+            <button className="btn btn-ghost btn-block btn-sm mt12" onClick={stopLive}>{t('settings.stopLive')}</button>
+          </>
+        ) : (
+          <>
+            {liveError && <p style={{ color: 'var(--bad)', fontSize: 12, margin: '0 0 8px' }}>{liveError}</p>}
+            <button className="btn btn-primary btn-block" onClick={startLive} disabled={liveBusy}>
+              {liveBusy ? t('settings.liveConnecting') : t('settings.startLive')}
+            </button>
+          </>
+        )}
       </div>
 
       <div className="section-label">{t('settings.chipArt')}</div>
