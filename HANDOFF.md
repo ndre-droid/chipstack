@@ -158,14 +158,36 @@ scripts/gen-icons.mjs    regenerates icons (redesigned to the smooth-ceramic chi
 
 ---
 
-## Features (all built + verified this session)
+## Features (all built + verified)
 Plan (result-first), Chips inventory, Table (blind clock, TV-mode launch, dealer/seat draw),
 Cash ledger + settlement, Settings. Distribution engine with small-chip slider, exact buy-in,
 per-chip min/max, up-to-N types, use-all toggle, colour-up guide, live fine-tune editor, presets,
-CS1 share code + QR + PNG. **TV mode** (big clock, alerts + chime, break + cancel, colour-up cue,
-prize pool/players-left/avg-stack from ledger, chip legend, rotating quips w/ toggle, shot clock,
-"who drinks?" spinner, custom background photo, 4K-scaled, wakeLock). **Live Session** cloud sync
-(host phone ↔ TV, remote clock control). 4 skins, 8 per-skin accents, German/English.
+CS1 share code + QR + PNG. **TV mode** (big clock, alerts + chime, break + cancel,
+prize pool/players-left/avg-stack from ledger, **live players roster**, chip legend, rotating quips,
+shot clock, "who drinks?" spinner, adaptive background photo, 4K-scaled, wakeLock). **Live Session**
+cloud sync (host phone ↔ TV). 4 skins, 8 per-skin accents, German/English.
+
+### Recent work (2026-07-24/25)
+- **Chip slider MAX = true smallest-first fill.** At the top of the slider (`smallBias >= 0.999`)
+  the engine empties the smallest denomination first (to inventory / per-chip cap), then the next,
+  maximising physical chips, then reconciles to the exact buy-in. See `computeStack()` maxChips
+  branch in `distribution.ts` (+ engine test).
+- **Smart adaptive TV backgrounds.** Each uploaded photo is analysed (`lib/imageAnalysis.ts`,
+  16×9 contrast grid) for subject location + brightness; the TV crops toward the subject, keeps it
+  clear with a focus-centred scrim, nudges the clock to the calm side, sits text on frosted plates,
+  and auto-tunes scrim strength. Stored as `tvBackgroundFocus`/`tvBackgroundTone`, synced to the TV.
+- **Live remote rebuilt into a full phone-side TV control panel** (`RemoteControl.tsx`, host only,
+  Table tab): single clock (never runs its own countdown), level length (−10/−1/+1/+10), blind
+  levels (edit/add/remove), players & prize pool (rename, buy-in, quick **Rebuy**, **Bust/Back-in**,
+  add/remove), TV design (skin preset incl. Match phone + accent), toggles (show players, quips).
+  All of it syncs to the TV via `LiveData`.
+- **Host self-heals its session doc** (`hostEnsureExists`) — fixes the "code not found" bug where a
+  `host` code was persisted in localStorage but its server doc was gone. Writes use `setDoc(merge)`.
+- Phone (host) no longer shows a Join pill in its own big screen — shows a "Hosting" tag; only
+  display devices get Connect. Join errors now distinguish "code absent" vs "can't reach sync".
+- Players leaving/joining mid-game: **Bust** keeps a leaver for settlement (struck through on TV,
+  players-left drops) via `LedgerPlayer.out`; **Add player** brings a joiner in at the buy-in.
+  Design decision: we track **buy-ins only**, never per-player live chip stacks.
 
 ---
 
@@ -182,25 +204,27 @@ prize pool/players-left/avg-stack from ledger, chip legend, rotating quips w/ to
    **Kept from that work:** the denom palette was matched to the real photos — `10` → `#31B6C9` (cyan),
    `100` → `#0C0C10` (black) in `store.tsx` `defaultDenoms()`. Existing users' saved colours are
    preserved by `migrate()` (only defaults change).
-1. **APK is stale.** The released APK predates TV mode, skins, i18n, background, and Live Session.
-   Rebuild with `gh workflow run "Build Android APK" -R ndre-droid/chipstack --ref main` when the
-   user wants it. **One-time:** because signing switched to a stable key, the user must
-   **uninstall the currently-installed (old, per-run-signed) APK once** before the new one installs
-   over it; every update after that preserves data. The **web app already has everything**, so it's
-   the primary path — the APK is secondary.
+1. **APK is current** (rebuilt 2026-07-25 with all the above). Rebuild anytime with
+   `gh workflow run "Build Android APK" -R ndre-droid/chipstack --ref main`. **One-time:** because
+   signing switched to a stable key, if an old per-run-signed APK is still installed the user must
+   **uninstall it once** before the new one installs over it; every update after that preserves data.
+   The **web app is the primary path** (that's what the TV runs); the APK is secondary.
 2. **i18n is partial.** Nav/header/Settings/TV/Plan/Chips/Table/Cash MAIN labels are translated
    (`src/lib/i18n.ts`, `useT()`). NOT translated: engine-generated sentences (distribution.ts /
    planning.ts warnings/notes, colour-up retirement math) and a few minor inline strings — those
    need the language threaded into the engine or into those call sites. Extend the dict + wrap
    remaining strings when asked.
-3. **Firestore rule is wide open** (`allow read,write: if true` on `sessions/{code}`). Fine for a
-   home game (low-sensitivity data, gated by a 6-digit code) but brute-forceable. Could harden
-   (e.g. require the doc to already exist for writes, TTL cleanup) if the user cares.
-4. **Live Session scope-cut for v1:** the TV's shot-clock and who-drinks events are TV-local (not
-   pushed to the phone remote). Could add if wanted.
-5. **Unbuilt future idea the user floated:** "upload a photo and the big-screen layout ADAPTS
-   around it" (composition-aware theming). The current TV-background is the simpler version (photo
-   + scrim overlay). Bigger feature — flagged, not started.
+3. **Firestore is verified healthy** (2026-07-24, REST probe with the committed public key: GET
+   missing → 404, PATCH → 200, DELETE → 200). Rules allow read+write on `sessions/{code}`. So any
+   future live-sync failure is **client state, not rules** — don't re-diagnose the backend first.
+   Rule is wide open (`if true`) — brute-forceable but fine for a home game; could harden + add TTL
+   cleanup if wanted. Memory note: `memory/live-sync-firestore.md`.
+4. **Live Session scope:** host now controls clock, level length, blinds, players/pool, TV design and
+   toggles from the phone. Still TV-local (not driven by the phone remote): the shot-clock and
+   who-drinks spinner. `minutesPerLevel` is synced now, but a break is still a fixed 5 min
+   (`startBreak` in `clockLogic.ts`) — adjustable break length is an easy add if asked.
+5. **Composition-aware TV backgrounds: DONE** (see Recent work). Analyses each upload and lays text
+   out around the subject. Could go further (face/object detection, multiple focal regions).
 6. **User asked for continuous feature suggestions** — proactively pitch good ones as they come to
    mind (fun/funny/smart/useful). Some already floated: payout/prize structure on the TV,
    bust-out leaderboard, thematic evenings.
