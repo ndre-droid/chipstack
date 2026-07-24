@@ -3,7 +3,6 @@ import qrcode from 'qrcode-generator';
 import { useStore } from '../store';
 import { fmtMoney } from '../lib/money';
 import Chip from '../components/Chip';
-import { Chip3DShowcase } from '../components/chip3d';
 import { IconCheck } from '../components/Icons';
 import { useT } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
@@ -59,10 +58,6 @@ export default function SettingsScreen() {
   const currentAccent = settings.accents?.[settings.skin] ?? 'amber';
   const setAccent = (id: AccentId) =>
     dispatch({ type: 'UPDATE_SETTINGS', patch: { accents: { ...settings.accents, [settings.skin]: id } } });
-
-  const previewDenoms = state.denominations;
-  const [previewId, setPreviewId] = useState<string | null>(null);
-  const featuredDenom = previewDenoms.find((d) => d.id === previewId) ?? previewDenoms[0];
 
   const [urlCopied, setUrlCopied] = useState(false);
   const copyUrl = async () => {
@@ -340,25 +335,6 @@ export default function SettingsScreen() {
             </button>
           </>
         )}
-      </div>
-
-      <div className="section-label">{t('settings.chipPreview')}</div>
-      <div className="card">
-        <Chip3DShowcase denom={featuredDenom} />
-        <div className="chip3d-hint">{t('settings.chipPreviewHint')}</div>
-        <div className="chip3d-picker">
-          {previewDenoms.map((d) => (
-            <button
-              key={d.id}
-              className={`chip3d-dot ${d.id === featuredDenom.id ? 'active' : ''}`}
-              style={{ ['--dot' as string]: d.color, ['--dot-acc' as string]: d.accent }}
-              onClick={() => setPreviewId(d.id)}
-              aria-label={String(d.value)}
-            >
-              {d.value}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="section-label">{t('settings.chipArt')}</div>
