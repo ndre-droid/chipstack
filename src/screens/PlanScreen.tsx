@@ -6,7 +6,7 @@ import { suggestBlindLadder, colorUpEvents } from '../lib/planning';
 import type { ColorUpEvent } from '../lib/planning';
 import type { Denomination, BlindLevel } from '../types';
 import Chip from '../components/Chip';
-import ChipStackViz from '../components/ChipStackViz';
+import { Chip3DStacks } from '../components/chip3d';
 import { IconPlus, IconTrash, IconCheck, IconAlert, IconSpark, IconChevron, IconLock, IconShare } from '../components/Icons';
 import ShareSheet from '../components/ShareSheet';
 import { fmtMoney } from '../lib/money';
@@ -201,7 +201,7 @@ export default function PlanScreen() {
           {edited && <span className="badge-soft" style={{ marginLeft: 8 }}>edited</span>}
         </div>
 
-        <ChipStackViz denoms={effUsed} counts={displayCounts} />
+        <Chip3DStacks denoms={effUsed} counts={displayCounts} />
 
         {/* small-chip slider — lives with the visual it controls */}
         <div className="hero-slider">
