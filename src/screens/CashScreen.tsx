@@ -4,9 +4,11 @@ import { settleUp } from '../lib/settle';
 import type { PlayerBalance } from '../lib/settle';
 import { fmtMoney } from '../lib/money';
 import { IconPlus, IconTrash } from '../components/Icons';
+import { useT } from '../lib/i18n';
 
 export default function CashScreen() {
   const { state, dispatch } = useStore();
+  const t = useT();
   const cur = state.settings.currency;
   const { buyIn, playerCount } = state.session;
   const ledger = state.ledger;
@@ -33,7 +35,7 @@ export default function CashScreen() {
             Start with {playerCount} players
           </button>
           <button className="btn btn-ghost btn-block btn-sm mt8" onClick={() => dispatch({ type: 'LEDGER_ADD' })}>
-            <IconPlus size={16} /> Add one player
+            <IconPlus size={16} /> {t('cash.addPlayer')}
           </button>
         </div>
       </div>
@@ -43,28 +45,28 @@ export default function CashScreen() {
   return (
     <div>
       <div className="section-label">
-        Money in play
-        <span className="hint">{ledger.length} players</span>
+        {t('cash.moneyInPlay')}
+        <span className="hint">{ledger.length} {t('cash.players').toLowerCase()}</span>
       </div>
       <div className="card">
         <div className="stat-row">
           <div className="stat">
-            <div className="k">Bought in</div>
+            <div className="k">{t('cash.boughtIn')}</div>
             <div className="v">{fmtMoney(totalIn, cur)}</div>
           </div>
           <div className="stat">
-            <div className="k">Cashed out</div>
+            <div className="k">{t('cash.cashedOut')}</div>
             <div className="v">{fmtMoney(totalOut, cur)}</div>
           </div>
           <div className="stat">
-            <div className="k">On table</div>
+            <div className="k">{t('cash.onTable')}</div>
             <div className="v" style={{ color: 'var(--acc)' }}>{fmtMoney(totalIn - totalOut, cur)}</div>
           </div>
         </div>
       </div>
 
       <div className="section-label">
-        Players
+        {t('cash.players')}
         <span className="hint">tap + each rebuy · enter final chips</span>
       </div>
       <div className="card ledger-card">
@@ -125,7 +127,7 @@ export default function CashScreen() {
         })}
         <div className="row mt12" style={{ gap: 8 }}>
           <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => dispatch({ type: 'LEDGER_ADD' })}>
-            <IconPlus size={16} /> Add player
+            <IconPlus size={16} /> {t('cash.addPlayer')}
           </button>
           <button
             className="btn btn-ghost btn-sm"
@@ -133,7 +135,7 @@ export default function CashScreen() {
               if (confirm('Clear the ledger for a new game?')) dispatch({ type: 'LEDGER_CLEAR' });
             }}
           >
-            New game
+            {t('cash.newGame')}
           </button>
         </div>
       </div>
@@ -144,7 +146,7 @@ export default function CashScreen() {
         </div>
       )}
 
-      <div className="section-label">Who pays whom</div>
+      <div className="section-label">{t('cash.whoPays')}</div>
       <div className="card">
         {!anyOut ? (
           <div className="empty">Enter final chips to see the payouts.</div>

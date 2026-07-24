@@ -4,6 +4,7 @@ import { useStore } from '../store';
 import { fmtMoney } from '../lib/money';
 import Chip from '../components/Chip';
 import { IconCheck } from '../components/Icons';
+import { useT } from '../lib/i18n';
 import type { Appearance, AccentId, Skin, ChipArt } from '../types';
 
 const WEB_URL = 'https://ndre-droid.github.io/chipstack/';
@@ -48,6 +49,7 @@ const CHIP_ARTS: { id: ChipArt; name: string }[] = [
 export default function SettingsScreen() {
   const { state, dispatch } = useStore();
   const { settings } = state;
+  const t = useT();
 
   const activeStyle = STYLES.find((s) => s.id === settings.skin) ?? STYLES[0];
   const accentColor = (id: AccentId) => ACCENTS.find((a) => a.id === id)?.color ?? '#f0b429';
@@ -65,6 +67,51 @@ export default function SettingsScreen() {
       setUrlCopied(false);
     }
   };
+  const [bgBusy, setBgBusy] = useState(false);
+  const [bgError, setBgError] = useState<string | null>(null);
+  const onPickBackground = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBgError(null);
+    setBgBusy(true);
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = () => {
+      img.onload = () => {
+        try {
+          // downscale so the stored data URL stays well within localStorage limits
+          const maxW = 1920;
+          const scale = Math.min(1, maxW / img.naturalWidth);
+          const w = Math.round(img.naturalWidth * scale);
+          const h = Math.round(img.naturalHeight * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) throw new Error('canvas unavailable');
+          ctx.drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+          dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: dataUrl } });
+        } catch {
+          setBgError('Could not process that image — try a different photo.');
+        } finally {
+          setBgBusy(false);
+        }
+      };
+      img.onerror = () => {
+        setBgError('Could not read that image — try a different file.');
+        setBgBusy(false);
+      };
+      img.src = reader.result as string;
+    };
+    reader.onerror = () => {
+      setBgError('Could not read that file.');
+      setBgBusy(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const urlQr = useMemo(() => {
     try {
       const qr = qrcode(0, 'M');
@@ -78,7 +125,25 @@ export default function SettingsScreen() {
 
   return (
     <div>
-      <div className="section-label">Style</div>
+      <div className="section-label">{t('settings.language')}</div>
+      <div className="card">
+        <div className="segmented">
+          <button
+            className={settings.language === 'en' ? 'active' : ''}
+            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { language: 'en' } })}
+          >
+            English
+          </button>
+          <button
+            className={settings.language === 'de' ? 'active' : ''}
+            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { language: 'de' } })}
+          >
+            Deutsch
+          </button>
+        </div>
+      </div>
+
+      <div className="section-label">{t('settings.style')}</div>
       <div className="card">
         <div className="style-grid">
           {STYLES.map((s) => (
@@ -99,7 +164,7 @@ export default function SettingsScreen() {
 
       {settings.skin === 'minimal' && (
         <>
-          <div className="section-label">Appearance</div>
+          <div className="section-label">{t('settings.appearance')}</div>
           <div className="card">
             <div className="segmented">
               {APPEARANCES.map((a) => (
@@ -117,7 +182,7 @@ export default function SettingsScreen() {
       )}
 
       <div className="section-label">
-        Accent
+        {t('settings.accent')}
         <span className="hint">{activeStyle.name}</span>
       </div>
       <div className="card">
@@ -136,12 +201,12 @@ export default function SettingsScreen() {
       </div>
 
       <div className="section-label">
-        TV broadcast style
-        <span className="hint">match phone or pick</span>
+        {t('settings.tvStyle')}
+        <span className="hint">{t('settings.tvStyleHint')}</span>
       </div>
       <div className="card">
         <div className="style-grid">
-          {[{ id: 'match' as const, name: 'Match phone', bg: activeStyle.bg }, ...STYLES].map((s) => (
+          {[{ id: 'match' as const, name: t('settings.matchPhone'), bg: activeStyle.bg }, ...STYLES].map((s) => (
             <button
               key={s.id}
               className={`style-opt ${(settings.tvSkin ?? 'match') === s.id ? 'active' : ''}`}
@@ -157,12 +222,50 @@ export default function SettingsScreen() {
             </button>
           ))}
         </div>
-        <p className="faint" style={{ fontSize: 12.5, margin: '12px 2px 0' }}>
-          The big-screen look on the Table tab’s TV mode. Defaults to matching your phone; pick a style to make it independent.
-        </p>
+        <p className="faint" style={{ fontSize: 12.5, margin: '12px 2px 0' }}>{t('settings.tvStyleNote')}</p>
       </div>
 
-      <div className="section-label">Show on TV</div>
+      <div className="section-label">{t('settings.tvExtras')}</div>
+      <div className="card">
+        <div className="row">
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{t('settings.quips')}</div>
+            <div className="faint" style={{ fontSize: 12 }}>{t('settings.quipsDesc')}</div>
+          </div>
+          <div className="spacer" />
+          <div
+            className={`toggle ${settings.tvQuips ? 'on' : ''}`}
+            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvQuips: !settings.tvQuips } })}
+            role="switch"
+            aria-checked={settings.tvQuips}
+          />
+        </div>
+
+        <div className="divider" />
+
+        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{t('settings.tvBackground')}</div>
+        <div className="faint" style={{ fontSize: 12, marginBottom: 10 }}>{t('settings.tvBackgroundDesc')}</div>
+        {settings.tvBackground && (
+          <div className="tv-bg-preview" style={{ backgroundImage: `url(${settings.tvBackground})` }} />
+        )}
+        {bgError && <p style={{ color: 'var(--bad)', fontSize: 12, margin: '0 0 8px' }}>{bgError}</p>}
+        <div className="row" style={{ gap: 8 }}>
+          <label className="btn btn-ghost btn-sm" style={{ flex: 1, cursor: 'pointer' }}>
+            {bgBusy ? '…' : settings.tvBackground ? t('settings.replacePhoto') : t('settings.choosePhoto')}
+            <input type="file" accept="image/*" onChange={onPickBackground} style={{ display: 'none' }} disabled={bgBusy} />
+          </label>
+          {settings.tvBackground && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: null } })}
+            >
+              {t('settings.remove')}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="section-label">{t('settings.showOnTv')}</div>
       <div className="card">
         <p className="faint" style={{ fontSize: 13, margin: '0 0 12px', lineHeight: 1.6 }}>
           Best way — the phone stays free: open this address in your <b>TV’s web browser</b>, then go to
@@ -172,10 +275,10 @@ export default function SettingsScreen() {
         <button className="btn btn-ghost btn-block btn-sm mt8" onClick={copyUrl}>
           {urlCopied ? (
             <>
-              <IconCheck size={16} /> Copied
+              <IconCheck size={16} /> {t('settings.copied')}
             </>
           ) : (
-            'Copy link'
+            t('settings.copyLink')
           )}
         </button>
         {urlQr && (
@@ -191,7 +294,7 @@ export default function SettingsScreen() {
         </p>
       </div>
 
-      <div className="section-label">Chip art</div>
+      <div className="section-label">{t('settings.chipArt')}</div>
       <div className="card">
         <div className="chip-art-grid">
           {CHIP_ARTS.map((c) => (
@@ -207,10 +310,10 @@ export default function SettingsScreen() {
         </div>
       </div>
 
-      <div className="section-label">Money mapping</div>
+      <div className="section-label">{t('settings.moneyMapping')}</div>
       <div className="card">
         <div className="field">
-          <label>What is 1 chip point worth?</label>
+          <label>{t('settings.oneChipWorth')}</label>
           <div className="input-affix">
             <span className="affix">{settings.currency}</span>
             <input
@@ -240,11 +343,11 @@ export default function SettingsScreen() {
         </p>
       </div>
 
-      <div className="section-label">Default starting blinds</div>
+      <div className="section-label">{t('settings.defaultBlinds')}</div>
       <div className="card">
         <div className="row">
           <div className="field">
-            <label>Small blind</label>
+            <label>{t('settings.smallBlind')}</label>
             <input
               className="input"
               type="number"
@@ -254,7 +357,7 @@ export default function SettingsScreen() {
             />
           </div>
           <div className="field">
-            <label>Big blind</label>
+            <label>{t('settings.bigBlind')}</label>
             <input
               className="input"
               type="number"
@@ -265,7 +368,7 @@ export default function SettingsScreen() {
           </div>
         </div>
         <div className="row mt12">
-          <div style={{ fontWeight: 700, fontSize: 14 }}>Minutes per blind level</div>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>{t('settings.minutesPerLevel')}</div>
           <div className="spacer" />
           <div className="stepper">
             <button onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { minutesPerLevel: Math.max(1, settings.minutesPerLevel - 1) } })}>−</button>
@@ -278,7 +381,7 @@ export default function SettingsScreen() {
         </p>
       </div>
 
-      <div className="section-label">Currency</div>
+      <div className="section-label">{t('settings.currency')}</div>
       <div className="card">
         <div className="segmented">
           {CURRENCIES.map((c) => (
@@ -293,12 +396,12 @@ export default function SettingsScreen() {
         </div>
       </div>
 
-      <div className="section-label">Data</div>
+      <div className="section-label">{t('settings.data')}</div>
       <div className="card">
         <div className="flex-between">
           <div>
-            <div style={{ fontWeight: 700 }}>Reset everything</div>
-            <div className="faint" style={{ fontSize: 12.5 }}>Restore the default SLOWPLAY chip set & session.</div>
+            <div style={{ fontWeight: 700 }}>{t('settings.resetEverything')}</div>
+            <div className="faint" style={{ fontSize: 12.5 }}>{t('settings.resetDesc')}</div>
           </div>
           <button
             className="btn btn-ghost btn-sm"
@@ -306,13 +409,13 @@ export default function SettingsScreen() {
               if (confirm('Reset all chips, players and settings to defaults?')) dispatch({ type: 'RESET' });
             }}
           >
-            Reset
+            {t('settings.reset')}
           </button>
         </div>
       </div>
 
       <p className="faint" style={{ fontSize: 12, textAlign: 'center', marginTop: 20 }}>
-        ChipStack · everything is stored on your device.
+        {t('settings.footer')}
       </p>
     </div>
   );

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { IconPlay, IconPause, IconReset, IconChevron, IconDice, IconExpand } from '../components/Icons';
 import TvMode from './TvMode';
+import { useT } from '../lib/i18n';
 
 const fmt = (s: number) => {
   const m = Math.floor(s / 60);
@@ -11,6 +12,7 @@ const fmt = (s: number) => {
 
 export default function TableScreen() {
   const { state, dispatch } = useStore();
+  const t = useT();
   const { blindLevels } = state.session;
   const mins = state.settings.minutesPerLevel;
 
@@ -82,8 +84,8 @@ export default function TableScreen() {
   return (
     <div>
       <div className="section-label">
-        Blind clock
-        <span className="hint">{mins} min / level · edit in Settings</span>
+        {t('table.blindClock')}
+        <span className="hint">{t('table.perLevel', { n: mins })}</span>
       </div>
 
       <div className="card clock-card">
@@ -121,10 +123,10 @@ export default function TableScreen() {
       </div>
 
       <button className="btn btn-primary btn-block" onClick={() => setTv(true)}>
-        <IconExpand size={18} /> Big screen · TV mode
+        <IconExpand size={18} /> {t('table.bigScreen')}
       </button>
       <p className="faint" style={{ fontSize: 12, textAlign: 'center', margin: '8px 8px 0' }}>
-        Cast or mirror your phone to a TV — big clock, chip values, standings &amp; more.
+        {t('table.castHint')}
       </p>
 
       <DealerAndSeats />
@@ -140,6 +142,7 @@ export default function TableScreen() {
 
 function DealerAndSeats() {
   const { state, dispatch } = useStore();
+  const t = useT();
   const { ledger } = state;
   const { playerCount } = state.session;
   const [dealerId, setDealerId] = useState<string | null>(null);
@@ -165,8 +168,8 @@ function DealerAndSeats() {
   return (
     <>
       <div className="section-label" style={{ marginTop: 18 }}>
-        Dealer button
-        <span className="hint">spin for the button</span>
+        {t('table.dealerButton')}
+        <span className="hint">{t('table.spinForButton')}</span>
       </div>
       <div className="card">
         {ledger.length === 0 ? (
@@ -191,11 +194,11 @@ function DealerAndSeats() {
               ))}
             </div>
             <button className="btn btn-primary btn-block mt12" onClick={pickDealer}>
-              <IconDice size={18} /> Spin the dealer button
+              <IconDice size={18} /> {t('table.spin')}
             </button>
             {dealerId && (
               <p style={{ textAlign: 'center', marginTop: 10, marginBottom: 0, fontWeight: 700, color: 'var(--acc)' }}>
-                {nameOf(dealerId)} is on the button
+                {t('table.onTheButton', { name: nameOf(dealerId) })}
               </p>
             )}
           </>
@@ -203,7 +206,7 @@ function DealerAndSeats() {
       </div>
 
       <button className="mins-toggle" style={{ margin: '2px 2px 8px' }} onClick={() => setShowSeats((v) => !v)}>
-        <span>Random seat draw</span>
+        <span>{t('table.seatDraw')}</span>
         <span className={`chevron ${showSeats ? 'rot90' : ''}`}>
           <IconChevron size={16} />
         </span>
@@ -215,13 +218,13 @@ function DealerAndSeats() {
           ) : (
             <>
               <button className="btn btn-ghost btn-block btn-sm" onClick={drawSeats}>
-                <IconDice size={16} /> Draw seats
+                <IconDice size={16} /> {t('table.drawSeats')}
               </button>
               {seats && (
                 <div className="seat-grid">
                   {seats.map((id, i) => (
                     <div className="seat" key={id}>
-                      <span className="seat-no">Seat {i + 1}</span>
+                      <span className="seat-no">{t('table.seat', { n: i + 1 })}</span>
                       <span className="seat-player">{nameOf(id)}</span>
                     </div>
                   ))}

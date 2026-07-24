@@ -10,9 +10,11 @@ import ChipStackViz from '../components/ChipStackViz';
 import { IconPlus, IconTrash, IconCheck, IconAlert, IconSpark, IconChevron, IconLock, IconShare } from '../components/Icons';
 import ShareSheet from '../components/ShareSheet';
 import { fmtMoney } from '../lib/money';
+import { useT } from '../lib/i18n';
 
 export default function PlanScreen() {
   const { state, dispatch } = useStore();
+  const t = useT();
   const { denominations, settings, session, presets } = state;
   const { playerCount, buyIn, earlyRebuys, lateRebuyAmount, blindLevels, smallBias, maxDenoms, useAllChips } = session;
 
@@ -163,13 +165,13 @@ export default function PlanScreen() {
       {/* ---------------- Top bar: save / share / presets ---------------- */}
       <div className="preset-bar">
         <button className="preset-save" onClick={savePreset}>
-          <IconSpark size={14} /> Save
+          <IconSpark size={14} /> {t('plan.save')}
         </button>
         <button className="preset-save" onClick={() => setShareOpen(true)}>
-          <IconShare size={14} /> Share
+          <IconShare size={14} /> {t('plan.share')}
         </button>
         <div className="preset-list">
-          {presets.length === 0 && <span className="faint" style={{ fontSize: 12, fontWeight: 500 }}>No saved setups</span>}
+          {presets.length === 0 && <span className="faint" style={{ fontSize: 12, fontWeight: 500 }}>{t('plan.noSavedSetups')}</span>}
           {presets.map((p) => (
             <div className="preset-chip" key={p.id}>
               <button onClick={() => dispatch({ type: 'LOAD_PRESET', id: p.id })}>{p.name}</button>
@@ -181,17 +183,17 @@ export default function PlanScreen() {
 
       {/* ================ RESULT HERO — the answer ================ */}
       <div className="result-hero">
-        <div className="hero-eyebrow">Each player starts with</div>
+        <div className="hero-eyebrow">{t('plan.eachPlayer')}</div>
         <div className="flex-between" style={{ alignItems: 'flex-end' }}>
           <div className="big-num">
-            {effChips} <small>chips</small>
+            {effChips} <small>{t('plan.chips')}</small>
           </div>
           <div className="hero-depth">
             <div className="n">
               {bbCount}
               <span> BB</span>
             </div>
-            <div className="l">starting depth</div>
+            <div className="l">{t('plan.bbDeep')}</div>
           </div>
         </div>
         <div className="hero-sub">
@@ -204,7 +206,7 @@ export default function PlanScreen() {
         {/* small-chip slider — lives with the visual it controls */}
         <div className="hero-slider">
           <div className="hero-slider-head">
-            <span>Chip mix</span>
+            <span>{t('plan.chipMix')}</span>
             <span className="badge-soft">{Math.round(smallBias * 100)}% small</span>
           </div>
           <input
@@ -219,8 +221,8 @@ export default function PlanScreen() {
             aria-label="Small-chip emphasis"
           />
           <div className="slider-ends">
-            <span>Fewer, bigger</span>
-            <span>More small</span>
+            <span>{t('plan.fewerBigger')}</span>
+            <span>{t('plan.moreSmall')}</span>
           </div>
         </div>
 
@@ -255,11 +257,11 @@ export default function PlanScreen() {
       {/* feasibility */}
       {starting.feasible ? (
         <div className="feas ok">
-          <IconCheck size={18} /> You have enough chips to deal all {numPlayers} players.
+          <IconCheck size={18} /> {t('plan.enoughChips', { n: numPlayers })}
         </div>
       ) : (
         <div className="feas warn">
-          <IconAlert size={18} /> Not enough chips for {numPlayers} full stacks — see setup below.
+          <IconAlert size={18} /> {t('plan.notEnoughChips', { n: numPlayers })}
         </div>
       )}
       {starting.warnings.length > 0 && (
@@ -279,8 +281,8 @@ export default function PlanScreen() {
 
       {/* live-adjust editor */}
       <div className="section-label">
-        Fine-tune the stack
-        <span className="hint">± adjust · pin to hold</span>
+        {t('plan.fineTune')}
+        <span className="hint">{t('plan.fineTuneHint')}</span>
       </div>
       <div className="card adjust-card">
         {editorDenoms.map((d) => {
@@ -305,12 +307,12 @@ export default function PlanScreen() {
         <div className="adjust-foot">
           <span className={effTotal === buyInUnits ? 'bal-ok' : 'bal-bad'}>
             {effTotal === buyInUnits
-              ? 'Balances to the buy-in'
+              ? t('plan.balances')
               : `${effTotal > buyInUnits ? '+' : ''}${(effTotal - buyInUnits).toLocaleString()} pts vs buy-in`}
           </span>
           {edited && (
             <button className="link-btn" onClick={() => setEdit(null)}>
-              Reset to auto
+              {t('plan.resetToAuto')}
             </button>
           )}
         </div>
@@ -330,8 +332,8 @@ export default function PlanScreen() {
       {(laterStages.length > 0 || colorUps.length > 0) && (
         <>
           <button className="section-label collapsible-head" onClick={() => setShowLater((v) => !v)}>
-            Later levels &amp; colour-up
-            <span className="hint">{laterStages.length} later {laterStages.length === 1 ? 'level' : 'levels'}</span>
+            {t('plan.laterColorUp')}
+            <span className="hint">{laterStages.length === 1 ? t('plan.laterLevel') : t('plan.laterLevels', { n: laterStages.length })}</span>
             <span className={`chevron ${showLater ? 'rot90' : ''}`} style={{ marginLeft: 8 }}>
               <IconChevron size={16} />
             </span>
@@ -353,8 +355,8 @@ export default function PlanScreen() {
               {colorUps.length > 0 && (
                 <>
                   <div className="section-label">
-                    Colour-up guide
-                    <span className="hint">racing off small chips</span>
+                    {t('plan.colorUpGuide')}
+                    <span className="hint">{t('plan.racingOff')}</span>
                   </div>
                   {colorUps.map((e) => (
             <div className="card colorup-card" key={e.blind.id}>
@@ -404,16 +406,16 @@ export default function PlanScreen() {
 
       {/* ================ SESSION SETUP — the inputs ================ */}
       <div className="section-label" style={{ marginTop: 26 }}>
-        Session setup
-        <span className="hint">the answer above updates live</span>
+        {t('plan.sessionSetup')}
+        <span className="hint">{t('plan.updatesLive')}</span>
       </div>
 
       {/* Players */}
       <div className="card">
         <div className="row">
           <div>
-            <div style={{ fontWeight: 600 }}>Players at the table</div>
-            <div className="faint" style={{ fontSize: 12.5 }}>Stacks are dealt from your inventory for this many.</div>
+            <div style={{ fontWeight: 600 }}>{t('plan.playersAtTable')}</div>
+            <div className="faint" style={{ fontSize: 12.5 }}>{t('plan.playersDesc')}</div>
           </div>
           <div className="spacer" />
           <div className="stepper">
@@ -428,7 +430,7 @@ export default function PlanScreen() {
       <div className="card">
         <div className="row">
           <div className="field">
-            <label>Buy-in</label>
+            <label>{t('plan.buyIn')}</label>
             <div className="input-affix">
               <span className="affix">{cur}</span>
               <input
@@ -441,7 +443,7 @@ export default function PlanScreen() {
             </div>
           </div>
           <div className="field">
-            <label>Later rebuy</label>
+            <label>{t('plan.laterRebuy')}</label>
             <div className="input-affix">
               <span className="affix">{cur}</span>
               <input
@@ -456,7 +458,7 @@ export default function PlanScreen() {
         </div>
         <div className="row mt12">
           <div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>Early rebuys at buy-in</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{t('plan.earlyRebuys')}</div>
             <div className="faint" style={{ fontSize: 12 }}>Same {fmtMoney(buyIn, cur)} at the starting blinds — they need small chips too.</div>
           </div>
           <div className="spacer" />
@@ -473,8 +475,8 @@ export default function PlanScreen() {
 
       {/* Blinds */}
       <div className="section-label">
-        Blind levels
-        <span className="hint">tap a row to start there</span>
+        {t('plan.blindLevels')}
+        <span className="hint">{t('plan.tapToStart')}</span>
       </div>
       <div className="card">
         {blindLevels.map((b, i) => (
@@ -515,23 +517,23 @@ export default function PlanScreen() {
         ))}
         <div className="row mt8" style={{ gap: 8 }}>
           <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={applySuggestedLadder}>
-            <IconSpark size={15} /> Suggest for my chips
+            <IconSpark size={15} /> {t('plan.suggest')}
           </button>
           <button className="btn btn-ghost btn-sm" onClick={() => dispatch({ type: 'ADD_BLIND' })}>
-            <IconPlus size={16} /> Level
+            <IconPlus size={16} /> {t('plan.level')}
           </button>
         </div>
       </div>
 
       {/* Distribution options */}
       <div className="section-label">
-        <IconSpark size={14} /> Distribution options
+        <IconSpark size={14} /> {t('plan.distOptions')}
       </div>
       <div className="card">
         <button className="mins-toggle" onClick={() => setShowChips((v) => !v)}>
           <span>
-            Chips to use{' '}
-            <span className="faint" style={{ fontWeight: 500 }}>· {enabledDenoms.length - excluded.size} active</span>
+            {t('plan.chipsToUse')}{' '}
+            <span className="faint" style={{ fontWeight: 500 }}>· {t('plan.active', { n: enabledDenoms.length - excluded.size })}</span>
           </span>
           <span className={`chevron ${showChips ? 'rot90' : ''}`}>
             <IconChevron size={16} />
@@ -555,8 +557,8 @@ export default function PlanScreen() {
         <div className="divider" />
         <div className="row">
           <div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>Use all my chip types</div>
-            <div className="faint" style={{ fontSize: 12 }}>Include chips that don't fit the blinds neatly (e.g. 25s at 10/20)</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{t('plan.useAllChips')}</div>
+            <div className="faint" style={{ fontSize: 12 }}>{t('plan.useAllDesc')}</div>
           </div>
           <div className="spacer" />
           <div
@@ -570,8 +572,8 @@ export default function PlanScreen() {
         <div className="divider" />
         <div className="flex-between">
           <div>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>Use up to … chip types</label>
-            <div className="faint" style={{ fontSize: 12 }}>Cap how many kinds of chips the stack uses</div>
+            <label style={{ fontSize: 13, fontWeight: 600 }}>{t('plan.upToTypes')}</label>
+            <div className="faint" style={{ fontSize: 12 }}>{t('plan.upToDesc')}</div>
           </div>
           <div className="stepper">
             <button
@@ -600,7 +602,7 @@ export default function PlanScreen() {
 
         <div className="divider" />
         <button className="mins-toggle" onClick={() => setShowMins((v) => !v)}>
-          <span>Per-chip limits (min / max)</span>
+          <span>{t('plan.perChipLimits')}</span>
           <span className={`chevron ${showMins ? 'rot90' : ''}`}>
             <IconChevron size={16} />
           </span>

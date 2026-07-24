@@ -3,20 +3,27 @@ import { useStore } from '../store';
 import Chip from '../components/Chip';
 import { IconPlay, IconPause, IconChevron, IconReset } from '../components/Icons';
 import { fmtMoney } from '../lib/money';
+import { useT } from '../lib/i18n';
 
 const QUIPS = [
-  'Blinds are going up — finish your beer.',
+  'Blinds are going up — finish your beer, it’s the house rule now.',
   'The cards don’t know it’s your birthday.',
-  'Scared money don’t make money.',
+  'Scared money don’t make money. Broke money doesn’t either.',
   'If you can’t spot the fish in the first hour… it’s you.',
-  'A chip and a chair is all you need.',
+  'A chip and a chair. Also snacks. Bring snacks.',
   'Trust everyone, but always cut the cards.',
-  'Tight is right — until it isn’t.',
-  'The river giveth, and the river taketh away.',
-  'Fold ’em if you got ’em.',
-  'Big stack, big responsibility.',
-  'Slow roll and you’re buying the next round.',
-  'Variance is a cruel, cruel mistress.',
+  'Tight is right — until someone shoves and proves it wrong.',
+  'The river gives, the river takes, the river doesn’t care about your feelings.',
+  'Slow-rolling is a personality disorder. Please seek help.',
+  'Big stack energy: act like you’ve got it even when you don’t.',
+  'Bad beat stories get shorter every time you retell them. Funny, that.',
+  'Check-raising your best friend builds character. Yours, not theirs.',
+  'The dealer button has seen things tonight it can never unsee.',
+  'Somewhere, a guy is going all-in on ace-high. Respect the chaos.',
+  'Your poker face needs work. Your actual face gave it away three hands ago.',
+  '“I was pot-committed” has ended more friendships than it’s saved.',
+  'Math says fold. Your gut says call. Your gut has been wrong all night.',
+  'Nobody remembers the hands you won. Everyone remembers the ones you didn’t.',
 ];
 
 const beep = (freq = 880, dur = 0.14, type: OscillatorType = 'sine') => {
@@ -50,8 +57,9 @@ const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart
 
 export default function TvMode({ onClose }: { onClose: () => void }) {
   const { state } = useStore();
+  const t = useT();
   const { blindLevels } = state.session;
-  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents } = state.settings;
+  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvBackground } = state.settings;
   const effTvSkin = (tvSkin ?? 'match') === 'match' ? skin ?? 'minimal' : (tvSkin as Exclude<typeof tvSkin, 'match'>);
   const tvAccent = accents?.[effTvSkin] ?? 'amber';
   const { playerCount, buyIn } = state.session;
@@ -130,9 +138,10 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
 
   // rotate quips
   useEffect(() => {
+    if (!tvQuips) return;
     const id = window.setInterval(() => setQuipIdx((i) => (i + 1) % QUIPS.length), 11000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [tvQuips]);
 
   // shot clock
   useEffect(() => {
@@ -157,6 +166,10 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     setOnBreak(true);
     setSeconds(5 * 60);
     setRunning(true);
+  };
+  const cancelBreak = () => {
+    setOnBreak(false);
+    setSeconds(minutesPerLevel * 60);
   };
 
   const players = useMemo(
@@ -202,10 +215,16 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const pct = Math.max(0, Math.min(100, (seconds / ((onBreak ? 5 : minutesPerLevel) * 60)) * 100));
 
   return (
-    <div className="tv" data-tv-skin={effTvSkin} data-tv-accent={tvAccent}>
+    <div
+      className={`tv ${tvBackground ? 'has-bg' : ''}`}
+      data-tv-skin={effTvSkin}
+      data-tv-accent={tvAccent}
+      style={tvBackground ? { backgroundImage: `url(${tvBackground})` } : undefined}
+    >
+      {tvBackground && <div className="tv-bg-scrim" />}
       {flash && (
         <div className="tv-flash">
-          <div>BLINDS UP</div>
+          <div>{t('tv.blindsUp')}</div>
           <div className="tv-flash-sub">{level && `${level.smallBlind} / ${level.bigBlind}`}</div>
         </div>
       )}
@@ -214,40 +233,40 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         {/* left: standings + colour-up */}
         <aside className="tv-side">
           <div className="tv-stat">
-            <span className="tv-stat-k">Prize pool</span>
+            <span className="tv-stat-k">{t('tv.prizePool')}</span>
             <span className="tv-stat-v">{fmtMoney(poolMoney, currency)}</span>
           </div>
           <div className="tv-stat">
-            <span className="tv-stat-k">Players left</span>
+            <span className="tv-stat-k">{t('tv.playersLeft')}</span>
             <span className="tv-stat-v">{playersLeft}</span>
           </div>
           <div className="tv-stat">
-            <span className="tv-stat-k">Avg stack</span>
+            <span className="tv-stat-k">{t('tv.avgStack')}</span>
             <span className="tv-stat-v">{avgStack.toLocaleString()}<small> · {avgBB} BB</small></span>
           </div>
           {tooSmall.length > 0 && (
             <div className="tv-colorup">
-              <span className="tv-colorup-h">Colour up</span>
-              <span>Retire the {tooSmall.map((d) => d.value).join(', ')} — below the {currentSB} blind.</span>
+              <span className="tv-colorup-h">{t('tv.colorUp')}</span>
+              <span>{t('tv.colorUpDesc', { list: tooSmall.map((d) => d.value).join(', '), sb: currentSB })}</span>
             </div>
           )}
         </aside>
 
         {/* center: the clock */}
         <main className="tv-clock">
-          <div className="tv-level">{onBreak ? 'Break' : `Level ${levelIdx + 1}`}</div>
+          <div className="tv-level">{onBreak ? t('tv.break') : t('tv.level', { n: levelIdx + 1 })}</div>
           <div className="tv-blinds">
-            {onBreak ? 'Back soon' : level ? `${level.smallBlind} / ${level.bigBlind}` : '—'}
+            {onBreak ? t('tv.backSoon') : level ? `${level.smallBlind} / ${level.bigBlind}` : '—'}
             {!onBreak && level?.ante ? <span className="tv-ante"> · ante {level.ante}</span> : null}
           </div>
           <div className={`tv-time ${running && seconds <= 30 ? 'urgent' : ''}`}>{fmtClock(seconds)}</div>
-          <div className="tv-progress"><i style={{ width: `${pct}%` }} /></div>
-          <div className="tv-next">{onBreak ? '' : next ? `Next: ${next.smallBlind} / ${next.bigBlind}` : 'Final level'}</div>
+          <div className="tv-progress"><i style={{ transform: `scaleX(${pct / 100})` }} /></div>
+          <div className="tv-next">{onBreak ? '' : next ? t('tv.next', { blinds: `${next.smallBlind} / ${next.bigBlind}` }) : t('tv.finalLevel')}</div>
         </main>
 
         {/* right: chip legend */}
         <aside className="tv-side tv-legend">
-          <div className="tv-legend-h">Chip values</div>
+          <div className="tv-legend-h">{t('tv.chipValues')}</div>
           {legend.map((d) => (
             <div className="tv-legend-row" key={d.id}>
               <Chip value={d.value} color={d.color} accent={d.accent} size={34} shape={d.shape} />
@@ -259,7 +278,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* quip ticker */}
-      <div className="tv-quip" key={quipIdx}>{QUIPS[quipIdx]}</div>
+      {tvQuips && <div className="tv-quip" key={quipIdx}>{QUIPS[quipIdx]}</div>}
 
       {/* controls (for the phone holding the session) */}
       <div className="tv-controls">
@@ -267,27 +286,31 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         <button onClick={() => setSeconds((onBreak ? 5 : minutesPerLevel) * 60)} aria-label="Reset level"><IconReset size={20} /></button>
         <button className="tv-play" onClick={() => setRunning((r) => !r)}>{running ? <IconPause size={30} /> : <IconPlay size={30} />}</button>
         <button onClick={() => goLevel(levelIdx + 1)} aria-label="Next level"><IconChevron size={22} /></button>
-        <button className="tv-txt" onClick={takeBreak}>Break</button>
-        <button className="tv-txt" onClick={() => setShot(30)}>Shot clock</button>
-        <button className="tv-txt" onClick={spinRound}>Who drinks?</button>
-        <button className="tv-txt tv-exit" onClick={onClose}>Exit</button>
+        {onBreak ? (
+          <button className="tv-txt tv-exit" onClick={cancelBreak}>{t('tv.cancelBreak')}</button>
+        ) : (
+          <button className="tv-txt" onClick={takeBreak}>{t('tv.break')}</button>
+        )}
+        <button className="tv-txt" onClick={() => setShot(30)}>{t('tv.shotClock')}</button>
+        <button className="tv-txt" onClick={spinRound}>{t('tv.whoDrinks')}</button>
+        <button className="tv-txt tv-exit" onClick={onClose}>{t('tv.exit')}</button>
       </div>
 
       {/* shot clock overlay */}
       {shot !== null && (
         <div className="tv-overlay" onClick={() => setShot(null)}>
-          <div className="tv-overlay-label">Shot clock</div>
+          <div className="tv-overlay-label">{t('tv.shotClock')}</div>
           <div className={`tv-overlay-num ${shot <= 5 ? 'urgent' : ''}`}>{Math.max(0, shot)}</div>
-          <div className="tv-overlay-hint">tap to dismiss</div>
+          <div className="tv-overlay-hint">{t('tv.tapToDismiss')}</div>
         </div>
       )}
 
       {/* who-buys spinner overlay */}
       {spin && (
         <div className="tv-overlay">
-          <div className="tv-overlay-label">Who drinks next?</div>
+          <div className="tv-overlay-label">{t('tv.whoDrinksNext')}</div>
           <div className={`tv-overlay-name ${spin.done ? 'won' : ''}`}>{spin.name}</div>
-          {spin.done && <div className="tv-overlay-hint">🍻 you’re up!</div>}
+          {spin.done && <div className="tv-overlay-hint">🍻 {t('tv.youreUp')}</div>}
         </div>
       )}
     </div>

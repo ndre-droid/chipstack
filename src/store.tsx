@@ -47,8 +47,11 @@ const defaultSettings: Settings = {
   skin: 'minimal',
   accents: { minimal: 'amber', casino: 'gold', playful: 'coral', scifi: 'cyan' },
   tvSkin: 'match',
+  tvQuips: true,
+  tvBackground: null,
   appearance: 'dark',
   chipArt: 'deco',
+  language: 'en',
 };
 
 const SKINS = ['minimal', 'casino', 'playful', 'scifi'];
@@ -267,6 +270,9 @@ function migrate(raw: string | null): AppState {
 
   if (!SKINS.includes(settings.skin)) settings.skin = 'minimal';
   if (settings.tvSkin !== 'match' && !SKINS.includes(settings.tvSkin)) settings.tvSkin = 'match';
+  if (typeof settings.tvQuips !== 'boolean') settings.tvQuips = true;
+  if (typeof settings.tvBackground !== 'string') settings.tvBackground = null;
+  if (settings.language !== 'en' && settings.language !== 'de') settings.language = 'en';
   const validAppear = ['system', 'light', 'dark'];
   if (!validAppear.includes(settings.appearance)) settings.appearance = 'dark';
   const validArt = ['deco', 'classic', 'diamond', 'sunburst'];

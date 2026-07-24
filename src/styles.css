@@ -1056,6 +1056,7 @@ input[type='color'] { cursor: pointer; }
    ============================================================ */
 .tv {
   --tv-bg: radial-gradient(120% 90% at 50% -10%, #15151c 0%, #0a0a0e 60%, #060608 100%);
+  --tv-bg-base: #0a0a0e;
   --tv-fg: #f4f3ef;
   --tv-dim: #9a9aa2;
   --tv-faint: #85858d;
@@ -1070,19 +1071,38 @@ input[type='color'] { cursor: pointer; }
   color: var(--tv-fg);
   overflow: hidden;
 }
+.tv.has-bg {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.tv-bg-scrim {
+  position: absolute; inset: 0; z-index: 0;
+  background: radial-gradient(120% 90% at 50% -6%, color-mix(in srgb, var(--tv-bg-base, #05060f) 55%, transparent) 0%, color-mix(in srgb, var(--tv-bg-base, #05060f) 88%, transparent) 62%, var(--tv-bg-base, #05060f) 100%);
+}
+/* scrim is z-index:0 and painted first; every other direct child (already
+   positioned or given position:relative here) naturally paints above it */
+.tv-grid, .tv-quip, .tv-controls { position: relative; }
+/* panels get a touch more body over a photo so text stays crisp */
+.tv.has-bg .tv-stat,
+.tv.has-bg .tv-colorup,
+.tv.has-bg .tv-controls button { backdrop-filter: blur(6px); }
 /* TV broadcast styles (chosen independently of the phone UI) */
 .tv[data-tv-skin='casino'] {
   --tv-bg: radial-gradient(135% 90% at 50% -10%, #275a3d 0%, #123a24 46%, #08170e 100%);
+  --tv-bg-base: #123a24;
   --tv-fg: #f1e9d4; --tv-dim: #c4d2c0; --tv-faint: #86a08c;
   --tv-panel: rgba(217, 178, 98, 0.07); --tv-line: rgba(217, 178, 98, 0.22); --on-acc: #14120b;
 }
 .tv[data-tv-skin='playful'] {
-  --tv-bg: #fbe9c8; --tv-fg: #201a12; --tv-dim: #6d5d3d; --tv-faint: #a58c5c;
+  --tv-bg: #fbe9c8; --tv-bg-base: #fbe9c8;
+  --tv-fg: #201a12; --tv-dim: #6d5d3d; --tv-faint: #a58c5c;
   --tv-panel: rgba(32, 26, 18, 0.05); --tv-line: rgba(32, 26, 18, 0.15);
   --acc: var(--acc-deep); --on-acc: #ffffff;
 }
 .tv[data-tv-skin='scifi'] {
   --tv-bg: radial-gradient(130% 90% at 50% -10%, #0c1a4c 0%, #060a20 55%, #04060f 100%);
+  --tv-bg-base: #060a20;
   --tv-fg: #e7f1ff; --tv-dim: #90a6d6; --tv-faint: #52659c;
   --tv-panel: rgba(80, 140, 255, 0.06); --tv-line: rgba(80, 140, 255, 0.2); --on-acc: #04121a;
   --font-display: 'Orbitron', var(--font);
@@ -1128,7 +1148,7 @@ input[type='color'] { cursor: pointer; }
 .tv-time { font-family: var(--mono); font-weight: 700; font-size: clamp(72px, 19vmin, 480px); line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; margin: clamp(2px, 0.5vmin, 8px) 0; }
 .tv-time.urgent { color: var(--bad); }
 .tv-progress { width: min(84%, 64vmin); height: clamp(6px, 1vmin, 12px); background: var(--tv-line); border-radius: 999px; overflow: hidden; }
-.tv-progress i { display: block; height: 100%; background: var(--acc); border-radius: 999px; transition: width 1s linear; }
+.tv-progress i { display: block; width: 100%; height: 100%; background: var(--acc); border-radius: 999px; transform-origin: left; transition: transform 1s linear; }
 .tv-next { font-family: var(--mono); color: var(--tv-faint); font-size: clamp(13px, 1.8vmin, 40px); margin-top: clamp(6px, 1.2vmin, 16px); }
 
 .tv-legend-h { font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--tv-dim); font-size: clamp(10px, 1.4vmin, 24px); margin-bottom: 6px; }
@@ -1186,3 +1206,9 @@ input[type='color'] { cursor: pointer; }
 .style-swatch .sw-dot { width: 16px; height: 16px; border-radius: 50%; }
 .style-name { font-size: 12px; font-weight: 600; color: var(--text); text-align: center; }
 .style-opt:not(.active) .style-name { color: var(--text-dim); }
+
+.tv-bg-preview {
+  height: 110px; border-radius: var(--r-sm); margin-bottom: 10px;
+  background-size: cover; background-position: center;
+  border: 1px solid var(--line);
+}

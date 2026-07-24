@@ -6,24 +6,17 @@ import TableScreen from './screens/TableScreen';
 import CashScreen from './screens/CashScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import { IconPlan, IconChips, IconTable, IconCash, IconSettings } from './components/Icons';
+import { useT } from './lib/i18n';
 
 type Tab = 'plan' | 'chips' | 'table' | 'cash';
 type View = Tab | 'settings';
 
-const TABS: { id: Tab; label: string; icon: (p: { size?: number }) => React.ReactNode }[] = [
-  { id: 'plan', label: 'Plan', icon: IconPlan },
-  { id: 'chips', label: 'Chips', icon: IconChips },
-  { id: 'table', label: 'Table', icon: IconTable },
-  { id: 'cash', label: 'Cash', icon: IconCash },
+const TABS: { id: Tab; key: string; icon: (p: { size?: number }) => React.ReactNode }[] = [
+  { id: 'plan', key: 'nav.plan', icon: IconPlan },
+  { id: 'chips', key: 'nav.chips', icon: IconChips },
+  { id: 'table', key: 'nav.table', icon: IconTable },
+  { id: 'cash', key: 'nav.cash', icon: IconCash },
 ];
-
-const HEADER_SUB: Record<View, string> = {
-  plan: 'Session',
-  chips: 'Inventory',
-  table: 'At the table',
-  cash: 'Settle up',
-  settings: 'Settings',
-};
 
 function LogoMark() {
   return (
@@ -65,6 +58,14 @@ function AppShell() {
   const { skin, accents, appearance } = state.settings;
   const activeSkin = skin ?? 'minimal';
   const activeAccent = accents?.[activeSkin] ?? 'amber';
+  const t = useT();
+  const HEADER_SUB: Record<View, string> = {
+    plan: t('header.plan'),
+    chips: t('header.chips'),
+    table: t('header.table'),
+    cash: t('header.cash'),
+    settings: t('header.settings'),
+  };
 
   // apply skin + accent (+ appearance for minimal) to <html>.
   // each skin carries its own accent; 'minimal' also honours light/dark, the other
@@ -97,7 +98,7 @@ function AppShell() {
         <button
           className={`header-gear ${view === 'settings' ? 'on' : ''}`}
           onClick={toSettings}
-          aria-label="Settings"
+          aria-label={t('header.settings')}
           aria-pressed={view === 'settings'}
         >
           <IconSettings size={19} />
@@ -113,12 +114,12 @@ function AppShell() {
       </main>
 
       <nav className="bottom-nav">
-        {TABS.map((t) => {
-          const Icon = t.icon;
+        {TABS.map((tab) => {
+          const Icon = tab.icon;
           return (
-            <button key={t.id} className={`nav-item ${view === t.id ? 'active' : ''}`} onClick={() => goTab(t.id)}>
+            <button key={tab.id} className={`nav-item ${view === tab.id ? 'active' : ''}`} onClick={() => goTab(tab.id)}>
               <Icon size={22} />
-              {t.label}
+              {t(tab.key)}
             </button>
           );
         })}

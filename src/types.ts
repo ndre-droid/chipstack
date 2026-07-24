@@ -35,8 +35,11 @@ export interface Settings {
   skin: Skin;               // overall visual style (minimal / casino / playful / scifi)
   accents: Record<Skin, AccentId>; // accent colour per style
   tvSkin: Skin | 'match';   // TV-broadcast style; 'match' follows the phone skin
+  tvQuips: boolean;         // show the rotating cheeky sayings on the TV
+  tvBackground: string | null; // optional custom TV background image (data URL)
   appearance: Appearance;   // system / light / dark — applies to the minimal skin
   chipArt: ChipArt;         // chip face art style
+  language: 'en' | 'de';
 }
 
 export interface SessionConfig {

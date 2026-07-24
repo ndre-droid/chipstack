@@ -16,10 +16,31 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        chipstack {
+            def ksFile = rootProject.file('../keystore/chipstack.jks')
+            if (ksFile.exists()) {
+                storeFile ksFile
+                storePassword System.getenv('CHIPSTACK_KEYSTORE_PASSWORD') ?: 'chipstack'
+                keyAlias 'chipstack'
+                keyPassword System.getenv('CHIPSTACK_KEY_PASSWORD') ?: 'chipstack'
+            }
+        }
+    }
     buildTypes {
+        debug {
+            // Use the same fixed key as release so a debug APK can be installed
+            // over a previous one (and vice-versa) without losing app data.
+            if (rootProject.file('../keystore/chipstack.jks').exists()) {
+                signingConfig signingConfigs.chipstack
+            }
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (rootProject.file('../keystore/chipstack.jks').exists()) {
+                signingConfig signingConfigs.chipstack
+            }
         }
     }
 }

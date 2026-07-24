@@ -36,10 +36,36 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Generate stable signing keystore (once)
+        env:
+          CHIPSTACK_KEYSTORE_PASSWORD: ${{ secrets.CHIPSTACK_KEYSTORE_PASSWORD }}
+          CHIPSTACK_KEY_PASSWORD: ${{ secrets.CHIPSTACK_KEY_PASSWORD }}
+        run: |
+          if [ ! -f keystore/chipstack.jks ]; then
+            mkdir -p keystore
+            keytool -genkeypair -v \
+              -keystore keystore/chipstack.jks \
+              -alias chipstack \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "${CHIPSTACK_KEYSTORE_PASSWORD:-chipstack}" \
+              -keypass "${CHIPSTACK_KEY_PASSWORD:-chipstack}" \
+              -dname "CN=ChipStack, OU=ChipStack, O=ChipStack, L=, ST=, C=DE"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add keystore/chipstack.jks
+            git commit -m "Add stable APK signing keystore [skip ci]"
+            git push
+          else
+            echo "Keystore already committed — reusing it so installs update in place."
+          fi
+
       - name: Sync Capacitor
         run: npx cap sync android
 
       - name: Build debug APK
+        env:
+          CHIPSTACK_KEYSTORE_PASSWORD: ${{ secrets.CHIPSTACK_KEYSTORE_PASSWORD }}
+          CHIPSTACK_KEY_PASSWORD: ${{ secrets.CHIPSTACK_KEY_PASSWORD }}
         run: |
           cd android
           chmod +x gradlew

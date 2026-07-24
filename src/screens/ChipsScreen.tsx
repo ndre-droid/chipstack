@@ -2,10 +2,12 @@ import { useStore } from '../store';
 import Chip from '../components/Chip';
 import { IconPlus, IconTrash } from '../components/Icons';
 import { fmtMoney } from '../lib/money';
+import { useT } from '../lib/i18n';
 
 export default function ChipsScreen() {
   const { state, dispatch } = useStore();
   const { denominations, settings } = state;
+  const t = useT();
 
   const sorted = [...denominations].sort((a, b) => a.value - b.value);
   const active = denominations.filter((d) => d.enabled);
@@ -16,24 +18,24 @@ export default function ChipsScreen() {
   return (
     <div>
       <div className="section-label">
-        Your chip set
-        <span className="hint">tap a value or count to edit</span>
+        {t('chips.title')}
+        <span className="hint">{t('chips.hint')}</span>
       </div>
 
       <div className="card">
         <div className="flex-between">
           <div>
             <div className="faint" style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              On the table
+              {t('chips.onTable')}
             </div>
             <div style={{ fontSize: 26, fontWeight: 800, marginTop: 2 }}>
               {fmtMoney(totalMoney, settings.currency)}
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div className="muted" style={{ fontSize: 13, fontWeight: 700 }}>{totalChips} chips</div>
+            <div className="muted" style={{ fontSize: 13, fontWeight: 700 }}>{totalChips} {t('plan.chips')}</div>
             <div className="faint" style={{ fontSize: 12, fontWeight: 600 }}>
-              {active.length} of {denominations.length} active
+              {t('chips.active', { a: active.length, t: denominations.length })}
             </div>
           </div>
         </div>
@@ -117,7 +119,7 @@ export default function ChipsScreen() {
       })}
 
       <button className="btn btn-ghost btn-block mt8" onClick={() => dispatch({ type: 'ADD_DENOM' })}>
-        <IconPlus size={18} /> Add denomination
+        <IconPlus size={18} /> {t('chips.addDenom')}
       </button>
 
       <p className="faint" style={{ fontSize: 12.5, textAlign: 'center', marginTop: 16, lineHeight: 1.6 }}>
