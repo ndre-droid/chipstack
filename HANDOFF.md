@@ -49,6 +49,13 @@ German/English. Ships as an installable **PWA** (primary) and an **Android APK**
 - **HMR deps-array warnings / `[vite] Failed to reload`** in the dev console are transient
   artifacts of editing while running — always confirm against a clean `npm run build` +
   the production preview, which are clean.
+- **Dev reload can blank the app after many edits.** After a batch of edits, `location.reload()`
+  on an already-open tab can serve a stale module for one chunk and collide with the new one
+  ("useEffect changed size between renders" / Rules-of-Hooks), blanking the page. It is NOT a real
+  bug (deployed prod loads fresh). To verify host/live behaviour cleanly: open a BRAND-NEW tab (first
+  paint uses current code), and drive state via the UI (e.g. tap **Start Live Session**) instead of
+  writing localStorage + reloading. To confirm a host→cloud push, read the session doc over the
+  Firestore REST API with the committed key (see `memory/live-sync-firestore.md`).
 
 ---
 
@@ -167,6 +174,20 @@ prize pool/players-left/avg-stack from ledger, **live players roster**, chip leg
 shot clock, "who drinks?" spinner, adaptive background photo, 4K-scaled, wakeLock). **Live Session**
 cloud sync (host phone ↔ TV). 4 skins, 8 per-skin accents, German/English.
 
+### Live control = the phone is a full TV remote (2026-07-25)
+The Table tab, while hosting, is the whole control surface; everything syncs to the TV via
+`LiveData` and applies through `LIVE_APPLY_REMOTE`. **Design/toggle changes push IMMEDIATELY**
+(separate no-debounce effect in `useLiveHostSync`); only typed/large data (names, buy-ins, blinds,
+background photo) is debounced (250ms). Controls on the Table tab (host only, `RemoteControl.tsx`):
+clock, level length (±1/±10 + Turbo/Standard/Deep presets), break length + auto-break every N
+levels, blinds (edit/add/remove), players & pool (rename, buy-in, Rebuy, **Bust/Back-in**,
+add/remove), TV design (skin incl. Match + accent), and toggles for players / payouts / bust-order /
+quips + a custom-quips editor. **Live Session start + code live on the Table tab now**
+(`LiveSessionControl.tsx`); Settings just points there. Player-count stepper is on the Table tab too.
+TV displays added (each toggleable): payout split (auto structure by entrant count),
+knocked-out/finish order (`LedgerPlayer.outAt`), break cue. Custom quips join the rotation.
+`Settings.tvShowPayouts/tvShowBustOrder/tvCustomQuips/breakMinutes/breakEvery` + synced skin etc.
+
 ### Recent work (2026-07-24/25)
 - **Chip slider MAX = true smallest-first fill.** At the top of the slider (`smallBias >= 0.999`)
   the engine empties the smallest denomination first (to inventory / per-chip cap), then the next,
@@ -219,10 +240,11 @@ cloud sync (host phone ↔ TV). 4 skins, 8 per-skin accents, German/English.
    future live-sync failure is **client state, not rules** — don't re-diagnose the backend first.
    Rule is wide open (`if true`) — brute-forceable but fine for a home game; could harden + add TTL
    cleanup if wanted. Memory note: `memory/live-sync-firestore.md`.
-4. **Live Session scope:** host now controls clock, level length, blinds, players/pool, TV design and
-   toggles from the phone. Still TV-local (not driven by the phone remote): the shot-clock and
-   who-drinks spinner. `minutesPerLevel` is synced now, but a break is still a fixed 5 min
-   (`startBreak` in `clockLogic.ts`) — adjustable break length is an easy add if asked.
+4. **Live Session scope:** host controls clock, level/break length, auto-break, blinds, players/pool
+   (incl. Bust), TV design + all the show/hide toggles and custom quips from the phone — all synced
+   and immediate for the discrete ones. Still TV-local (not on the phone remote): the shot-clock and
+   who-drinks spinner. Payout structure is auto (percent table by entrant count in `TvMode.tsx`), not
+   yet user-editable.
 5. **Composition-aware TV backgrounds: DONE** (see Recent work). Analyses each upload and lays text
    out around the subject. Could go further (face/object detection, multiple focal regions).
 6. **User asked for continuous feature suggestions** — proactively pitch good ones as they come to
