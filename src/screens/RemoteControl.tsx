@@ -35,7 +35,7 @@ const ACCENTS: { id: AccentId; color: string }[] = [
 export default function RemoteControl() {
   const { state, dispatch } = useStore();
   const t = useT();
-  const { liveSessionCode, liveSessionRole, minutesPerLevel, currency, skin, tvSkin, accents, tvQuips, tvShowPlayers } = state.settings;
+  const { liveSessionCode, liveSessionRole, minutesPerLevel, currency, skin, tvSkin, accents, tvQuips, tvShowPlayers, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvCustomQuips } = state.settings;
   const { ledger, session } = state;
   const maxIdx = session.blindLevels.length - 1;
 
@@ -43,6 +43,8 @@ export default function RemoteControl() {
   const [now, setNow] = useState(Date.now());
   const [showBlinds, setShowBlinds] = useState(false);
   const [showDesign, setShowDesign] = useState(false);
+  const [showQuips, setShowQuips] = useState(false);
+  const [newQuip, setNewQuip] = useState('');
 
   const active = firebaseConfigured && liveSessionRole === 'host' && !!liveSessionCode;
 
@@ -120,7 +122,7 @@ export default function RemoteControl() {
           {clock.onBreak ? (
             <button className="btn btn-ghost btn-sm" onClick={() => send(cancelBreak(clock))}>{t('tv.cancelBreak')}</button>
           ) : (
-            <button className="btn btn-ghost btn-sm" onClick={() => send(startBreak(clock))}>{t('tv.break')}</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => send(startBreak(clock, breakMinutes))}>{t('tv.break')}</button>
           )}
         </div>
 
@@ -134,6 +136,45 @@ export default function RemoteControl() {
           </div>
           <button className="adj1" onClick={() => setMinutes(minutesPerLevel + 1)}>+1</button>
           <button className="adj10" onClick={() => setMinutes(minutesPerLevel + 10)}>+10</button>
+        </div>
+
+        {/* one-tap timer presets */}
+        <div className="chip-toggle-row" style={{ marginTop: 10, justifyContent: 'center' }}>
+          {[
+            { label: t('table.turbo'), m: 10 },
+            { label: t('table.standard'), m: 20 },
+            { label: t('table.deep'), m: 30 },
+          ].map((p) => (
+            <button key={p.m} className={`chip-toggle ${minutesPerLevel === p.m ? '' : 'off'}`} onClick={() => setMinutes(p.m)}>
+              {p.label} · {p.m}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* --- Break --- */}
+      <div className="card">
+        <div className="row">
+          <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.breakLength')}</div>
+          <div className="spacer" />
+          <div className="stepper">
+            <button onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { breakMinutes: Math.max(1, breakMinutes - 1) } })}>−</button>
+            <span className="val">{breakMinutes}</span>
+            <button onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { breakMinutes: breakMinutes + 1 } })}>+</button>
+          </div>
+        </div>
+        <div className="divider" />
+        <div className="row">
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.breakEvery')}</div>
+            <div className="faint" style={{ fontSize: 12 }}>{breakEvery === 0 ? t('table.breakEveryOff') : t('table.breakEveryOn', { n: breakEvery })}</div>
+          </div>
+          <div className="spacer" />
+          <div className="stepper">
+            <button onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { breakEvery: Math.max(0, breakEvery - 1) } })}>−</button>
+            <span className="val">{breakEvery === 0 ? t('table.off') : breakEvery}</span>
+            <button onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { breakEvery: breakEvery + 1 } })}>+</button>
+          </div>
         </div>
       </div>
 
@@ -223,7 +264,7 @@ export default function RemoteControl() {
                   </button>
                   <button
                     className={`btn btn-sm ${p.out ? 'btn-primary' : 'btn-ghost'}`}
-                    onClick={() => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { out: !p.out } })}
+                    onClick={() => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { out: !p.out, outAt: !p.out ? Date.now() : undefined } })}
                   >
                     {p.out ? t('table.backIn') : t('table.markOut')}
                   </button>
@@ -299,6 +340,34 @@ export default function RemoteControl() {
         <div className="divider" />
         <div className="row">
           <div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.showPayouts')}</div>
+            <div className="faint" style={{ fontSize: 12 }}>{t('table.showPayoutsDesc')}</div>
+          </div>
+          <div className="spacer" />
+          <div
+            className={`toggle ${tvShowPayouts ? 'on' : ''}`}
+            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvShowPayouts: !tvShowPayouts } })}
+            role="switch"
+            aria-checked={tvShowPayouts}
+          />
+        </div>
+        <div className="divider" />
+        <div className="row">
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.showBustOrder')}</div>
+            <div className="faint" style={{ fontSize: 12 }}>{t('table.showBustOrderDesc')}</div>
+          </div>
+          <div className="spacer" />
+          <div
+            className={`toggle ${tvShowBustOrder ? 'on' : ''}`}
+            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvShowBustOrder: !tvShowBustOrder } })}
+            role="switch"
+            aria-checked={tvShowBustOrder}
+          />
+        </div>
+        <div className="divider" />
+        <div className="row">
+          <div>
             <div style={{ fontWeight: 600, fontSize: 14 }}>{t('settings.quips')}</div>
             <div className="faint" style={{ fontSize: 12 }}>{t('settings.quipsDesc')}</div>
           </div>
@@ -311,6 +380,62 @@ export default function RemoteControl() {
           />
         </div>
       </div>
+
+      {/* --- Custom sayings --- */}
+      <button className="section-label collapsible-head" onClick={() => setShowQuips((v) => !v)}>
+        {t('table.customQuips')}
+        <span className="hint">{t('table.customQuipsHint')}</span>
+        <span className={`chevron ${showQuips ? 'rot90' : ''}`} style={{ marginLeft: 8 }}>
+          <IconChevron size={16} />
+        </span>
+      </button>
+      {showQuips && (
+        <div className="card">
+          {(tvCustomQuips ?? []).length > 0 && (
+            <div className="remote-players" style={{ marginBottom: 10 }}>
+              {(tvCustomQuips ?? []).map((q, i) => (
+                <div className="remote-player-top" key={i}>
+                  <span style={{ flex: 1, fontSize: 13.5 }}>{q}</span>
+                  <button
+                    className="icon-btn danger"
+                    style={{ width: 34, height: 34 }}
+                    onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvCustomQuips: (tvCustomQuips ?? []).filter((_, j) => j !== i) } })}
+                    aria-label="Remove saying"
+                  >
+                    <IconTrash size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="row" style={{ gap: 8 }}>
+            <input
+              className="input"
+              style={{ flex: 1 }}
+              value={newQuip}
+              placeholder={t('table.customQuipsPlaceholder')}
+              onChange={(e) => setNewQuip(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newQuip.trim()) {
+                  dispatch({ type: 'UPDATE_SETTINGS', patch: { tvCustomQuips: [...(tvCustomQuips ?? []), newQuip.trim()] } });
+                  setNewQuip('');
+                }
+              }}
+            />
+            <button
+              className="btn btn-ghost btn-sm"
+              disabled={!newQuip.trim()}
+              onClick={() => {
+                if (!newQuip.trim()) return;
+                dispatch({ type: 'UPDATE_SETTINGS', patch: { tvCustomQuips: [...(tvCustomQuips ?? []), newQuip.trim()] } });
+                setNewQuip('');
+              }}
+            >
+              <IconPlus size={16} /> {t('table.addSaying')}
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

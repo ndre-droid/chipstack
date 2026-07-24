@@ -54,8 +54,8 @@ export function resetLevel(c: ClockState): ClockState {
   return { ...c, remaining: dur, periodEndsAt: c.running ? Date.now() + dur * 1000 : null };
 }
 
-export function startBreak(c: ClockState): ClockState {
-  const dur = 5 * 60;
+export function startBreak(c: ClockState, minutes = 5): ClockState {
+  const dur = Math.max(1, Math.floor(minutes)) * 60;
   return { ...c, onBreak: true, running: true, remaining: dur, periodEndsAt: Date.now() + dur * 1000 };
 }
 

@@ -64,7 +64,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useStore();
   const t = useT();
   const { blindLevels } = state.session;
-  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvShowPlayers, tvBackground, tvBackgroundFocus, tvBackgroundTone, liveSessionCode, liveSessionRole } = state.settings;
+  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, liveSessionCode, liveSessionRole } = state.settings;
+  const breakMins = breakMinutes ?? 5;
   // per-photo smart placement: crop toward the subject, keep it clear, and nudge the
   // clock to the calm side; brighter photos get a stronger scrim so text stays legible.
   const focus = tvBackgroundFocus ?? { x: 50, y: 50 };
@@ -232,6 +233,12 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           stillRunning = false;
           setRunning(false);
         }
+        // auto-break: take a break after every N levels of play
+        if (stillRunning && breakEvery > 0 && (levelIdx + 1) % breakEvery === 0) {
+          setOnBreak(true);
+          pushClockIfConnected(nextIdx, true, true, breakMins * 60);
+          return breakMins * 60;
+        }
         pushClockIfConnected(nextIdx, false, stillRunning, minutesPerLevel * 60);
         return minutesPerLevel * 60;
       });
@@ -240,14 +247,20 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       if (tick.current) window.clearInterval(tick.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running, onBreak, blindLevels.length, minutesPerLevel, levelIdx, connected, liveSessionCode]);
+  }, [running, onBreak, blindLevels.length, minutesPerLevel, levelIdx, connected, liveSessionCode, breakEvery, breakMins]);
+
+  // the rotation = the user's own sayings first, then the built-ins
+  const quips = useMemo(() => {
+    const custom = (tvCustomQuips ?? []).map((q) => q.trim()).filter(Boolean);
+    return [...custom, ...QUIPS];
+  }, [tvCustomQuips]);
 
   // rotate quips
   useEffect(() => {
     if (!tvQuips) return;
-    const id = window.setInterval(() => setQuipIdx((i) => (i + 1) % QUIPS.length), 11000);
+    const id = window.setInterval(() => setQuipIdx((i) => (i + 1) % quips.length), 11000);
     return () => window.clearInterval(id);
-  }, [tvQuips]);
+  }, [tvQuips, quips.length]);
 
   // shot clock
   useEffect(() => {
@@ -271,9 +284,9 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   };
   const takeBreak = () => {
     setOnBreak(true);
-    setSeconds(5 * 60);
+    setSeconds(breakMins * 60);
     setRunning(true);
-    pushClockIfConnected(levelIdx, true, true, 5 * 60);
+    pushClockIfConnected(levelIdx, true, true, breakMins * 60);
   };
   const cancelBreak = () => {
     setOnBreak(false);
@@ -288,7 +301,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     });
   };
   const resetLevel = () => {
-    const secs = (onBreak ? 5 : minutesPerLevel) * 60;
+    const secs = (onBreak ? breakMins : minutesPerLevel) * 60;
     setSeconds(secs);
     pushClockIfConnected(levelIdx, onBreak, running, secs);
   };
@@ -337,7 +350,32 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     [ledger, playerCount, buyIn],
   );
 
-  const pct = Math.max(0, Math.min(100, (seconds / ((onBreak ? 5 : minutesPerLevel) * 60)) * 100));
+  // prize-pool payout split (auto structure by entrant count)
+  const payouts = useMemo(() => {
+    const entrants = ledger.length || playerCount;
+    const pct =
+      entrants <= 3 ? [1] : entrants <= 5 ? [0.65, 0.35] : entrants <= 8 ? [0.5, 0.3, 0.2] : [0.45, 0.27, 0.18, 0.1];
+    const places = ['1st', '2nd', '3rd', '4th'];
+    return pct.map((p, i) => ({ place: places[i], amount: Math.round(poolMoney * p) }));
+  }, [ledger.length, playerCount, poolMoney]);
+
+  // knocked-out / finish order — later busts finish higher
+  const bustOrder = useMemo(() => {
+    const entrants = ledger.length;
+    const outs = ledger
+      .map((p, i) => ({ p, i }))
+      .filter((x) => x.p.out)
+      .sort((a, b) => (a.p.outAt ?? a.i) - (b.p.outAt ?? b.i)); // first bust first
+    // place = entrants - bustIndex; show newest bust (best place) first
+    return outs
+      .map((x, idx) => ({ id: x.p.id, name: x.p.name || 'Player', place: entrants - idx }))
+      .reverse();
+  }, [ledger]);
+
+  // "next break in N levels" cue
+  const levelsToBreak = breakEvery > 0 ? (breakEvery - ((levelIdx + 1) % breakEvery)) % breakEvery : -1;
+
+  const pct = Math.max(0, Math.min(100, (seconds / ((onBreak ? breakMins : minutesPerLevel) * 60)) * 100));
 
   return (
     <div
@@ -395,6 +433,19 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             <span className="tv-stat-k">{t('tv.avgStack')}</span>
             <span className="tv-stat-v">{avgStack.toLocaleString()}<small> · {avgBB} BB</small></span>
           </div>
+          {tvShowPayouts && payouts.length > 0 && poolMoney > 0 && (
+            <div className="tv-players">
+              <div className="tv-players-h">{t('tv.payouts')}</div>
+              <div className="tv-players-list">
+                {payouts.map((p) => (
+                  <div className="tv-players-row" key={p.place}>
+                    <span className="tv-players-name">{p.place}</span>
+                    <span className="tv-players-amt">{fmtMoney(p.amount, currency)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {tvShowPlayers && roster.length > 0 && (
             <div className="tv-players">
               <div className="tv-players-h">{t('tv.players')}</div>
@@ -403,6 +454,19 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
                   <div className={`tv-players-row ${p.out ? 'out' : ''}`} key={p.id}>
                     <span className="tv-players-name">{p.name}</span>
                     <span className="tv-players-amt">{fmtMoney(p.amount, currency)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {tvShowBustOrder && bustOrder.length > 0 && (
+            <div className="tv-players">
+              <div className="tv-players-h">{t('tv.knockedOut')}</div>
+              <div className="tv-players-list">
+                {bustOrder.map((p) => (
+                  <div className="tv-players-row" key={p.id}>
+                    <span className="tv-players-amt" style={{ marginLeft: 0, minWidth: '2.4em' }}>{p.place}.</span>
+                    <span className="tv-players-name">{p.name}</span>
                   </div>
                 ))}
               </div>
@@ -420,6 +484,11 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           <div className={`tv-time ${running && seconds <= 30 ? 'urgent' : ''}`}>{fmtClock(seconds)}</div>
           <div className="tv-progress"><i style={{ transform: `scaleX(${pct / 100})` }} /></div>
           <div className="tv-next">{onBreak ? '' : next ? t('tv.next', { blinds: `${next.smallBlind} / ${next.bigBlind}` }) : t('tv.finalLevel')}</div>
+          {!onBreak && breakEvery > 0 && (
+            <div className="tv-break-cue">
+              {levelsToBreak === 0 ? t('tv.breakAfter') : t('tv.breakIn', { n: levelsToBreak })}
+            </div>
+          )}
         </main>
 
         {/* right: chip legend */}
@@ -436,7 +505,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* quip ticker */}
-      {tvQuips && <div className="tv-quip" key={quipIdx}>{QUIPS[quipIdx]}</div>}
+      {tvQuips && quips.length > 0 && <div className="tv-quip" key={quipIdx}>{quips[quipIdx % quips.length]}</div>}
 
       {/* controls (for the phone holding the session) */}
       <div className="tv-controls">

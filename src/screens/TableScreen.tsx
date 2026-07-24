@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import { IconPlay, IconPause, IconReset, IconChevron, IconDice, IconExpand } from '../components/Icons';
 import TvMode from './TvMode';
 import RemoteControl from './RemoteControl';
+import LiveSessionControl from './LiveSessionControl';
 import { useT } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 
@@ -88,8 +89,29 @@ export default function TableScreen() {
     </div>
   );
 
+  const playerCount = state.session.playerCount;
+
   return (
     <div>
+      {/* Live Session — start / code, right here on the Table tab */}
+      <LiveSessionControl />
+
+      {/* Players at the table — adjustable any time during the session */}
+      <div className="card">
+        <div className="row">
+          <div>
+            <div style={{ fontWeight: 600 }}>{t('plan.playersAtTable')}</div>
+            <div className="faint" style={{ fontSize: 12.5 }}>{t('table.playersAnytime')}</div>
+          </div>
+          <div className="spacer" />
+          <div className="stepper">
+            <button onClick={() => dispatch({ type: 'SET_PLAYER_COUNT', n: playerCount - 1 })}>−</button>
+            <span className="val">{playerCount}</span>
+            <button onClick={() => dispatch({ type: 'SET_PLAYER_COUNT', n: playerCount + 1 })}>+</button>
+          </div>
+        </div>
+      </div>
+
       {!isHost && (
         <>
           <div className="section-label">

@@ -48,7 +48,12 @@ const defaultSettings: Settings = {
   accents: { minimal: 'amber', casino: 'gold', playful: 'coral', scifi: 'cyan' },
   tvSkin: 'match',
   tvQuips: true,
+  tvCustomQuips: [],
   tvShowPlayers: true,
+  tvShowPayouts: false,
+  tvShowBustOrder: false,
+  breakMinutes: 5,
+  breakEvery: 0,
   tvBackground: null,
   tvBackgroundFocus: null,
   tvBackgroundTone: null,
@@ -110,7 +115,12 @@ type Action =
       tvSkin?: Skin | 'match';
       accents?: Record<Skin, AccentId>;
       tvQuips?: boolean;
+      tvCustomQuips?: string[];
       tvShowPlayers?: boolean;
+      tvShowPayouts?: boolean;
+      tvShowBustOrder?: boolean;
+      breakMinutes?: number;
+      breakEvery?: number;
     }
   | { type: 'LEDGER_ADD'; name?: string }
   | { type: 'LEDGER_ADD_MANY'; n: number }
@@ -228,7 +238,12 @@ function reducer(state: AppState, action: Action): AppState {
           ...(action.tvSkin !== undefined ? { tvSkin: action.tvSkin } : {}),
           ...(action.accents !== undefined ? { accents: action.accents } : {}),
           ...(action.tvQuips !== undefined ? { tvQuips: action.tvQuips } : {}),
+          ...(action.tvCustomQuips !== undefined ? { tvCustomQuips: action.tvCustomQuips } : {}),
           ...(action.tvShowPlayers !== undefined ? { tvShowPlayers: action.tvShowPlayers } : {}),
+          ...(action.tvShowPayouts !== undefined ? { tvShowPayouts: action.tvShowPayouts } : {}),
+          ...(action.tvShowBustOrder !== undefined ? { tvShowBustOrder: action.tvShowBustOrder } : {}),
+          ...(action.breakMinutes !== undefined ? { breakMinutes: action.breakMinutes } : {}),
+          ...(action.breakEvery !== undefined ? { breakEvery: action.breakEvery } : {}),
         },
       };
     case 'LEDGER_ADD':
@@ -316,7 +331,13 @@ function migrate(raw: string | null): AppState {
   if (!SKINS.includes(settings.skin)) settings.skin = 'minimal';
   if (settings.tvSkin !== 'match' && !SKINS.includes(settings.tvSkin)) settings.tvSkin = 'match';
   if (typeof settings.tvQuips !== 'boolean') settings.tvQuips = true;
+  if (!Array.isArray(settings.tvCustomQuips)) settings.tvCustomQuips = [];
+  else settings.tvCustomQuips = settings.tvCustomQuips.filter((q): q is string => typeof q === 'string');
   if (typeof settings.tvShowPlayers !== 'boolean') settings.tvShowPlayers = true;
+  if (typeof settings.tvShowPayouts !== 'boolean') settings.tvShowPayouts = false;
+  if (typeof settings.tvShowBustOrder !== 'boolean') settings.tvShowBustOrder = false;
+  if (typeof settings.breakMinutes !== 'number' || settings.breakMinutes < 1) settings.breakMinutes = 5;
+  if (typeof settings.breakEvery !== 'number' || settings.breakEvery < 0) settings.breakEvery = 0;
   if (typeof settings.tvBackground !== 'string') settings.tvBackground = null;
   {
     const f = settings.tvBackgroundFocus as unknown;

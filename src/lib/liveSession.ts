@@ -20,7 +20,12 @@ export interface LiveData {
   tvSkin: Skin | 'match';
   accents: Record<Skin, AccentId>;
   tvQuips: boolean;
+  tvCustomQuips: string[];
   tvShowPlayers: boolean;
+  tvShowPayouts: boolean;
+  tvShowBustOrder: boolean;
+  breakMinutes: number;
+  breakEvery: number;
 }
 
 export interface LiveDoc {
@@ -55,7 +60,12 @@ function dataOf(state: AppState): LiveData {
     tvSkin: state.settings.tvSkin,
     accents: state.settings.accents,
     tvQuips: state.settings.tvQuips,
+    tvCustomQuips: state.settings.tvCustomQuips ?? [],
     tvShowPlayers: state.settings.tvShowPlayers ?? true,
+    tvShowPayouts: state.settings.tvShowPayouts ?? false,
+    tvShowBustOrder: state.settings.tvShowBustOrder ?? false,
+    breakMinutes: state.settings.breakMinutes ?? 5,
+    breakEvery: state.settings.breakEvery ?? 0,
   };
 }
 

@@ -1184,6 +1184,11 @@ input[type='color'] { cursor: pointer; }
 .tv-players-name { font-weight: 600; font-size: clamp(13px, 1.8vmin, 40px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-players-amt { margin-left: auto; font-family: var(--mono); color: var(--tv-dim); font-size: clamp(12px, 1.6vmin, 34px); }
 
+.tv-break-cue {
+  margin-top: clamp(6px, 1.2vmin, 18px);
+  font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--acc); font-size: clamp(12px, 1.6vmin, 34px); font-weight: 700;
+}
 .tv-clock { text-align: center; display: flex; flex-direction: column; align-items: center; }
 .tv-level { font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.18em; color: var(--tv-dim); font-size: clamp(14px, 2.3vmin, 46px); }
 .tv-blinds { font-family: var(--mono); font-weight: 700; color: var(--acc); font-size: clamp(30px, 6vmin, 150px); letter-spacing: -0.01em; margin-top: clamp(2px, 0.6vmin, 8px); }
@@ -1255,6 +1260,14 @@ input[type='color'] { cursor: pointer; }
   .tv-grid { grid-template-columns: 1fr; align-content: start; gap: clamp(10px, 2vmin, 22px); overflow-y: auto; }
   .tv-clock { order: -1; }
   .tv-time { font-size: clamp(64px, 24vmin, 180px); }
+}
+
+/* Live Session code shown on the Table tab */
+.live-code-big {
+  text-align: center; font-family: var(--mono); font-weight: 700;
+  font-size: 34px; letter-spacing: 0.12em; color: var(--acc);
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--r-sm); padding: 14px 8px;
 }
 
 /* phone remote — players & prize-pool editor (host only) */
