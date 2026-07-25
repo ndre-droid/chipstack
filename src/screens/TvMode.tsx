@@ -161,10 +161,13 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         } else if (isTv) {
           setPaired(false);
         }
-        setLevelIdx(doc.clock.levelIdx);
-        setOnBreak(doc.clock.onBreak);
-        setRunning(doc.clock.running);
-        setSeconds(clockSecondsLeft(doc.clock));
+        // guard: a doc can exist with data but no clock (stale/dead code)
+        if (doc.clock) {
+          setLevelIdx(doc.clock.levelIdx);
+          setOnBreak(doc.clock.onBreak);
+          setRunning(doc.clock.running);
+          setSeconds(clockSecondsLeft(doc.clock));
+        }
       });
     });
     return () => {

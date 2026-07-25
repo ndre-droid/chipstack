@@ -351,6 +351,13 @@ function migrate(raw: string | null): AppState {
   if (settings.language !== 'en' && settings.language !== 'de') settings.language = 'en';
   if (typeof settings.deviceIsTv !== 'boolean') settings.deviceIsTv = false;
   if (typeof settings.liveSessionCode !== 'string') settings.liveSessionCode = null;
+  // Pairing was rebuilt (TV owns the doc/clock; codes are now 4 digits). Any persisted
+  // pre-rebuild session used a 6-digit code and is meaningless now — drop it so a stale
+  // 'host' role can't point at a clock-less doc (which crashed the Table tab).
+  if (settings.liveSessionCode && !/^\d{4}$/.test(settings.liveSessionCode)) {
+    settings.liveSessionCode = null;
+    settings.liveSessionRole = null;
+  }
   if (settings.liveSessionRole !== 'host' && settings.liveSessionRole !== 'tv') settings.liveSessionRole = null;
   const validAppear = ['system', 'light', 'dark'];
   if (!validAppear.includes(settings.appearance)) settings.appearance = 'dark';

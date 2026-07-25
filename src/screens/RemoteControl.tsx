@@ -54,7 +54,11 @@ export default function RemoteControl() {
     let cancelled = false;
     import('../lib/liveSession').then(({ subscribeSession }) => {
       if (cancelled) return;
-      unsub = subscribeSession(liveSessionCode, (doc) => setClock(doc.clock));
+      // The TV owns the clock; a doc may briefly exist with data but no clock
+      // (e.g. a stale/dead code). Never overwrite our valid clock with undefined.
+      unsub = subscribeSession(liveSessionCode, (doc) => {
+        if (doc.clock) setClock(doc.clock);
+      });
     });
     return () => {
       cancelled = true;
