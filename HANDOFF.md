@@ -249,9 +249,8 @@ bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out o
    **Kept from that work:** the denom palette was matched to the real photos — `10` → `#31B6C9` (cyan),
    `100` → `#0C0C10` (black) in `store.tsx` `defaultDenoms()`. Existing users' saved colours are
    preserved by `migrate()` (only defaults change).
-1. **APK predates the pairing rebuild** (last built before the TV-shows-code / 4-digit flip — not yet
-   committed/pushed either). Rebuild after pushing with
-   `gh workflow run "Build Android APK" -R ndre-droid/chipstack --ref main`. **One-time:** because
+1. **APK is current** (rebuilt 2026-07-25 with the pairing flip + QR, run 30149580678). Rebuild anytime
+   with `gh workflow run "Build Android APK" -R ndre-droid/chipstack --ref main`. **One-time:** because
    signing switched to a stable key, if an old per-run-signed APK is still installed the user must
    **uninstall it once** before the new one installs over it; every update after that preserves data.
    The **web app is the primary path** (that's what the TV runs); the APK is secondary.
