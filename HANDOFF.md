@@ -199,6 +199,9 @@ phone (never on the TV with the Magic Remote). Key pieces:
   advances). Host preview mirrors read-only. Either side pushes discrete commands via `pushClock`.
 - Standalone TvMode (no session) still runs fully local and offers a **"Use this device as the TV"**
   pill that sets `deviceIsTv`.
+- **Connect toast:** the moment a phone pairs (paired false→true), the TV flashes "📱 Phone
+  connected" for ~4s (`.tv-toast`, `tv.phoneConnected`). Generic — no per-phone name (no identity
+  model); could add a name later if wanted.
 - **QR shortcut:** the waiting TV also shows a QR (`qrcode-generator`) encoding
   `<origin><path>?tv=NNNN`. A phone scanning it loads the app; `App.tsx` reads `?tv=` (captured at
   MODULE load into `initialTvCode` so it survives StrictMode's double-mount + the URL strip) and

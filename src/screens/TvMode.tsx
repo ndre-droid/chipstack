@@ -97,6 +97,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const [shot, setShot] = useState<number | null>(null);
   const [spin, setSpin] = useState<{ name: string; done: boolean } | null>(null);
   const [paired, setPaired] = useState(false); // a phone has connected (doc has data)
+  const [connectToast, setConnectToast] = useState(false); // brief "phone connected" cue
+  const prevPaired = useRef(false);
   const tick = useRef<number | null>(null);
 
   // This device is the TV: make sure a pairing code/doc exists and claim the 'tv'
@@ -282,6 +284,17 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running, onBreak, blindLevels.length, minutesPerLevel, levelIdx, synced, liveSessionCode, liveSessionRole, ownsClockAdvance, breakEvery, breakMins]);
 
+  // flash a "phone connected" cue on the big screen the moment a phone pairs
+  useEffect(() => {
+    if (paired && !prevPaired.current) {
+      setConnectToast(true);
+      const id = window.setTimeout(() => setConnectToast(false), 4000);
+      prevPaired.current = true;
+      return () => window.clearTimeout(id);
+    }
+    if (!paired) prevPaired.current = false;
+  }, [paired]);
+
   // the rotation = the user's own sayings first, then the built-ins
   const quips = useMemo(() => {
     const custom = (tvCustomQuips ?? []).map((q) => q.trim()).filter(Boolean);
@@ -437,6 +450,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         </div>
       )}
       {firebaseConfigured && isHostView && <div className="tv-connect-pill live">● {t('tv.liveConnected')}</div>}
+      {connectToast && <div className="tv-toast">📱 {t('tv.phoneConnected')}</div>}
       {/* Standalone: offer to make this device the permanent TV */}
       {firebaseConfigured && !deviceIsTv && !synced && (
         <button className="tv-connect-pill use-tv" onClick={useAsTv}>📺 {t('tv.useAsTv')}</button>

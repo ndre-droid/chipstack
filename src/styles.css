@@ -1285,6 +1285,19 @@ input[type='color'] { cursor: pointer; }
 }
 .tv-pair-qr span { color: var(--tv-dim); font-size: clamp(10px, 1.2vmin, 16px); text-align: center; }
 
+/* TV: brief "phone connected" cue */
+.tv-toast {
+  position: absolute; top: clamp(14px, 4vmin, 64px); left: 50%; transform: translateX(-50%); z-index: 6;
+  background: var(--acc); color: var(--on-acc); font-weight: 700;
+  font-size: clamp(14px, 1.9vmin, 30px); padding: clamp(8px, 1.4vmin, 16px) clamp(16px, 2.6vmin, 32px);
+  border-radius: 999px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.32);
+  animation: tv-toast-in 0.3s ease;
+}
+@keyframes tv-toast-in {
+  from { opacity: 0; transform: translate(-50%, -12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
 /* phone: 4-digit "Connect to TV" code entry */
 .code-boxes { display: flex; gap: 10px; justify-content: center; }
 .code-box {
