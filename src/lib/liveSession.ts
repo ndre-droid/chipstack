@@ -29,14 +29,16 @@ export interface LiveData {
 }
 
 export interface LiveDoc {
-  data: LiveData;
+  /** null while the TV is advertising a code but no phone has connected yet. */
+  data: LiveData | null;
   clock: ClockState;
 }
 
 export { firebaseConfigured };
 
+/** Short 4-digit pairing code — big on the TV, quick to type on the phone. */
 export function genCode(): string {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return String(Math.floor(1000 + Math.random() * 9000));
 }
 
 function sessionRef(code: string) {
@@ -69,24 +71,32 @@ function dataOf(state: AppState): LiveData {
   };
 }
 
-/** Host (phone): create the shared session document. */
-export async function hostCreate(code: string, state: AppState, clock: ClockState): Promise<void> {
-  await setDoc(sessionRef(code), { data: dataOf(state), clock, updatedAt: serverTimestamp() });
-}
-
 /**
- * Host (phone): make sure the session document actually exists on the server.
- * Self-heals the case where a `host` code was persisted in localStorage from an
- * earlier run but its server document is gone — without which the TV's join reads
- * "code not found". Creates the doc (with a fresh clock) only if it's missing; an
- * existing doc's clock is left untouched.
+ * TV: make sure a pairing document exists and return the code to show on screen.
+ * Reuses the TV's persisted code across reloads (recreating the doc if it expired)
+ * so the code stays stable; otherwise picks an unused 4-digit code. The doc starts
+ * with `data: null` — the TV shows its own local game until a phone connects and
+ * fills `data` in.
  */
-export async function hostEnsureExists(code: string, state: AppState, clock: ClockState): Promise<void> {
-  const ref = sessionRef(code);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) {
-    await setDoc(ref, { data: dataOf(state), clock, updatedAt: serverTimestamp() });
+export async function tvEnsurePairing(existingCode: string | null, clock: ClockState): Promise<string> {
+  if (existingCode) {
+    const ref = sessionRef(existingCode);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) await setDoc(ref, { data: null, clock, updatedAt: serverTimestamp() });
+    return existingCode;
   }
+  for (let i = 0; i < 8; i++) {
+    const code = genCode();
+    const snap = await getDoc(sessionRef(code));
+    if (!snap.exists()) {
+      await setDoc(sessionRef(code), { data: null, clock, updatedAt: serverTimestamp() });
+      return code;
+    }
+  }
+  // extremely unlikely fallback: 8 codes all taken — accept a last one
+  const code = genCode();
+  await setDoc(sessionRef(code), { data: null, clock, updatedAt: serverTimestamp() });
+  return code;
 }
 
 /**

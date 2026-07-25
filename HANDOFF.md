@@ -107,8 +107,8 @@ src/
   styles.css         THE design system: neutral tokens (light base + dark override), 4 skin
                      token blocks (minimal/casino/playful/scifi) + structural rules, 8 accent
                      hues (data-accent), all TV-mode CSS (.tv*, per-tv-skin themed via --tv-*
-                     tokens + data-tv-skin), live keypad/pill. Skins drive --acc/--app-bg/
-                     --font-display/etc.
+                     tokens + data-tv-skin), pairing card (.tv-pair) + connect pill + phone
+                     code boxes (.code-box). Skins drive --acc/--app-bg/--font-display/etc.
   lib/
     distribution.ts  THE engine: computeStack(), selectPool() [only the SMALLEST chip must post
                      the blind — larger chips need NOT be blind-multiples], rebalance(),
@@ -134,12 +134,15 @@ src/
                      slider up top; config (players/buy-in/blinds/options) below a "Session setup"
                      divider; collapsible "Later levels & colour-up"; fine-tune editor; share.
     ChipsScreen.tsx  inventory editor
-    TableScreen.tsx  blind clock + "Big screen · TV mode" button + RemoteControl (host only) +
-                     dealer button + seat draw
+    TableScreen.tsx  ConnectToTv card + blind clock + "Big screen · TV mode" button +
+                     RemoteControl (host only) + dealer button + seat draw
+    ConnectToTv.tsx  phone-side link: 4 code boxes → checkCodeExists → role 'host' + code
+                     (replaced LiveSessionControl.tsx). Firebase-configured only.
     TvMode.tsx       fullscreen landscape big-screen dashboard (clock/standings/legend/colour-up/
-                     quips/shot-clock/who-drinks) + live "Connect" keypad + subscribes & mirrors
-                     when joined (and OWNS the countdown). Sized in clamp(min,vmin,max) → scales
-                     to 4K. data-tv-skin/-accent chosen independently ('match' follows phone).
+                     quips/shot-clock/who-drinks). If deviceIsTv: advertises a pairing code
+                     (tvEnsurePairing), shows .tv-pair card until a phone connects, then mirrors
+                     the host's data + OWNS the countdown. NO on-screen keypad (phone types the
+                     code). Standalone shows a "Use this device as the TV" pill. clamp()→4K.
     RemoteControl.tsx phone's clock remote (host only); sends commands, never runs a local timer.
     CashScreen.tsx   persisted ledger → who-pays-whom
     SettingsScreen.tsx Language, Style (4 skins), Appearance (minimal only), Accent (per-skin, 8),
@@ -174,19 +177,40 @@ prize pool/players-left/avg-stack from ledger, **live players roster**, chip leg
 shot clock, "who drinks?" spinner, adaptive background photo, 4K-scaled, wakeLock). **Live Session**
 cloud sync (host phone ↔ TV). 4 skins, 8 per-skin accents, German/English.
 
-### Live control = the phone is a full TV remote (2026-07-25)
-The Table tab, while hosting, is the whole control surface; everything syncs to the TV via
-`LiveData` and applies through `LIVE_APPLY_REMOTE`. **Design/toggle changes push IMMEDIATELY**
-(separate no-debounce effect in `useLiveHostSync`); only typed/large data (names, buy-ins, blinds,
-background photo) is debounced (250ms). Controls on the Table tab (host only, `RemoteControl.tsx`):
-clock, level length (±1/±10 + Turbo/Standard/Deep presets), break length + auto-break every N
-levels, blinds (edit/add/remove), players & pool (rename, buy-in, Rebuy, **Bust/Back-in**,
-add/remove), TV design (skin incl. Match + accent), and toggles for players / payouts / bust-order /
-quips + a custom-quips editor. **Live Session start + code live on the Table tab now**
-(`LiveSessionControl.tsx`); Settings just points there. Player-count stepper is on the Table tab too.
-TV displays added (each toggleable): payout split (auto structure by entrant count),
-knocked-out/finish order (`LedgerPlayer.outAt`), break cue. Custom quips join the rotation.
-`Settings.tvShowPayouts/tvShowBustOrder/tvCustomQuips/breakMinutes/breakEvery` + synced skin etc.
+### Pairing REBUILT: TV shows a code, phone types it (2026-07-25)
+**Direction flipped** — the TV is a display, the phone is the controller, and you type on the
+phone (never on the TV with the Magic Remote). Key pieces:
+- **`Settings.deviceIsTv`** (per-device, NOT synced, not in `LiveData`): marks this device the big
+  screen. When true, `App.tsx` renders `<TvMode>` fullscreen instead of the tab shell and it boots
+  straight there. Exit clears `deviceIsTv` + role + code.
+- **TV owns the session doc.** `liveSession.tvEnsurePairing(existingCode|null, clock)` picks an
+  unused **4-digit** code (`genCode()` now 4 digits), `setDoc(sessions/{code}, { data:null, clock })`,
+  and reuses the persisted code across reloads so it stays stable on screen. TvMode claims role
+  `'tv'` and subscribes.
+- **`LiveDoc.data` is nullable.** `null` = TV advertising, no phone yet → TV shows its OWN local
+  game + the pairing card (`.tv-pair`) with the code, corner pill `Code NNNN`. When a phone connects
+  and writes `data`, TvMode flips `paired`, applies `LIVE_APPLY_REMOTE` (now ALL LiveData fields —
+  previously payouts/bustOrder/customQuips/break* were dropped), and the pill shows `● Live`.
+- **Phone = `ConnectToTv.tsx`** (replaced `LiveSessionControl.tsx`, deleted) on the Table tab: 4 code
+  boxes → `checkCodeExists` → role `'host'` + code. `useLiveHostSync` then merges its data into the
+  TV's doc (host no longer creates the doc — dropped `hostCreate`/`hostEnsureExists`). Once host,
+  `RemoteControl.tsx` (unchanged) is the full control panel.
+- **Clock:** TV owns the tick + auto-advance (`ownsClockAdvance = role !== 'host'`; standalone also
+  advances). Host preview mirrors read-only. Either side pushes discrete commands via `pushClock`.
+- Standalone TvMode (no session) still runs fully local and offers a **"Use this device as the TV"**
+  pill that sets `deviceIsTv`.
+- **QR shortcut:** the waiting TV also shows a QR (`qrcode-generator`) encoding
+  `<origin><path>?tv=NNNN`. A phone scanning it loads the app; `App.tsx` reads `?tv=` (captured at
+  MODULE load into `initialTvCode` so it survives StrictMode's double-mount + the URL strip) and
+  connects as host — no typing. QR opens the WEB app even on APK phones (deep-link into the APK not
+  wired); manual 4-digit entry works everywhere.
+- Verified end-to-end in two tabs: code 4395 generated → doc created (`data:null`) → phone typed it
+  → TV went `● Live` → phone Play ticked the TV clock. No console errors.
+
+RemoteControl (host, Table tab) still covers: clock, level length (±1/±10 + Turbo/Standard/Deep),
+break length + auto-break every N, blinds (edit/add/remove), players & pool (rename, buy-in, Rebuy,
+**Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
+bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
 
 ### Recent work (2026-07-24/25)
 - **Chip slider MAX = true smallest-first fill.** At the top of the slider (`smallBias >= 0.999`)
@@ -225,7 +249,8 @@ knocked-out/finish order (`LedgerPlayer.outAt`), break cue. Custom quips join th
    **Kept from that work:** the denom palette was matched to the real photos — `10` → `#31B6C9` (cyan),
    `100` → `#0C0C10` (black) in `store.tsx` `defaultDenoms()`. Existing users' saved colours are
    preserved by `migrate()` (only defaults change).
-1. **APK is current** (rebuilt 2026-07-25 with all the above). Rebuild anytime with
+1. **APK predates the pairing rebuild** (last built before the TV-shows-code / 4-digit flip — not yet
+   committed/pushed either). Rebuild after pushing with
    `gh workflow run "Build Android APK" -R ndre-droid/chipstack --ref main`. **One-time:** because
    signing switched to a stable key, if an old per-run-signed APK is still installed the user must
    **uninstall it once** before the new one installs over it; every update after that preserves data.

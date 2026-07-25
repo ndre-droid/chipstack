@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import qrcode from 'qrcode-generator';
 import { useStore } from '../store';
 import Chip from '../components/Chip';
 import { IconPlay, IconPause, IconChevron, IconReset } from '../components/Icons';
@@ -7,7 +8,7 @@ import { fmtMoney } from '../lib/money';
 import { useT } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 import type { Unsubscribe } from 'firebase/firestore';
-import { secondsLeft as clockSecondsLeft } from '../lib/clockLogic';
+import { secondsLeft as clockSecondsLeft, initialClock } from '../lib/clockLogic';
 import type { ClockState } from '../lib/clockLogic';
 
 const QUIPS = [
@@ -64,7 +65,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useStore();
   const t = useT();
   const { blindLevels } = state.session;
-  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, liveSessionCode, liveSessionRole } = state.settings;
+  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole } = state.settings;
   const breakMins = breakMinutes ?? 5;
   // per-photo smart placement: crop toward the subject, keep it clear, and nudge the
   // clock to the calm side; brighter photos get a stronger scrim so text stays legible.
@@ -77,7 +78,15 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const denominations = state.denominations;
   const ledger = state.ledger;
 
-  const connected = firebaseConfigured && liveSessionRole === 'tv' && !!liveSessionCode;
+  // Role model:
+  //  - isTv:       this device shows a pairing code, owns the clock, mirrors the
+  //                phone's data once a phone connects (data present in the doc).
+  //  - isHostView: a controlling phone previewing its TV — read-only mirror.
+  //  - standalone: no live session — runs entirely on its own local data/clock.
+  const isTv = firebaseConfigured && liveSessionRole === 'tv' && !!liveSessionCode;
+  const isHostView = firebaseConfigured && liveSessionRole === 'host' && !!liveSessionCode;
+  const synced = isTv || isHostView;
+  const ownsClockAdvance = liveSessionRole !== 'host'; // TV + standalone auto-advance; host preview mirrors
 
   const [levelIdx, setLevelIdx] = useState(0);
   const [seconds, setSeconds] = useState(minutesPerLevel * 60);
@@ -87,39 +96,69 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const [quipIdx, setQuipIdx] = useState(0);
   const [shot, setShot] = useState<number | null>(null);
   const [spin, setSpin] = useState<{ name: string; done: boolean } | null>(null);
+  const [paired, setPaired] = useState(false); // a phone has connected (doc has data)
   const tick = useRef<number | null>(null);
 
-  const [showJoin, setShowJoin] = useState(false);
-  const [joinDigits, setJoinDigits] = useState('');
-  const [joinBusy, setJoinBusy] = useState(false);
-  const [joinErr, setJoinErr] = useState<string | null>(null);
-
-  // subscribe to the shared session once connected; mirror data + clock locally.
-  // The Firebase SDK is only dynamically imported once a code is actually joined.
+  // This device is the TV: make sure a pairing code/doc exists and claim the 'tv'
+  // role. Reuses the persisted code across reloads so it stays stable on screen.
   useEffect(() => {
-    if (!connected || !liveSessionCode) return;
+    if (!firebaseConfigured || !deviceIsTv) return;
+    let cancelled = false;
+    import('../lib/liveSession')
+      .then(({ tvEnsurePairing }) =>
+        tvEnsurePairing(liveSessionRole === 'tv' ? liveSessionCode : null, initialClock(minutesPerLevel)),
+      )
+      .then((code) => {
+        if (cancelled) return;
+        if (liveSessionRole !== 'tv' || liveSessionCode !== code) {
+          dispatch({ type: 'UPDATE_SETTINGS', patch: { liveSessionCode: code, liveSessionRole: 'tv' } });
+        }
+      })
+      .catch(() => {
+        /* offline or transient — retried on next mount */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deviceIsTv]);
+
+  // Subscribe to the shared session: mirror the clock always, and (as the TV)
+  // apply the phone's data once it connects. Firebase is only imported here.
+  useEffect(() => {
+    if (!synced || !liveSessionCode) return;
     let unsub: Unsubscribe | null = null;
     let cancelled = false;
     import('../lib/liveSession').then(({ subscribeSession }) => {
       if (cancelled) return;
       unsub = subscribeSession(liveSessionCode, (doc) => {
-        dispatch({
-          type: 'LIVE_APPLY_REMOTE',
-          denominations: doc.data.denominations,
-          session: doc.data.session,
-          ledger: doc.data.ledger,
-          currency: doc.data.currency,
-          unitValue: doc.data.unitValue,
-          tvBackground: doc.data.tvBackground ?? null,
-          tvBackgroundFocus: doc.data.tvBackgroundFocus ?? null,
-          tvBackgroundTone: doc.data.tvBackgroundTone ?? null,
-          minutesPerLevel: doc.data.minutesPerLevel,
-          skin: doc.data.skin,
-          tvSkin: doc.data.tvSkin,
-          accents: doc.data.accents,
-          tvQuips: doc.data.tvQuips,
-          tvShowPlayers: doc.data.tvShowPlayers,
-        });
+        if (isTv && doc.data) {
+          setPaired(true);
+          dispatch({
+            type: 'LIVE_APPLY_REMOTE',
+            denominations: doc.data.denominations,
+            session: doc.data.session,
+            ledger: doc.data.ledger,
+            currency: doc.data.currency,
+            unitValue: doc.data.unitValue,
+            tvBackground: doc.data.tvBackground ?? null,
+            tvBackgroundFocus: doc.data.tvBackgroundFocus ?? null,
+            tvBackgroundTone: doc.data.tvBackgroundTone ?? null,
+            minutesPerLevel: doc.data.minutesPerLevel,
+            skin: doc.data.skin,
+            tvSkin: doc.data.tvSkin,
+            accents: doc.data.accents,
+            tvQuips: doc.data.tvQuips,
+            tvCustomQuips: doc.data.tvCustomQuips,
+            tvShowPlayers: doc.data.tvShowPlayers,
+            tvShowPayouts: doc.data.tvShowPayouts,
+            tvShowBustOrder: doc.data.tvShowBustOrder,
+            breakMinutes: doc.data.breakMinutes,
+            breakEvery: doc.data.breakEvery,
+          });
+        } else if (isTv) {
+          setPaired(false);
+        }
         setLevelIdx(doc.clock.levelIdx);
         setOnBreak(doc.clock.onBreak);
         setRunning(doc.clock.running);
@@ -131,10 +170,10 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       unsub?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, liveSessionCode]);
+  }, [synced, liveSessionCode, liveSessionRole]);
 
   const pushClockIfConnected = (li: number, ob: boolean, run: boolean, secs: number) => {
-    if (!connected || !liveSessionCode) return;
+    if (!synced || !liveSessionCode) return;
     const next: ClockState = {
       levelIdx: li,
       onBreak: ob,
@@ -150,32 +189,24 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     );
   };
 
-  const connectWithCode = async () => {
-    if (joinDigits.length < 6) {
-      setJoinErr(t('tv.joinTooShort'));
-      return;
-    }
-    setJoinErr(null);
-    setJoinBusy(true);
+  // Standalone → become the designated TV: App will re-mount this fullscreen and
+  // the pairing effect above claims a code.
+  const useAsTv = () => dispatch({ type: 'UPDATE_SETTINGS', patch: { deviceIsTv: true } });
+
+  // Deep-link QR: opening this URL on a phone loads the app and auto-connects as
+  // host to this code (App reads `?tv=`), so the phone can pair by scanning too.
+  const pairQr = useMemo(() => {
+    if (!liveSessionCode) return null;
     try {
-      const { checkCodeExists } = await import('../lib/liveSession');
-      const exists = await checkCodeExists(joinDigits);
-      if (!exists) {
-        // reached the server fine, the code simply isn't there
-        setJoinErr(t('tv.joinNotFound'));
-        return;
-      }
-      dispatch({ type: 'UPDATE_SETTINGS', patch: { liveSessionCode: joinDigits, liveSessionRole: 'tv' } });
-      setShowJoin(false);
-      setJoinDigits('');
+      const url = `${window.location.origin}${window.location.pathname}?tv=${liveSessionCode}`;
+      const qr = qrcode(0, 'M');
+      qr.addData(url);
+      qr.make();
+      return qr.createDataURL(6, 12);
     } catch {
-      // couldn't reach Firestore at all — a network/config problem, not a wrong code
-      setJoinErr(t('tv.joinError'));
-    } finally {
-      setJoinBusy(false);
+      return null;
     }
-  };
-  const disconnectLive = () => dispatch({ type: 'UPDATE_SETTINGS', patch: { liveSessionCode: null, liveSessionRole: null } });
+  }, [liveSessionCode]);
 
   const level = blindLevels[Math.min(levelIdx, blindLevels.length - 1)];
   const next = blindLevels[levelIdx + 1];
@@ -210,6 +241,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     tick.current = window.setInterval(() => {
       setSeconds((s) => {
         if (s > 1) return s - 1;
+        // host preview never auto-advances — the TV owns that and pushes it here
+        if (!ownsClockAdvance) return 0;
         if (onBreak) {
           setOnBreak(false);
           chime();
@@ -247,7 +280,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       if (tick.current) window.clearInterval(tick.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running, onBreak, blindLevels.length, minutesPerLevel, levelIdx, connected, liveSessionCode, breakEvery, breakMins]);
+  }, [running, onBreak, blindLevels.length, minutesPerLevel, levelIdx, synced, liveSessionCode, liveSessionRole, ownsClockAdvance, breakEvery, breakMins]);
 
   // the rotation = the user's own sayings first, then the built-ins
   const quips = useMemo(() => {
@@ -397,18 +430,37 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     >
       {tvBackground && <div className="tv-bg-scrim" />}
 
-      {/* This device is the host (the phone) — it's the source, so it never "joins". */}
-      {firebaseConfigured && liveSessionRole === 'host' && (
-        <div className="tv-connect-pill host">● {t('tv.hostingHere')}</div>
+      {/* Corner status pill */}
+      {firebaseConfigured && isTv && (
+        <div className={`tv-connect-pill ${paired ? 'live' : ''}`}>
+          {paired ? `● ${t('tv.liveConnected')}` : `${t('connect.code')} ${liveSessionCode}`}
+        </div>
       )}
-      {/* A display device (the TV): join a session, or show it's live. */}
-      {firebaseConfigured && liveSessionRole !== 'host' && (
-        <button
-          className={`tv-connect-pill ${connected ? 'live' : ''}`}
-          onClick={() => (connected ? disconnectLive() : setShowJoin(true))}
-        >
-          {connected ? `● ${t('tv.liveConnected')}` : t('tv.joinConnect')}
-        </button>
+      {firebaseConfigured && isHostView && <div className="tv-connect-pill live">● {t('tv.liveConnected')}</div>}
+      {/* Standalone: offer to make this device the permanent TV */}
+      {firebaseConfigured && !deviceIsTv && !synced && (
+        <button className="tv-connect-pill use-tv" onClick={useAsTv}>📺 {t('tv.useAsTv')}</button>
+      )}
+
+      {/* This device is the TV, waiting for a phone — show the code to type on the phone */}
+      {firebaseConfigured && isTv && !paired && liveSessionCode && (
+        <div className="tv-pair">
+          <div className="tv-pair-lead">
+            <div className="tv-pair-title">{t('tv.controlFromPhone')}</div>
+            <div className="tv-pair-sub">{t('tv.enterOnPhone')}</div>
+          </div>
+          <div className="tv-pair-code">
+            {liveSessionCode.split('').map((c, i) => (
+              <span className="tv-pair-digit" key={i}>{c}</span>
+            ))}
+          </div>
+          {pairQr && (
+            <div className="tv-pair-qr">
+              <img src={pairQr} alt="" />
+              <span>{t('tv.scanToConnect')}</span>
+            </div>
+          )}
+        </div>
       )}
 
       {flash && (
@@ -520,7 +572,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         )}
         <button className="tv-txt" onClick={() => setShot(30)}>{t('tv.shotClock')}</button>
         <button className="tv-txt" onClick={spinRound}>{t('tv.whoDrinks')}</button>
-        <button className="tv-txt tv-exit" onClick={onClose}>{t('tv.exit')}</button>
+        <button className="tv-txt tv-exit" onClick={onClose}>{deviceIsTv ? t('tv.exitTv') : t('tv.exit')}</button>
       </div>
 
       {/* shot clock overlay */}
@@ -538,35 +590,6 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           <div className="tv-overlay-label">{t('tv.whoDrinksNext')}</div>
           <div className={`tv-overlay-name ${spin.done ? 'won' : ''}`}>{spin.name}</div>
           {spin.done && <div className="tv-overlay-hint">🍻 {t('tv.youreUp')}</div>}
-        </div>
-      )}
-
-      {/* join-a-live-session overlay */}
-      {showJoin && (
-        <div className="tv-overlay">
-          <div className="tv-overlay-label">{t('tv.joinTitle')}</div>
-          <p className="tv-join-hint">{t('tv.joinHint')}</p>
-          <div className="tv-join-display">{joinDigits.padEnd(6, '·')}</div>
-          {joinErr && <div className="tv-join-error">{joinErr}</div>}
-          <div className="tv-keypad">
-            {['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', 'OK'].map((k) => (
-              <button
-                key={k}
-                className={`tv-key ${k === 'OK' ? 'ok' : ''} ${k === '⌫' ? 'del' : ''}`}
-                disabled={joinBusy}
-                onClick={() => {
-                  if (k === '⌫') setJoinDigits((d) => d.slice(0, -1));
-                  else if (k === 'OK') connectWithCode();
-                  else if (joinDigits.length < 6) setJoinDigits((d) => d + k);
-                }}
-              >
-                {joinBusy && k === 'OK' ? '…' : k}
-              </button>
-            ))}
-          </div>
-          <button className="tv-txt" style={{ marginTop: 18 }} onClick={() => { setShowJoin(false); setJoinDigits(''); setJoinErr(null); }}>
-            {t('tv.skipJoin')}
-          </button>
         </div>
       )}
     </div>

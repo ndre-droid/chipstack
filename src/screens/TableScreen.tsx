@@ -3,7 +3,7 @@ import { useStore } from '../store';
 import { IconPlay, IconPause, IconReset, IconChevron, IconDice, IconExpand } from '../components/Icons';
 import TvMode from './TvMode';
 import RemoteControl from './RemoteControl';
-import LiveSessionControl from './LiveSessionControl';
+import ConnectToTv from './ConnectToTv';
 import { useT } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 
@@ -93,8 +93,8 @@ export default function TableScreen() {
 
   return (
     <div>
-      {/* Live Session — start / code, right here on the Table tab */}
-      <LiveSessionControl />
+      {/* Connect to the TV — type the code the TV shows, right here on the Table tab */}
+      <ConnectToTv />
 
       {/* Players at the table — adjustable any time during the session */}
       <div className="card">

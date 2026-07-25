@@ -48,9 +48,13 @@ export interface Settings {
   appearance: Appearance;   // system / light / dark — applies to the minimal skin
   chipArt: ChipArt;         // chip face art style
   language: 'en' | 'de';
-  /** Live Session (cloud sync): 'host' = this phone pushes data + sends clock commands;
-   *  'tv' = this device owns the clock and mirrors incoming data. Set by whichever
-   *  flow (Settings "Start" vs TvMode "Join") created the connection. */
+  /** This device is designated the big screen: it boots straight into TV mode,
+   *  advertises a pairing code, and a phone connects to it. Per-device (never
+   *  synced or shared), so only the actual TV carries it. */
+  deviceIsTv: boolean;
+  /** Live Session (cloud sync): 'tv' = this device shows a pairing code, owns the
+   *  clock and mirrors the phone's data once paired; 'host' = the phone that typed
+   *  the code, pushing data + sending clock commands. Null when not in a session. */
   liveSessionCode: string | null;
   liveSessionRole: 'host' | 'tv' | null;
 }

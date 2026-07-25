@@ -60,6 +60,7 @@ const defaultSettings: Settings = {
   appearance: 'dark',
   chipArt: 'deco',
   language: 'en',
+  deviceIsTv: false,
   liveSessionCode: null,
   liveSessionRole: null,
 };
@@ -348,6 +349,7 @@ function migrate(raw: string | null): AppState {
   }
   if (typeof settings.tvBackgroundTone !== 'number') settings.tvBackgroundTone = null;
   if (settings.language !== 'en' && settings.language !== 'de') settings.language = 'en';
+  if (typeof settings.deviceIsTv !== 'boolean') settings.deviceIsTv = false;
   if (typeof settings.liveSessionCode !== 'string') settings.liveSessionCode = null;
   if (settings.liveSessionRole !== 'host' && settings.liveSessionRole !== 'tv') settings.liveSessionRole = null;
   const validAppear = ['system', 'light', 'dark'];

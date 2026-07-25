@@ -5,6 +5,7 @@ import ChipsScreen from './screens/ChipsScreen';
 import TableScreen from './screens/TableScreen';
 import CashScreen from './screens/CashScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import TvMode from './screens/TvMode';
 import { IconPlan, IconChips, IconTable, IconCash, IconSettings } from './components/Icons';
 import { useT } from './lib/i18n';
 import { useLiveHostSync } from './lib/useLiveHostSync';
@@ -44,6 +45,17 @@ function LogoMark() {
   );
 }
 
+// Captured once at load (before React), so it survives StrictMode's double-mount
+// even after the effect strips the URL — a phone opening the TV's QR pairs reliably.
+const initialTvCode: string | null = (() => {
+  try {
+    const c = new URLSearchParams(window.location.search).get('tv');
+    return c && /^\d{4}$/.test(c) ? c : null;
+  } catch {
+    return null;
+  }
+})();
+
 export default function App() {
   return (
     <StoreProvider>
@@ -55,8 +67,8 @@ export default function App() {
 function AppShell() {
   const [view, setView] = useState<View>('plan');
   const lastTab = useRef<Tab>('plan');
-  const { state } = useStore();
-  const { skin, accents, appearance } = state.settings;
+  const { state, dispatch } = useStore();
+  const { skin, accents, appearance, deviceIsTv } = state.settings;
   const activeSkin = skin ?? 'minimal';
   const activeAccent = accents?.[activeSkin] ?? 'amber';
   const t = useT();
@@ -68,6 +80,17 @@ function AppShell() {
     cash: t('header.cash'),
     settings: t('header.settings'),
   };
+
+  // Deep link from the TV's QR: `?tv=NNNN` connects this phone as the host of
+  // that session (the TV already created the doc), then strips the param so a
+  // reload doesn't re-trigger it. Runs once on load.
+  useEffect(() => {
+    if (!initialTvCode) return;
+    dispatch({ type: 'UPDATE_SETTINGS', patch: { liveSessionCode: initialTvCode, liveSessionRole: 'host', deviceIsTv: false } });
+    const url = window.location.origin + window.location.pathname + window.location.hash;
+    window.history.replaceState(null, '', url);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // apply skin + accent (+ appearance for minimal) to <html>.
   // each skin carries its own accent; 'minimal' also honours light/dark, the other
@@ -88,6 +111,18 @@ function AppShell() {
     lastTab.current = t;
     setView(t);
   };
+
+  // This device is the designated TV: boot straight into the big screen. Exiting
+  // clears the flag (and any live session) and returns to the normal phone app.
+  if (deviceIsTv) {
+    return (
+      <TvMode
+        onClose={() =>
+          dispatch({ type: 'UPDATE_SETTINGS', patch: { deviceIsTv: false, liveSessionRole: null, liveSessionCode: null } })
+        }
+      />
+    );
+  }
 
   return (
     <div className="app">
