@@ -9,6 +9,7 @@ import TvMode from './screens/TvMode';
 import { IconPlan, IconChips, IconTable, IconCash, IconSettings } from './components/Icons';
 import { useT } from './lib/i18n';
 import { useLiveHostSync } from './lib/useLiveHostSync';
+import { useNativeDeepLink, appSchemeUrl } from './lib/deepLink';
 
 type Tab = 'plan' | 'chips' | 'table' | 'cash';
 type View = Tab | 'settings';
@@ -73,6 +74,17 @@ function AppShell() {
   const activeAccent = accents?.[activeSkin] ?? 'amber';
   const t = useT();
   useLiveHostSync();
+
+  // Connect this phone as the host of a session (from the TV's QR / deep link).
+  const connectAsHost = (code: string) =>
+    dispatch({ type: 'UPDATE_SETTINGS', patch: { liveSessionCode: code, liveSessionRole: 'host', deviceIsTv: false } });
+  // Native app: opened via chipstack://tv/NNNN (or the https App Link) → host it.
+  useNativeDeepLink(connectAsHost);
+
+  // On the WEB, a phone that scanned the QR can hand off into the installed app.
+  const isAndroidWeb = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+  const [openAppBar, setOpenAppBar] = useState(!!initialTvCode && isAndroidWeb);
+
   const HEADER_SUB: Record<View, string> = {
     plan: t('header.plan'),
     chips: t('header.chips'),
@@ -126,6 +138,13 @@ function AppShell() {
 
   return (
     <div className="app">
+      {openAppBar && initialTvCode && (
+        <div className="openapp-banner">
+          <span className="openapp-txt">{t('app.openInApp')}</span>
+          <a className="btn btn-primary btn-sm" href={appSchemeUrl(initialTvCode)}>{t('app.openApp')}</a>
+          <button className="openapp-x" onClick={() => setOpenAppBar(false)} aria-label={t('app.stayWeb')}>×</button>
+        </div>
+      )}
       <header className="app-header">
         <LogoMark />
         <span className="wordmark">

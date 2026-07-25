@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
-import { useT } from '../lib/i18n';
-import { fmtMoney } from '../lib/money';
+import { useT, useFmt } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 import type { Unsubscribe } from 'firebase/firestore';
 import { togglePlayPause, goLevel, startBreak, cancelBreak, secondsLeft, initialClock, setMinutesPerLevel } from '../lib/clockLogic';
@@ -35,6 +34,7 @@ const ACCENTS: { id: AccentId; color: string }[] = [
 export default function RemoteControl() {
   const { state, dispatch } = useStore();
   const t = useT();
+  const { money } = useFmt();
   const { liveSessionCode, liveSessionRole, minutesPerLevel, currency, skin, tvSkin, accents, tvQuips, tvShowPlayers, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvCustomQuips } = state.settings;
   const { ledger, session } = state;
   const maxIdx = session.blindLevels.length - 1;
@@ -45,6 +45,8 @@ export default function RemoteControl() {
   const [showDesign, setShowDesign] = useState(false);
   const [showQuips, setShowQuips] = useState(false);
   const [newQuip, setNewQuip] = useState('');
+  const [syncState, setSyncState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const syncTimer = useRef<number | null>(null);
 
   const active = firebaseConfigured && liveSessionRole === 'host' && !!liveSessionCode;
 
@@ -83,6 +85,27 @@ export default function RemoteControl() {
       }),
     );
   };
+
+  // Force-push the full data to the TV right now. Changes normally sync
+  // automatically (useLiveHostSync), but if a write was dropped while the TV
+  // briefly disconnected, this re-sends everything so the phone can recover
+  // without reloading (which isn't possible inside the installed app).
+  const resync = () => {
+    if (!liveSessionCode) return;
+    if (syncTimer.current) window.clearTimeout(syncTimer.current);
+    setSyncState('sending');
+    import('../lib/liveSession')
+      .then(({ hostPushData }) => hostPushData(liveSessionCode, state))
+      .then(() => {
+        setSyncState('sent');
+        syncTimer.current = window.setTimeout(() => setSyncState('idle'), 2000);
+      })
+      .catch(() => {
+        setSyncState('error');
+        syncTimer.current = window.setTimeout(() => setSyncState('idle'), 3500);
+      });
+  };
+  useEffect(() => () => { if (syncTimer.current) window.clearTimeout(syncTimer.current); }, []);
 
   const setMinutes = (m: number) => {
     const n = Math.max(1, Math.min(180, m));
@@ -235,6 +258,23 @@ export default function RemoteControl() {
         <span className="hint">{t('table.remotePlayersHint')}</span>
       </div>
       <div className="card">
+        <div className="resync-row">
+          <div className="faint" style={{ fontSize: 12, flex: 1 }}>{t('table.buyInNote')}</div>
+          <button
+            className={`btn btn-sm ${syncState === 'error' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={resync}
+            disabled={syncState === 'sending'}
+          >
+            {syncState === 'sending'
+              ? t('table.sending')
+              : syncState === 'sent'
+                ? t('table.sent')
+                : syncState === 'error'
+                  ? t('table.syncError')
+                  : t('table.sendToTv')}
+          </button>
+        </div>
+        <div className="faint" style={{ fontSize: 11, margin: '2px 0 10px' }}>{t('table.syncHint')}</div>
         {ledger.length === 0 ? (
           <div className="empty" style={{ paddingBottom: 12 }}>{t('table.remotePlayersHint')}</div>
         ) : (
@@ -264,7 +304,7 @@ export default function RemoteControl() {
                     className="btn btn-ghost btn-sm"
                     onClick={() => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { buyIn: (p.buyIn || 0) + session.buyIn } })}
                   >
-                    <IconPlus size={14} /> {t('table.rebuy')} {fmtMoney(session.buyIn, currency)}
+                    <IconPlus size={14} /> {t('table.rebuy')} {money(session.buyIn, currency)}
                   </button>
                   <button
                     className={`btn btn-sm ${p.out ? 'btn-primary' : 'btn-ghost'}`}
@@ -287,7 +327,7 @@ export default function RemoteControl() {
           </button>
           <div style={{ textAlign: 'right' }}>
             <div className="faint" style={{ fontSize: 11.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('table.poolTotal')}</div>
-            <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--acc)' }}>{fmtMoney(pool, currency)}</div>
+            <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--acc)' }}>{money(pool, currency)}</div>
           </div>
         </div>
       </div>

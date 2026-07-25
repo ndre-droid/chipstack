@@ -26,6 +26,8 @@ export interface LiveData {
   tvShowBustOrder: boolean;
   breakMinutes: number;
   breakEvery: number;
+  /** app language — so the TV mirrors the phone's language (labels + number grouping) */
+  language: 'en' | 'de';
 }
 
 export interface LiveDoc {
@@ -68,6 +70,7 @@ function dataOf(state: AppState): LiveData {
     tvShowBustOrder: state.settings.tvShowBustOrder ?? false,
     breakMinutes: state.settings.breakMinutes ?? 5,
     breakEvery: state.settings.breakEvery ?? 0,
+    language: state.settings.language ?? 'en',
   };
 }
 

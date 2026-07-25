@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
 import qrcode from 'qrcode-generator';
 import { useStore } from '../store';
-import { fmtMoney } from '../lib/money';
 import Chip from '../components/Chip';
 import { IconCheck } from '../components/Icons';
-import { useT } from '../lib/i18n';
+import { useT, useFmt } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 import { analyzeBackground } from '../lib/imageAnalysis';
 import type { Appearance, AccentId, Skin, ChipArt } from '../types';
@@ -52,6 +51,7 @@ export default function SettingsScreen() {
   const { state, dispatch } = useStore();
   const { settings } = state;
   const t = useT();
+  const { money: fmtMoney } = useFmt();
 
   const activeStyle = STYLES.find((s) => s.id === settings.skin) ?? STYLES[0];
   const accentColor = (id: AccentId) => ACCENTS.find((a) => a.id === id)?.color ?? '#f0b429';

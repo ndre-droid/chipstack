@@ -122,6 +122,7 @@ type Action =
       tvShowBustOrder?: boolean;
       breakMinutes?: number;
       breakEvery?: number;
+      language?: 'en' | 'de';
     }
   | { type: 'LEDGER_ADD'; name?: string }
   | { type: 'LEDGER_ADD_MANY'; n: number }
@@ -245,6 +246,8 @@ function reducer(state: AppState, action: Action): AppState {
           ...(action.tvShowBustOrder !== undefined ? { tvShowBustOrder: action.tvShowBustOrder } : {}),
           ...(action.breakMinutes !== undefined ? { breakMinutes: action.breakMinutes } : {}),
           ...(action.breakEvery !== undefined ? { breakEvery: action.breakEvery } : {}),
+          // mirror the phone's language so the TV's labels + number grouping match
+          ...(action.language !== undefined ? { language: action.language } : {}),
         },
       };
     case 'LEDGER_ADD':

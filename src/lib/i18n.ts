@@ -1,4 +1,5 @@
 import { useStore } from '../store';
+import { fmtMoney, fmtNum } from './money';
 
 export type Lang = 'en' | 'de';
 
@@ -13,6 +14,9 @@ const dict: Record<Lang, Record<string, string>> = {
     'nav.chips': 'Chips',
     'nav.table': 'Table',
     'nav.cash': 'Cash',
+    'app.openInApp': 'Open in the ChipStack app for the full remote?',
+    'app.openApp': 'Open app',
+    'app.stayWeb': 'Stay in browser',
     'header.plan': 'Session',
     'header.chips': 'Inventory',
     'header.table': 'At the table',
@@ -173,6 +177,12 @@ const dict: Record<Lang, Record<string, string>> = {
     'table.customQuipsHint': 'your own, added to the rotation',
     'table.customQuipsPlaceholder': 'Add your own saying…',
     'table.addSaying': 'Add',
+    'table.buyInNote': 'Amount = total bought in, not their current chip stack.',
+    'table.sendToTv': 'Send to TV now',
+    'table.sending': 'Sending…',
+    'table.sent': 'Sent ✓',
+    'table.syncError': 'Not sent — tap to retry',
+    'table.syncHint': 'changes sync automatically — use this if the TV looks out of date',
 
     'tv.joinTitle': 'Join a live session',
     'tv.joinHint': 'Enter the code shown in Settings on your phone',
@@ -192,6 +202,7 @@ const dict: Record<Lang, Record<string, string>> = {
     'tv.scanToConnect': 'or scan to connect',
     'tv.phoneConnected': 'Phone connected',
     'tv.players': 'Players',
+    'tv.buyIn': 'Buy-in',
     'tv.payouts': 'Payouts',
     'tv.knockedOut': 'Knocked out',
     'tv.breakAfter': 'Break after this level',
@@ -228,6 +239,9 @@ const dict: Record<Lang, Record<string, string>> = {
     'nav.chips': 'Chips',
     'nav.table': 'Tisch',
     'nav.cash': 'Kasse',
+    'app.openInApp': 'In der ChipStack-App öffnen für die volle Fernbedienung?',
+    'app.openApp': 'App öffnen',
+    'app.stayWeb': 'Im Browser bleiben',
     'header.plan': 'Sitzung',
     'header.chips': 'Bestand',
     'header.table': 'Am Tisch',
@@ -388,6 +402,12 @@ const dict: Record<Lang, Record<string, string>> = {
     'table.customQuipsHint': 'deine eigenen, in der Rotation',
     'table.customQuipsPlaceholder': 'Eigenen Spruch hinzufügen…',
     'table.addSaying': 'Hinzufügen',
+    'table.buyInNote': 'Betrag = gesamter Buy-in, nicht der aktuelle Chip-Stack.',
+    'table.sendToTv': 'Jetzt an TV senden',
+    'table.sending': 'Senden…',
+    'table.sent': 'Gesendet ✓',
+    'table.syncError': 'Nicht gesendet — zum Wiederholen tippen',
+    'table.syncHint': 'Änderungen synchronisieren automatisch — nutze dies, falls der TV veraltet aussieht',
 
     'tv.joinTitle': 'Live-Sitzung beitreten',
     'tv.joinHint': 'Code eingeben, der in den Einstellungen auf dem Handy angezeigt wird',
@@ -407,6 +427,7 @@ const dict: Record<Lang, Record<string, string>> = {
     'tv.scanToConnect': 'oder zum Verbinden scannen',
     'tv.phoneConnected': 'Handy verbunden',
     'tv.players': 'Spieler',
+    'tv.buyIn': 'Buy-in',
     'tv.payouts': 'Auszahlung',
     'tv.knockedOut': 'Ausgeschieden',
     'tv.breakAfter': 'Pause nach dieser Stufe',
@@ -453,4 +474,15 @@ export function useT() {
   const { state } = useStore();
   const lang: Lang = state.settings.language ?? 'en';
   return (key: string, vars?: Record<string, string | number>) => translate(lang, key, vars);
+}
+
+/** Hook: money/number formatters bound to the current app language, so grouping
+ *  (dot vs comma) follows the language everywhere — phone and synced TV alike. */
+export function useFmt() {
+  const { state } = useStore();
+  const lang: Lang = state.settings.language ?? 'en';
+  return {
+    money: (amount: number, currency: string) => fmtMoney(amount, currency, lang),
+    num: (n: number) => fmtNum(n, lang),
+  };
 }

@@ -9,12 +9,12 @@ import Chip from '../components/Chip';
 import ChipStackViz from '../components/ChipStackViz';
 import { IconPlus, IconTrash, IconCheck, IconAlert, IconSpark, IconChevron, IconLock, IconShare } from '../components/Icons';
 import ShareSheet from '../components/ShareSheet';
-import { fmtMoney } from '../lib/money';
-import { useT } from '../lib/i18n';
+import { useT, useFmt } from '../lib/i18n';
 
 export default function PlanScreen() {
   const { state, dispatch } = useStore();
   const t = useT();
+  const { money: fmtMoney, num } = useFmt();
   const { denominations, settings, session, presets } = state;
   const { playerCount, buyIn, earlyRebuys, lateRebuyAmount, blindLevels, smallBias, maxDenoms, useAllChips } = session;
 
@@ -197,7 +197,7 @@ export default function PlanScreen() {
           </div>
         </div>
         <div className="hero-sub">
-          {fmtMoney(effTotal * unit, cur)} · {effTotal.toLocaleString()} pts · {effUsed.length} {effUsed.length === 1 ? 'denomination' : 'denominations'}
+          {fmtMoney(effTotal * unit, cur)} · {num(effTotal)} pts · {effUsed.length} {effUsed.length === 1 ? 'denomination' : 'denominations'}
           {edited && <span className="badge-soft" style={{ marginLeft: 8 }}>edited</span>}
         </div>
 
@@ -308,7 +308,7 @@ export default function PlanScreen() {
           <span className={effTotal === buyInUnits ? 'bal-ok' : 'bal-bad'}>
             {effTotal === buyInUnits
               ? t('plan.balances')
-              : `${effTotal > buyInUnits ? '+' : ''}${(effTotal - buyInUnits).toLocaleString()} pts vs buy-in`}
+              : `${effTotal > buyInUnits ? '+' : ''}${num(effTotal - buyInUnits)} pts vs buy-in`}
           </span>
           {edited && (
             <button className="link-btn" onClick={() => setEdit(null)}>
@@ -469,7 +469,7 @@ export default function PlanScreen() {
           </div>
         </div>
         <p className="faint" style={{ fontSize: 12, margin: '12px 2px 0' }}>
-          {fmtMoney(buyIn, cur)} = <b style={{ color: 'var(--acc)' }}>{buyInUnits.toLocaleString()} pts</b> · later rebuy {lateRebuyUnits.toLocaleString()} pts · dealing {startingStacks} starting stacks
+          {fmtMoney(buyIn, cur)} = <b style={{ color: 'var(--acc)' }}>{num(buyInUnits)} pts</b> · later rebuy {num(lateRebuyUnits)} pts · dealing {startingStacks} starting stacks
         </p>
       </div>
 
@@ -665,6 +665,7 @@ export default function PlanScreen() {
 /* ---------- Sub-components ---------- */
 
 function StackTable({ stack, stacks, unit, cur }: { stack: StackResult; stacks: number; unit: number; cur: string }) {
+  const { money: fmtMoney } = useFmt();
   return (
     <table className="dist-table">
       <thead>
@@ -703,6 +704,7 @@ function StackTable({ stack, stacks, unit, cur }: { stack: StackResult; stacks: 
 }
 
 function StageCard({ blind, level, stack }: { blind: BlindLevel; level: number; stack: StackResult }) {
+  const { num } = useFmt();
   return (
     <div className="stage-card">
       <div className="stage-head">
@@ -728,7 +730,7 @@ function StageCard({ blind, level, stack }: { blind: BlindLevel; level: number; 
       <div className="divider" style={{ margin: '8px 0 0' }} />
       <div className="mini-row stage-total">
         <span>{stack.chipCount} chips</span>
-        <span className="m-count">{stack.totalValue.toLocaleString()} pts</span>
+        <span className="m-count">{num(stack.totalValue)} pts</span>
       </div>
     </div>
   );

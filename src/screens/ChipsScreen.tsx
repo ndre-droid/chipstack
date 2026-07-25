@@ -1,13 +1,13 @@
 import { useStore } from '../store';
 import Chip from '../components/Chip';
 import { IconPlus, IconTrash } from '../components/Icons';
-import { fmtMoney } from '../lib/money';
-import { useT } from '../lib/i18n';
+import { useT, useFmt } from '../lib/i18n';
 
 export default function ChipsScreen() {
   const { state, dispatch } = useStore();
   const { denominations, settings } = state;
   const t = useT();
+  const { money: fmtMoney } = useFmt();
 
   const sorted = [...denominations].sort((a, b) => a.value - b.value);
   const active = denominations.filter((d) => d.enabled);

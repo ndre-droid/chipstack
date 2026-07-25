@@ -4,8 +4,7 @@ import qrcode from 'qrcode-generator';
 import { useStore } from '../store';
 import Chip from '../components/Chip';
 import { IconPlay, IconPause, IconChevron, IconReset } from '../components/Icons';
-import { fmtMoney } from '../lib/money';
-import { useT } from '../lib/i18n';
+import { useT, useFmt } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 import type { Unsubscribe } from 'firebase/firestore';
 import { secondsLeft as clockSecondsLeft, initialClock } from '../lib/clockLogic';
@@ -64,6 +63,7 @@ const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart
 export default function TvMode({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useStore();
   const t = useT();
+  const { money, num } = useFmt();
   const { blindLevels } = state.session;
   const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole } = state.settings;
   const breakMins = breakMinutes ?? 5;
@@ -157,6 +157,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             tvShowBustOrder: doc.data.tvShowBustOrder,
             breakMinutes: doc.data.breakMinutes,
             breakEvery: doc.data.breakEvery,
+            language: doc.data.language,
           });
         } else if (isTv) {
           setPaired(false);
@@ -492,7 +493,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         <aside className="tv-side">
           <div className="tv-stat">
             <span className="tv-stat-k">{t('tv.prizePool')}</span>
-            <span className="tv-stat-v">{fmtMoney(poolMoney, currency)}</span>
+            <span className="tv-stat-v">{money(poolMoney, currency)}</span>
           </div>
           <div className="tv-stat">
             <span className="tv-stat-k">{t('tv.playersLeft')}</span>
@@ -500,7 +501,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           </div>
           <div className="tv-stat">
             <span className="tv-stat-k">{t('tv.avgStack')}</span>
-            <span className="tv-stat-v">{avgStack.toLocaleString()}<small> · {avgBB} BB</small></span>
+            <span className="tv-stat-v">{num(avgStack)}<small> · {avgBB} BB</small></span>
           </div>
           {tvShowPayouts && payouts.length > 0 && poolMoney > 0 && (
             <div className="tv-players">
@@ -509,7 +510,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
                 {payouts.map((p) => (
                   <div className="tv-players-row" key={p.place}>
                     <span className="tv-players-name">{p.place}</span>
-                    <span className="tv-players-amt">{fmtMoney(p.amount, currency)}</span>
+                    <span className="tv-players-amt">{money(p.amount, currency)}</span>
                   </div>
                 ))}
               </div>
@@ -517,12 +518,15 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           )}
           {tvShowPlayers && roster.length > 0 && (
             <div className="tv-players">
-              <div className="tv-players-h">{t('tv.players')}</div>
+              <div className="tv-players-h">
+                <span>{t('tv.players')}</span>
+                <span className="tv-players-h-sub">{t('tv.buyIn')}</span>
+              </div>
               <div className="tv-players-list">
                 {roster.map((p) => (
                   <div className={`tv-players-row ${p.out ? 'out' : ''}`} key={p.id}>
                     <span className="tv-players-name">{p.name}</span>
-                    <span className="tv-players-amt">{fmtMoney(p.amount, currency)}</span>
+                    <span className="tv-players-amt">{money(p.amount, currency)}</span>
                   </div>
                 ))}
               </div>
@@ -567,7 +571,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             <div className="tv-legend-row" key={d.id}>
               <Chip value={d.value} color={d.color} accent={d.accent} size={34} shape={d.shape} />
               <span className="tv-legend-v">{d.value}</span>
-              <span className="tv-legend-m">{fmtMoney(d.value * unitValue, currency)}</span>
+              <span className="tv-legend-m">{money(d.value * unitValue, currency)}</span>
             </div>
           ))}
         </aside>

@@ -2,13 +2,13 @@ import { useMemo } from 'react';
 import { useStore } from '../store';
 import { settleUp } from '../lib/settle';
 import type { PlayerBalance } from '../lib/settle';
-import { fmtMoney } from '../lib/money';
 import { IconPlus, IconTrash } from '../components/Icons';
-import { useT } from '../lib/i18n';
+import { useT, useFmt } from '../lib/i18n';
 
 export default function CashScreen() {
   const { state, dispatch } = useStore();
   const t = useT();
+  const { money: fmtMoney } = useFmt();
   const cur = state.settings.currency;
   const { buyIn, playerCount } = state.session;
   const ledger = state.ledger;

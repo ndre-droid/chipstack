@@ -22,6 +22,26 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Deep link: chipstack://tv/NNNN opens the app straight into a session.
+                 The TV's QR encodes the https page; on Android it hands off here. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="chipstack" />
+            </intent-filter>
+
+            <!-- Verified https App Link: opening the deployed page can open the app
+                 directly. Needs .well-known/assetlinks.json on the domain to auto-verify;
+                 until then Android may show an app chooser (the custom scheme above is
+                 the reliable path). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="ndre-droid.github.io" android:pathPrefix="/chipstack" />
+            </intent-filter>
+
         </activity>
 
         <provider

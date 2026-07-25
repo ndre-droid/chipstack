@@ -43,6 +43,7 @@ export function useLiveHostSync() {
     state.settings.tvShowBustOrder,
     state.settings.breakMinutes,
     state.settings.breakEvery,
+    state.settings.language,
   ]);
 
   // Bulk data that changes by typing (names, buy-ins, blinds, inventory) or is
