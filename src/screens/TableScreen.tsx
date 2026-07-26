@@ -4,6 +4,8 @@ import { IconPlay, IconPause, IconReset, IconChevron, IconDice, IconExpand } fro
 import TvMode from './TvMode';
 import RemoteControl from './RemoteControl';
 import ConnectToTv from './ConnectToTv';
+import StartingStack from '../components/StartingStack';
+import TvBroadcast from '../components/TvBroadcast';
 import { useT } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 
@@ -23,6 +25,9 @@ export default function TableScreen() {
   // over to the RemoteControl panel, which drives the TV's clock directly.
   const isHost =
     firebaseConfigured && state.settings.liveSessionRole === 'host' && !!state.settings.liveSessionCode;
+  const isCash = state.settings.gameMode === 'cash';
+  // Cash game with the timer off = one fixed blind level, so the local clock hides.
+  const showClock = !isHost && (!isCash || state.settings.cashUseTimer);
 
   const [levelIdx, setLevelIdx] = useState(0);
   const [seconds, setSeconds] = useState(mins * 60);
@@ -93,8 +98,48 @@ export default function TableScreen() {
 
   return (
     <div>
+      {/* Game mode — tournament vs cash game (reshapes the plan, table & TV) */}
+      <div className="section-label">{t('table.gameMode')}</div>
+      <div className="card">
+        <div className="segmented">
+          <button
+            className={!isCash ? 'active' : ''}
+            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { gameMode: 'tournament' } })}
+          >
+            {t('table.tournament')}
+          </button>
+          <button
+            className={isCash ? 'active' : ''}
+            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { gameMode: 'cash' } })}
+          >
+            {t('table.cashGame')}
+          </button>
+        </div>
+        <p className="faint" style={{ fontSize: 12.5, margin: '10px 2px 0', lineHeight: 1.55 }}>
+          {isCash ? t('table.gameModeCashDesc') : t('table.gameModeTournDesc')}
+        </p>
+        {isCash && (
+          <div className="row" style={{ marginTop: 12 }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.cashUseTimer')}</div>
+              <div className="faint" style={{ fontSize: 12 }}>{t('table.cashUseTimerDesc')}</div>
+            </div>
+            <div className="spacer" />
+            <div
+              className={`toggle ${state.settings.cashUseTimer ? 'on' : ''}`}
+              onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { cashUseTimer: !state.settings.cashUseTimer } })}
+              role="switch"
+              aria-checked={state.settings.cashUseTimer}
+            />
+          </div>
+        )}
+      </div>
+
       {/* Connect to the TV — type the code the TV shows, right here on the Table tab */}
       <ConnectToTv />
+
+      {/* The stack everyone gets for the buy-in */}
+      <StartingStack />
 
       {/* Players at the table — adjustable any time during the session */}
       <div className="card">
@@ -112,7 +157,7 @@ export default function TableScreen() {
         </div>
       </div>
 
-      {!isHost && (
+      {showClock && (
         <>
           <div className="section-label">
             {t('table.blindClock')}
@@ -165,11 +210,16 @@ export default function TableScreen() {
         {isHost ? t('table.hostHint') : t('table.castHint')}
       </p>
 
+      {/* TV broadcast — the big-screen look, extras, and how to show it on the TV */}
+      <TvBroadcast />
+
       <DealerAndSeats />
 
-      <p className="faint" style={{ fontSize: 12, textAlign: 'center', marginTop: 6 }}>
-        Set the ladder & starting level on the Plan tab; the clock plays through it.
-      </p>
+      {!isCash && (
+        <p className="faint" style={{ fontSize: 12, textAlign: 'center', marginTop: 6 }}>
+          Set the ladder & starting level on the Plan tab; the clock plays through it.
+        </p>
+      )}
 
       {tv && <TvMode onClose={() => setTv(false)} />}
     </div>

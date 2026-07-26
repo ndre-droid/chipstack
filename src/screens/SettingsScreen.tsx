@@ -1,14 +1,8 @@
-import { useMemo, useState } from 'react';
-import qrcode from 'qrcode-generator';
 import { useStore } from '../store';
 import Chip from '../components/Chip';
-import { IconCheck } from '../components/Icons';
 import { useT, useFmt } from '../lib/i18n';
-import { firebaseConfigured } from '../lib/firebaseConfig';
-import { analyzeBackground } from '../lib/imageAnalysis';
 import type { Appearance, AccentId, Skin, ChipArt } from '../types';
 
-const WEB_URL = 'https://ndre-droid.github.io/chipstack/';
 const CURRENCIES = ['€', '$', '£', 'zł', 'Fr'];
 const UNIT_PRESETS = [
   { label: '1 point = 1¢', value: 0.01 },
@@ -58,78 +52,6 @@ export default function SettingsScreen() {
   const currentAccent = settings.accents?.[settings.skin] ?? 'amber';
   const setAccent = (id: AccentId) =>
     dispatch({ type: 'UPDATE_SETTINGS', patch: { accents: { ...settings.accents, [settings.skin]: id } } });
-
-  const [urlCopied, setUrlCopied] = useState(false);
-  const copyUrl = async () => {
-    try {
-      await navigator.clipboard.writeText(WEB_URL);
-      setUrlCopied(true);
-      setTimeout(() => setUrlCopied(false), 1600);
-    } catch {
-      setUrlCopied(false);
-    }
-  };
-  const [bgBusy, setBgBusy] = useState(false);
-  const [bgError, setBgError] = useState<string | null>(null);
-  const onPickBackground = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    setBgError(null);
-    setBgBusy(true);
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onload = () => {
-      img.onload = () => {
-        try {
-          // downscale so the stored data URL stays within localStorage limits AND small
-          // enough to sync through Firestore (1 MiB doc cap) so it reaches the TV
-          const maxW = 1600;
-          const scale = Math.min(1, maxW / img.naturalWidth);
-          const w = Math.round(img.naturalWidth * scale);
-          const h = Math.round(img.naturalHeight * scale);
-          const canvas = document.createElement('canvas');
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) throw new Error('canvas unavailable');
-          ctx.drawImage(img, 0, 0, w, h);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.74);
-          // analyse this specific photo so the TV lays its text out around the subject
-          const { focus, tone } = analyzeBackground(ctx, w, h);
-          dispatch({
-            type: 'UPDATE_SETTINGS',
-            patch: { tvBackground: dataUrl, tvBackgroundFocus: focus, tvBackgroundTone: tone },
-          });
-        } catch {
-          setBgError('Could not process that image — try a different photo.');
-        } finally {
-          setBgBusy(false);
-        }
-      };
-      img.onerror = () => {
-        setBgError('Could not read that image — try a different file.');
-        setBgBusy(false);
-      };
-      img.src = reader.result as string;
-    };
-    reader.onerror = () => {
-      setBgError('Could not read that file.');
-      setBgBusy(false);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const urlQr = useMemo(() => {
-    try {
-      const qr = qrcode(0, 'M');
-      qr.addData(WEB_URL);
-      qr.make();
-      return qr.createDataURL(5, 16);
-    } catch {
-      return null;
-    }
-  }, []);
 
   return (
     <div>
@@ -208,108 +130,9 @@ export default function SettingsScreen() {
         </div>
       </div>
 
-      <div className="section-label">
-        {t('settings.tvStyle')}
-        <span className="hint">{t('settings.tvStyleHint')}</span>
-      </div>
-      <div className="card">
-        <div className="style-grid">
-          {[{ id: 'match' as const, name: t('settings.matchPhone'), bg: activeStyle.bg }, ...STYLES].map((s) => (
-            <button
-              key={s.id}
-              className={`style-opt ${(settings.tvSkin ?? 'match') === s.id ? 'active' : ''}`}
-              onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvSkin: s.id } })}
-            >
-              <span className="style-swatch" style={{ background: s.bg }}>
-                <span
-                  className="sw-dot"
-                  style={{ background: s.id === 'match' ? accentColor(currentAccent) : accentColor(settings.accents?.[s.id] ?? 'amber') }}
-                />
-              </span>
-              <span className="style-name">{s.name}</span>
-            </button>
-          ))}
-        </div>
-        <p className="faint" style={{ fontSize: 12.5, margin: '12px 2px 0' }}>{t('settings.tvStyleNote')}</p>
-      </div>
-
-      <div className="section-label">{t('settings.tvExtras')}</div>
-      <div className="card">
-        <div className="row">
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{t('settings.quips')}</div>
-            <div className="faint" style={{ fontSize: 12 }}>{t('settings.quipsDesc')}</div>
-          </div>
-          <div className="spacer" />
-          <div
-            className={`toggle ${settings.tvQuips ? 'on' : ''}`}
-            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvQuips: !settings.tvQuips } })}
-            role="switch"
-            aria-checked={settings.tvQuips}
-          />
-        </div>
-
-        <div className="divider" />
-
-        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{t('settings.tvBackground')}</div>
-        <div className="faint" style={{ fontSize: 12, marginBottom: 10 }}>{t('settings.tvBackgroundDesc')}</div>
-        {settings.tvBackground && (
-          <div className="tv-bg-preview" style={{ backgroundImage: `url(${settings.tvBackground})` }} />
-        )}
-        {bgError && <p style={{ color: 'var(--bad)', fontSize: 12, margin: '0 0 8px' }}>{bgError}</p>}
-        <div className="row" style={{ gap: 8 }}>
-          <label className="btn btn-ghost btn-sm" style={{ flex: 1, cursor: 'pointer' }}>
-            {bgBusy ? '…' : settings.tvBackground ? t('settings.replacePhoto') : t('settings.choosePhoto')}
-            <input type="file" accept="image/*" onChange={onPickBackground} style={{ display: 'none' }} disabled={bgBusy} />
-          </label>
-          {settings.tvBackground && (
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: null, tvBackgroundFocus: null, tvBackgroundTone: null } })}
-            >
-              {t('settings.remove')}
-            </button>
-          )}
-        </div>
-      </div>
-
       <div className="section-label">{t('settings.showOnTv')}</div>
       <div className="card">
-        <p className="faint" style={{ fontSize: 13, margin: '0 0 12px', lineHeight: 1.6 }}>
-          Best way — the phone stays free: open this address in your <b>TV’s web browser</b>, then go to
-          <b> Table → Big screen</b> and run it with the TV remote.
-        </p>
-        <div className="code-box" style={{ textAlign: 'center', fontSize: 14, letterSpacing: '0.02em' }}>{WEB_URL}</div>
-        <button className="btn btn-ghost btn-block btn-sm mt8" onClick={copyUrl}>
-          {urlCopied ? (
-            <>
-              <IconCheck size={16} /> {t('settings.copied')}
-            </>
-          ) : (
-            t('settings.copyLink')
-          )}
-        </button>
-        {urlQr && (
-          <div className="qr-wrap">
-            <img src={urlQr} alt="Web app QR code" />
-            <span className="faint" style={{ fontSize: 11.5 }}>Scan with a phone to open, or bookmark on the TV</span>
-          </div>
-        )}
-        <p className="faint" style={{ fontSize: 12.5, margin: '12px 0 0', lineHeight: 1.6 }}>
-          It updates automatically and runs offline after the first load.
-          <br />
-          <b>Or mirror the phone:</b> Android → Smart View / Cast; iPhone → Screen Mirroring (AirPlay) — but then the phone must stay on this screen.
-        </p>
-      </div>
-
-      <div className="section-label">{t('settings.liveSession')}</div>
-      <div className="card">
-        <p className="faint" style={{ fontSize: 13, margin: '0 0 8px', lineHeight: 1.6 }}>{t('settings.liveSessionDesc')}</p>
-        {!firebaseConfigured ? (
-          <p style={{ color: 'var(--text-dim)', fontSize: 12.5, margin: 0 }}>{t('settings.liveUnconfigured')}</p>
-        ) : (
-          <p style={{ fontSize: 12.5, margin: 0, fontWeight: 600 }}>{t('settings.liveMovedToTable')}</p>
-        )}
+        <p style={{ fontSize: 12.5, margin: 0, fontWeight: 600 }}>{t('settings.liveMovedToTable')}</p>
       </div>
 
       <div className="section-label">{t('settings.chipArt')}</div>

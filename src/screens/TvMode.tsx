@@ -31,32 +31,9 @@ const QUIPS = [
   'Nobody remembers the hands you won. Everyone remembers the ones you didn’t.',
 ];
 
-const beep = (freq = 880, dur = 0.14, type: OscillatorType = 'sine') => {
-  try {
-    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    const ac = new AC();
-    const o = ac.createOscillator();
-    const g = ac.createGain();
-    o.type = type;
-    o.frequency.value = freq;
-    o.connect(g);
-    g.connect(ac.destination);
-    g.gain.setValueAtTime(0.0001, ac.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.3, ac.currentTime + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
-    o.start();
-    o.stop(ac.currentTime + dur);
-    setTimeout(() => ac.close(), (dur + 0.1) * 1000);
-  } catch {
-    /* audio not available */
-  }
-};
-const chime = () => {
-  beep(660, 0.16);
-  setTimeout(() => beep(880, 0.16), 150);
-  setTimeout(() => beep(1180, 0.28), 320);
-};
-const buzzer = () => beep(200, 0.5, 'square');
+// The app is intentionally SILENT: on the TV, any sound the browser makes hijacks
+// the user's Sonos (the TV grabs the speaker group from their phone). So all cues
+// are visual (flash / overlays) + haptic (navigator.vibrate) — never audio.
 
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -65,7 +42,10 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const t = useT();
   const { money, num } = useFmt();
   const { blindLevels } = state.session;
-  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole } = state.settings;
+  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer } = state.settings;
+  const isCash = gameMode === 'cash';
+  // Cash game with the timer off = a single fixed blind level, no countdown.
+  const showTimer = !isCash || cashUseTimer;
   const breakMins = breakMinutes ?? 5;
   // per-photo smart placement: crop toward the subject, keep it clear, and nudge the
   // clock to the calm side; brighter photos get a stronger scrim so text stays legible.
@@ -158,6 +138,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             breakMinutes: doc.data.breakMinutes,
             breakEvery: doc.data.breakEvery,
             language: doc.data.language,
+            gameMode: doc.data.gameMode,
+            cashUseTimer: doc.data.cashUseTimer,
           });
         } else if (isTv) {
           setPaired(false);
@@ -251,11 +233,9 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         if (!ownsClockAdvance) return 0;
         if (onBreak) {
           setOnBreak(false);
-          chime();
           pushClockIfConnected(levelIdx, false, true, minutesPerLevel * 60);
           return minutesPerLevel * 60;
         }
-        chime();
         try {
           navigator.vibrate?.([300, 120, 300]);
         } catch {
@@ -316,12 +296,15 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     if (shot === null) return;
     if (shot <= 0) {
-      buzzer();
+      try {
+        navigator.vibrate?.([200, 80, 200]);
+      } catch {
+        /* ignore */
+      }
       const t = setTimeout(() => setShot(null), 1500);
       return () => clearTimeout(t);
     }
     const id = window.setTimeout(() => setShot((s) => (s ?? 0) - 1), 1000);
-    if (shot <= 5) beep(720, 0.08);
     return () => window.clearTimeout(id);
   }, [shot]);
 
@@ -366,22 +349,28 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     const total = 18 + Math.floor(Math.random() * 8);
     const step = () => {
       setSpin({ name: players[n % players.length], done: false });
-      beep(520, 0.04);
       n++;
       if (n < total) {
         setTimeout(step, 60 + n * 12);
       } else {
         const winner = players[Math.floor(Math.random() * players.length)];
         setSpin({ name: winner, done: true });
-        chime();
+        try {
+          navigator.vibrate?.(200);
+        } catch {
+          /* ignore */
+        }
         setTimeout(() => setSpin(null), 4500);
       }
     };
     step();
   };
 
-  // standings
-  const poolMoney = ledger.length ? ledger.reduce((s, p) => s + (p.buyIn || 0), 0) : playerCount * buyIn;
+  // standings. Cash game: money on the table = buy-ins − cash-outs (a player who
+  // cashes out takes their money and leaves). Tournament: the pool is the fixed total.
+  const totalIn = ledger.length ? ledger.reduce((s, p) => s + (p.buyIn || 0), 0) : playerCount * buyIn;
+  const totalOut = ledger.reduce((s, p) => s + (p.cashOut || 0), 0);
+  const poolMoney = isCash ? Math.max(0, totalIn - totalOut) : totalIn;
   const playersLeft = ledger.length ? Math.max(1, ledger.filter((p) => !p.out && (p.cashOut || 0) === 0).length) : playerCount;
   const poolPoints = unitValue > 0 ? Math.round(poolMoney / unitValue) : 0;
   const avgStack = Math.round(poolPoints / playersLeft);
@@ -492,7 +481,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         {/* left: standings + colour-up */}
         <aside className="tv-side">
           <div className="tv-stat">
-            <span className="tv-stat-k">{t('tv.prizePool')}</span>
+            <span className="tv-stat-k">{isCash ? t('tv.onTable') : t('tv.prizePool')}</span>
             <span className="tv-stat-v">{money(poolMoney, currency)}</span>
           </div>
           <div className="tv-stat">
@@ -503,7 +492,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             <span className="tv-stat-k">{t('tv.avgStack')}</span>
             <span className="tv-stat-v">{num(avgStack)}<small> · {avgBB} BB</small></span>
           </div>
-          {tvShowPayouts && payouts.length > 0 && poolMoney > 0 && (
+          {!isCash && tvShowPayouts && payouts.length > 0 && poolMoney > 0 && (
             <div className="tv-players">
               <div className="tv-players-h">{t('tv.payouts')}</div>
               <div className="tv-players-list">
@@ -532,7 +521,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               </div>
             </div>
           )}
-          {tvShowBustOrder && bustOrder.length > 0 && (
+          {!isCash && tvShowBustOrder && bustOrder.length > 0 && (
             <div className="tv-players">
               <div className="tv-players-h">{t('tv.knockedOut')}</div>
               <div className="tv-players-list">
@@ -547,21 +536,26 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           )}
         </aside>
 
-        {/* center: the clock */}
-        <main className="tv-clock">
-          <div className="tv-level">{onBreak ? t('tv.break') : t('tv.level', { n: levelIdx + 1 })}</div>
+        {/* center: the clock (or, cash game with timer off, just the fixed blinds) */}
+        <main className={`tv-clock ${showTimer ? '' : 'tv-clock-static'}`}>
+          <div className="tv-level">{!showTimer ? t('tv.cashGame') : onBreak ? t('tv.break') : t('tv.level', { n: levelIdx + 1 })}</div>
           <div className="tv-blinds">
-            {onBreak ? t('tv.backSoon') : level ? `${level.smallBlind} / ${level.bigBlind}` : '—'}
-            {!onBreak && level?.ante ? <span className="tv-ante"> · ante {level.ante}</span> : null}
+            {onBreak && showTimer ? t('tv.backSoon') : level ? `${level.smallBlind} / ${level.bigBlind}` : '—'}
+            {(!onBreak || !showTimer) && level?.ante ? <span className="tv-ante"> · ante {level.ante}</span> : null}
           </div>
-          <div className={`tv-time ${running && seconds <= 30 ? 'urgent' : ''}`}>{fmtClock(seconds)}</div>
-          <div className="tv-progress"><i style={{ transform: `scaleX(${pct / 100})` }} /></div>
-          <div className="tv-next">{onBreak ? '' : next ? t('tv.next', { blinds: `${next.smallBlind} / ${next.bigBlind}` }) : t('tv.finalLevel')}</div>
-          {!onBreak && breakEvery > 0 && (
-            <div className="tv-break-cue">
-              {levelsToBreak === 0 ? t('tv.breakAfter') : t('tv.breakIn', { n: levelsToBreak })}
-            </div>
+          {showTimer && (
+            <>
+              <div className={`tv-time ${running && seconds <= 30 ? 'urgent' : ''}`}>{fmtClock(seconds)}</div>
+              <div className="tv-progress"><i style={{ transform: `scaleX(${pct / 100})` }} /></div>
+              <div className="tv-next">{onBreak ? '' : next ? t('tv.next', { blinds: `${next.smallBlind} / ${next.bigBlind}` }) : t('tv.finalLevel')}</div>
+              {!onBreak && breakEvery > 0 && (
+                <div className="tv-break-cue">
+                  {levelsToBreak === 0 ? t('tv.breakAfter') : t('tv.breakIn', { n: levelsToBreak })}
+                </div>
+              )}
+            </>
           )}
+          {!showTimer && <div className="tv-next">{t('tv.blindsFixed')}</div>}
         </main>
 
         {/* right: chip legend */}
@@ -582,17 +576,28 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
 
       {/* controls (for the phone holding the session) */}
       <div className="tv-controls">
-        <button onClick={() => goLevel(levelIdx - 1)} aria-label="Previous level"><span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}><IconChevron size={22} /></span></button>
-        <button onClick={resetLevel} aria-label="Reset level"><IconReset size={20} /></button>
-        <button className="tv-play" onClick={togglePlay}>{running ? <IconPause size={30} /> : <IconPlay size={30} />}</button>
-        <button onClick={() => goLevel(levelIdx + 1)} aria-label="Next level"><IconChevron size={22} /></button>
-        {onBreak ? (
-          <button className="tv-txt tv-exit" onClick={cancelBreak}>{t('tv.cancelBreak')}</button>
-        ) : (
-          <button className="tv-txt" onClick={takeBreak}>{t('tv.break')}</button>
+        {showTimer && (
+          <>
+            <button onClick={() => goLevel(levelIdx - 1)} aria-label="Previous level"><span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}><IconChevron size={22} /></span></button>
+            <button onClick={resetLevel} aria-label="Reset level"><IconReset size={20} /></button>
+            <button className="tv-play" onClick={togglePlay}>{running ? <IconPause size={30} /> : <IconPlay size={30} />}</button>
+            <button onClick={() => goLevel(levelIdx + 1)} aria-label="Next level"><IconChevron size={22} /></button>
+            {onBreak ? (
+              <button className="tv-txt tv-exit" onClick={cancelBreak}>{t('tv.cancelBreak')}</button>
+            ) : (
+              <button className="tv-txt" onClick={takeBreak}>{t('tv.break')}</button>
+            )}
+          </>
         )}
         <button className="tv-txt" onClick={() => setShot(30)}>{t('tv.shotClock')}</button>
         <button className="tv-txt" onClick={spinRound}>{t('tv.whoDrinks')}</button>
+        <button
+          className="tv-txt"
+          onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { language: state.settings.language === 'en' ? 'de' : 'en' } })}
+          aria-label="Toggle language"
+        >
+          {state.settings.language === 'en' ? 'DE' : 'EN'}
+        </button>
         <button className="tv-txt tv-exit" onClick={onClose}>{deviceIsTv ? t('tv.exitTv') : t('tv.exit')}</button>
       </div>
 

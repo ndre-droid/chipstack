@@ -27,6 +27,8 @@ export default function PlanScreen() {
 
   const unit = settings.unitValue;
   const cur = settings.currency;
+  // Cash game: blinds are fixed, so there's no ladder to climb or colour-up to plan.
+  const isCash = settings.gameMode === 'cash';
   const buyInUnits = moneyToUnits(buyIn, unit);
   const lateRebuyUnits = moneyToUnits(lateRebuyAmount || buyIn, unit);
   const numPlayers = playerCount;
@@ -329,7 +331,7 @@ export default function PlanScreen() {
       </div>
 
       {/* later levels & colour-up — collapsed by default (secondary to the starting stack) */}
-      {(laterStages.length > 0 || colorUps.length > 0) && (
+      {!isCash && (laterStages.length > 0 || colorUps.length > 0) && (
         <>
           <button className="section-label collapsible-head" onClick={() => setShowLater((v) => !v)}>
             {t('plan.laterColorUp')}

@@ -60,6 +60,8 @@ const defaultSettings: Settings = {
   appearance: 'dark',
   chipArt: 'deco',
   language: 'en',
+  gameMode: 'tournament',
+  cashUseTimer: false,
   deviceIsTv: false,
   liveSessionCode: null,
   liveSessionRole: null,
@@ -123,6 +125,8 @@ type Action =
       breakMinutes?: number;
       breakEvery?: number;
       language?: 'en' | 'de';
+      gameMode?: 'tournament' | 'cash';
+      cashUseTimer?: boolean;
     }
   | { type: 'LEDGER_ADD'; name?: string }
   | { type: 'LEDGER_ADD_MANY'; n: number }
@@ -248,6 +252,9 @@ function reducer(state: AppState, action: Action): AppState {
           ...(action.breakEvery !== undefined ? { breakEvery: action.breakEvery } : {}),
           // mirror the phone's language so the TV's labels + number grouping match
           ...(action.language !== undefined ? { language: action.language } : {}),
+          // the host also drives whether it's a tournament or cash game
+          ...(action.gameMode !== undefined ? { gameMode: action.gameMode } : {}),
+          ...(action.cashUseTimer !== undefined ? { cashUseTimer: action.cashUseTimer } : {}),
         },
       };
     case 'LEDGER_ADD':
@@ -352,6 +359,8 @@ function migrate(raw: string | null): AppState {
   }
   if (typeof settings.tvBackgroundTone !== 'number') settings.tvBackgroundTone = null;
   if (settings.language !== 'en' && settings.language !== 'de') settings.language = 'en';
+  if (settings.gameMode !== 'tournament' && settings.gameMode !== 'cash') settings.gameMode = 'tournament';
+  if (typeof settings.cashUseTimer !== 'boolean') settings.cashUseTimer = false;
   if (typeof settings.deviceIsTv !== 'boolean') settings.deviceIsTv = false;
   if (typeof settings.liveSessionCode !== 'string') settings.liveSessionCode = null;
   // Pairing was rebuilt (TV owns the doc/clock; codes are now 4 digits). Any persisted

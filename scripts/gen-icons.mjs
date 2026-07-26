@@ -8,84 +8,25 @@ const pub = join(root, 'public');
 mkdirSync(pub, { recursive: true });
 
 /**
- * App icon: a neat STACK of smooth-edge ceramic chips (the app is "ChipStack"),
- * the top chip showing the full-face gold art-deco lattice. Colours match the real
- * SLOWPLAY Nash set (black / red / cyan / amber). Reads clearly even at 48px.
+ * App icon — "token ring": a single amber ring + centre dot on a dark tile. Minimal,
+ * modern, and legible down to 48px. Amber #F0B429 is the brand accent; the tile is a
+ * near-black #0E1116 (matches @color/ic_launcher_background for the adaptive icon).
  */
 
-// One chip in the stack, drawn as a short elliptical cylinder at (cx, cy) where
-// cy is the centre of its TOP face. `top` adds the deco lattice (top of the stack).
-function chip(cx, cy, rx, ry, bh, { body, light, dark, accent }, top = false) {
-  const band = `
-    <ellipse cx="${cx}" cy="${cy + bh}" rx="${rx}" ry="${ry}" fill="${dark}"/>
-    <rect x="${cx - rx}" y="${cy}" width="${rx * 2}" height="${bh}" fill="${body}"/>
-    <rect x="${cx - rx}" y="${cy + bh * 0.34}" width="${rx * 2}" height="${bh * 0.20}" fill="${accent}" opacity="0.75"/>
-    <rect x="${cx - rx}" y="${cy}" width="${rx * 2}" height="${bh * 0.16}" fill="${light}" opacity="0.45"/>`;
-  const face = `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${light}" stroke="${dark}" stroke-width="${rx * 0.035}"/>`;
-  if (!top) return band + face;
-
-  // deco lattice on the top face — an octagon world, squashed to the ellipse
-  const sy = ry / rx;
-  const oct = (rr, rot = 0) =>
-    Array.from({ length: 8 }, (_, i) => {
-      const a = (i / 8) * Math.PI * 2 + Math.PI / 8 + rot;
-      return `${cx + Math.cos(a) * rr},${cy + Math.sin(a) * rr}`;
-    }).join(' ');
-  const spokes = Array.from({ length: 8 }, (_, i) => {
-    const a = (i / 8) * Math.PI * 2;
-    return `<line x1="${cx + Math.cos(a) * rx * 0.30}" y1="${cy + Math.sin(a) * rx * 0.30}" x2="${cx + Math.cos(a) * rx * 0.84}" y2="${cy + Math.sin(a) * rx * 0.84}" stroke="${accent}" stroke-width="${rx * 0.02}" opacity="0.75"/>`;
-  }).join('');
-  const deco = `
-    <g transform="translate(${cx} ${cy}) scale(1 ${sy}) translate(${-cx} ${-cy})" opacity="0.9">
-      <circle cx="${cx}" cy="${cy}" r="${rx * 0.9}" fill="none" stroke="${accent}" stroke-width="${rx * 0.02}" opacity="0.7"/>
-      <polygon points="${oct(rx * 0.86)}" fill="none" stroke="${accent}" stroke-width="${rx * 0.022}"/>
-      <polygon points="${oct(rx * 0.72)}" fill="none" stroke="${accent}" stroke-width="${rx * 0.013}" opacity="0.6"/>
-      ${spokes}
-      <polygon points="${oct(rx * 0.42, Math.PI / 8)}" fill="${dark}" stroke="${accent}" stroke-width="${rx * 0.02}"/>
-    </g>`;
-  return band + face + deco;
-}
-
-// bottom → top; the top (amber) chip carries the brand colour + deco.
-const CHIPS = [
-  { body: '#2b2b36', light: '#3c3c4a', dark: '#191921', accent: '#CBA85A' }, // 100 charcoal
-  { body: '#26a3b4', light: '#3fc6d8', dark: '#166d79', accent: '#EAF7F3' }, // 10 cyan
-  { body: '#b23328', light: '#d24a3c', dark: '#75190f', accent: '#F0D083' }, // 5 red
-  { body: '#f0b429', light: '#ffc84a', dark: '#a86a08', accent: '#6e4b0c' }, // amber (brand, top)
-];
+const AMBER = '#F0B429';
+const TILE = '#0E1116';
 
 function svg(size, { bleed, transparent }) {
   const cx = size / 2;
-  const rx = (bleed ? 0.40 : 0.33) * size; // maskable keeps the stack inside the safe zone
-  const ry = rx * 0.27;
-  const bh = rx * 0.20;
-  const step = bh * 1.05;
-  const n = CHIPS.length;
-  // vertically centre the whole stack
-  const stackH = (n - 1) * step + bh + ry * 2;
-  const topCy = cx - stackH / 2 + ry; // centre-y of the highest chip's top face
-  let chips = '';
-  for (let i = 0; i < n; i++) {
-    // draw bottom first (painter's algorithm) so upper chips overlap
-    const idx = n - 1 - i; // 0 = top chip
-    const cy = topCy + idx * step;
-    chips += chip(cx, cy, rx, ry, bh, CHIPS[i], i === n - 1);
-  }
+  // full-bleed (PWA / legacy launcher) fills more; the adaptive foreground stays
+  // smaller so the ring sits well inside the safe zone once the OS masks it.
+  const ringR = (bleed ? 0.3 : 0.25) * size;
+  const sw = ringR * 0.19; // ring thickness
+  const dot = ringR * 0.2; // centre dot radius
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-    <defs>
-      <radialGradient id="bg" cx="50%" cy="32%" r="82%">
-        <stop offset="0%" stop-color="#1d1d24"/>
-        <stop offset="100%" stop-color="#0a0a0e"/>
-      </radialGradient>
-      <radialGradient id="glow" cx="50%" cy="46%" r="42%">
-        <stop offset="0%" stop-color="#f0b429" stop-opacity="0.18"/>
-        <stop offset="100%" stop-color="#f0b429" stop-opacity="0"/>
-      </radialGradient>
-    </defs>
-    ${transparent ? '' : `<rect width="${size}" height="${size}" fill="url(#bg)"/>`}
-    <rect width="${size}" height="${size}" fill="url(#glow)"/>
-    <ellipse cx="${cx}" cy="${cx + rx * 0.72}" rx="${rx * 0.92}" ry="${ry * 0.7}" fill="#000" opacity="0.3"/>
-    ${chips}
+    ${transparent ? '' : `<rect width="${size}" height="${size}" fill="${TILE}"/>`}
+    <circle cx="${cx}" cy="${cx}" r="${ringR}" fill="none" stroke="${AMBER}" stroke-width="${sw}"/>
+    <circle cx="${cx}" cy="${cx}" r="${dot}" fill="${AMBER}"/>
   </svg>`;
 }
 

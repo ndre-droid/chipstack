@@ -28,6 +28,9 @@ export interface LiveData {
   breakEvery: number;
   /** app language — so the TV mirrors the phone's language (labels + number grouping) */
   language: 'en' | 'de';
+  /** tournament vs cash game — reshapes the TV (pool label, payouts/bust visibility) */
+  gameMode: 'tournament' | 'cash';
+  cashUseTimer: boolean;
 }
 
 export interface LiveDoc {
@@ -71,6 +74,8 @@ function dataOf(state: AppState): LiveData {
     breakMinutes: state.settings.breakMinutes ?? 5,
     breakEvery: state.settings.breakEvery ?? 0,
     language: state.settings.language ?? 'en',
+    gameMode: state.settings.gameMode ?? 'tournament',
+    cashUseTimer: state.settings.cashUseTimer ?? false,
   };
 }
 

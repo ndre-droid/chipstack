@@ -21,27 +21,14 @@ const TABS: { id: Tab; key: string; icon: (p: { size?: number }) => React.ReactN
   { id: 'cash', key: 'nav.cash', icon: IconCash },
 ];
 
+// Token ring — matches the app icon: accent tile, ring + centre dot in the on-accent
+// colour. Minimal, themeable (follows the active skin's accent).
 function LogoMark() {
   return (
     <svg className="logo-mark" viewBox="0 0 24 24" aria-hidden>
       <rect width="24" height="24" rx="7" fill="var(--acc)" />
-      <circle cx="12" cy="12" r="6.5" fill="none" stroke="var(--on-acc)" strokeWidth="1.6" opacity="0.9" />
-      <circle cx="12" cy="12" r="2.4" fill="var(--on-acc)" />
-      {Array.from({ length: 4 }, (_, i) => {
-        const a = (i / 4) * Math.PI * 2;
-        return (
-          <rect
-            key={i}
-            x={12 + Math.cos(a) * 6.5 - 1.4}
-            y={12 + Math.sin(a) * 6.5 - 0.9}
-            width="2.8"
-            height="1.8"
-            rx="0.9"
-            fill="var(--on-acc)"
-            transform={`rotate(${(i / 4) * 360} ${12 + Math.cos(a) * 6.5} ${12 + Math.sin(a) * 6.5})`}
-          />
-        );
-      })}
+      <circle cx="12" cy="12" r="6.2" fill="none" stroke="var(--on-acc)" strokeWidth="1.8" />
+      <circle cx="12" cy="12" r="2.1" fill="var(--on-acc)" />
     </svg>
   );
 }

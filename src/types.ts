@@ -48,6 +48,12 @@ export interface Settings {
   appearance: Appearance;   // system / light / dark — applies to the minimal skin
   chipArt: ChipArt;         // chip face art style
   language: 'en' | 'de';
+  /** Tournament: fixed prize pool, rising blinds, payout split + bust leaderboard.
+   *  Cash: chips = money, blinds fixed (timer optional), players cash out anytime and
+   *  that money leaves the table ("on the table" = buy-ins − cash-outs). */
+  gameMode: 'tournament' | 'cash';
+  /** Cash game only: whether the blind timer/ladder runs. Off = a single fixed level. */
+  cashUseTimer: boolean;
   /** This device is designated the big screen: it boots straight into TV mode,
    *  advertises a pairing code, and a phone connects to it. Per-device (never
    *  synced or shared), so only the actual TV carries it. */

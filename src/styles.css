@@ -108,7 +108,7 @@
   --acc-wash: color-mix(in srgb, var(--acc) 15%, transparent);
   --acc-line: color-mix(in srgb, var(--acc) 42%, transparent);
   --app-bg: radial-gradient(135% 85% at 50% -12%, #275a3d 0%, #123a24 46%, #08170e 100%);
-  --font-display: Georgia, 'Times New Roman', 'Iowan Old Style', serif;
+  --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
   color-scheme: dark;
 }
 
@@ -131,6 +131,7 @@
   --acc-wash: color-mix(in srgb, var(--acc) 14%, transparent);
   --acc-line: color-mix(in srgb, var(--acc) 40%, transparent);
   --app-bg: var(--bg);
+  --font-display: 'Fredoka', var(--font);
   --r: 20px;
   --r-lg: 24px;
   color-scheme: light;
@@ -1207,6 +1208,8 @@ input[type='color'] { cursor: pointer; }
 .tv-progress { width: min(84%, 64vmin); height: clamp(6px, 1vmin, 12px); background: var(--tv-line); border-radius: 999px; overflow: hidden; }
 .tv-progress i { display: block; width: 100%; height: 100%; background: var(--acc); border-radius: 999px; transform-origin: left; transition: transform 1s linear; }
 .tv-next { font-family: var(--mono); color: var(--tv-faint); font-size: clamp(13px, 1.8vmin, 40px); margin-top: clamp(6px, 1.2vmin, 16px); }
+/* Cash game, timer off: no countdown — make the fixed blinds the hero instead. */
+.tv-clock-static .tv-blinds { font-size: clamp(56px, 15vmin, 360px); margin-top: clamp(6px, 1.4vmin, 20px); }
 
 .tv-legend-h { font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--tv-dim); font-size: clamp(10px, 1.4vmin, 24px); margin-bottom: 6px; }
 .tv-legend-row { display: flex; align-items: center; gap: clamp(7px, 1.3vmin, 22px); padding: clamp(3px, 0.7vmin, 12px) 0; }
@@ -1368,3 +1371,11 @@ input[type='color'] { cursor: pointer; }
   background-size: cover; background-position: center;
   border: 1px solid var(--line);
 }
+
+/* Starting-stack card (Table tab) — the stack everyone gets for the buy-in */
+.start-stack-meta {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center;
+  gap: 6px; margin-top: 10px; font-family: var(--mono); font-size: 13px;
+  font-variant-numeric: tabular-nums; color: var(--text);
+}
+.start-stack-meta b { color: var(--acc); font-size: 15px; }

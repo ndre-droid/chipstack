@@ -6,45 +6,31 @@ import type { Unsubscribe } from 'firebase/firestore';
 import { togglePlayPause, goLevel, startBreak, cancelBreak, secondsLeft, initialClock, setMinutesPerLevel } from '../lib/clockLogic';
 import type { ClockState } from '../lib/clockLogic';
 import { IconPlay, IconPause, IconChevron, IconPlus, IconTrash } from '../components/Icons';
-import type { Skin, AccentId } from '../types';
 
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-const TV_SKINS: { id: Skin | 'match'; key: string; name: string }[] = [
-  { id: 'match', key: 'settings.matchPhone', name: 'Match phone' },
-  { id: 'minimal', key: '', name: 'Minimal' },
-  { id: 'casino', key: '', name: 'Casino' },
-  { id: 'playful', key: '', name: 'Playful' },
-  { id: 'scifi', key: '', name: 'Sci-Fi' },
-];
-const ACCENTS: { id: AccentId; color: string }[] = [
-  { id: 'amber', color: '#f0b429' }, { id: 'gold', color: '#e6c878' },
-  { id: 'emerald', color: '#34d399' }, { id: 'cyan', color: '#3fe6ff' },
-  { id: 'cobalt', color: '#5aa0ff' }, { id: 'violet', color: '#b18cff' },
-  { id: 'crimson', color: '#ff6b6b' }, { id: 'coral', color: '#ff7a4d' },
-];
-
 /**
  * The phone's remote, shown on the Table tab only while this phone is hosting a
- * Live Session. It is the full TV control panel: the clock, level length, blinds,
- * players & prize pool, the TV design (skin + accent) and TV toggles — everything
- * writes to the shared session, so the TV mirrors it instantly. This panel never
- * runs its own countdown; it derives from the shared deadline and sends commands.
+ * Live Session. It drives the live game: the clock, level length, blinds and the
+ * players & pool (rebuys, bust / cash-out) — everything writes to the shared session
+ * so the TV mirrors it instantly. The TV's look (design, extras, quips) lives in the
+ * separate TV broadcast card. This panel never runs its own countdown; it derives
+ * from the shared deadline and sends commands.
  */
 export default function RemoteControl() {
   const { state, dispatch } = useStore();
   const t = useT();
   const { money } = useFmt();
-  const { liveSessionCode, liveSessionRole, minutesPerLevel, currency, skin, tvSkin, accents, tvQuips, tvShowPlayers, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvCustomQuips } = state.settings;
+  const { liveSessionCode, liveSessionRole, minutesPerLevel, currency, breakMinutes, breakEvery, gameMode, cashUseTimer } = state.settings;
   const { ledger, session } = state;
+  const isCash = gameMode === 'cash';
+  const showTimer = !isCash || cashUseTimer; // cash + no timer = no clock/break/blinds
   const maxIdx = session.blindLevels.length - 1;
 
   const [clock, setClock] = useState<ClockState>(() => initialClock(minutesPerLevel));
   const [now, setNow] = useState(Date.now());
   const [showBlinds, setShowBlinds] = useState(false);
-  const [showDesign, setShowDesign] = useState(false);
-  const [showQuips, setShowQuips] = useState(false);
-  const [newQuip, setNewQuip] = useState('');
+  const [cashOutId, setCashOutId] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const syncTimer = useRef<number | null>(null);
 
@@ -113,17 +99,17 @@ export default function RemoteControl() {
     send(setMinutesPerLevel(clock, n)); // reflect on the TV's current level immediately
   };
 
-  const tvSkinKey: Skin = (tvSkin ?? 'match') === 'match' ? (skin ?? 'minimal') : (tvSkin as Skin);
-  const currentAccent = accents?.[tvSkinKey] ?? 'amber';
-  const setAccent = (id: AccentId) =>
-    dispatch({ type: 'UPDATE_SETTINGS', patch: { accents: { ...accents, [tvSkinKey]: id } } });
-
   void now; // triggers the re-render each second so secondsLeft() below is fresh
 
-  const pool = ledger.reduce((s, p) => s + (p.buyIn || 0), 0);
+  // Cash game: money on the table = buy-ins − cash-outs. Tournament: the fixed pool.
+  const totalIn = ledger.reduce((s, p) => s + (p.buyIn || 0), 0);
+  const totalOut = ledger.reduce((s, p) => s + (p.cashOut || 0), 0);
+  const pool = isCash ? Math.max(0, totalIn - totalOut) : totalIn;
 
   return (
     <>
+      {showTimer && (
+      <>
       {/* --- Clock --- */}
       <div className="section-label" style={{ marginTop: 18 }}>
         {t('table.remoteControl')}
@@ -204,6 +190,8 @@ export default function RemoteControl() {
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* --- Blinds --- */}
       <button className="section-label collapsible-head" onClick={() => setShowBlinds((v) => !v)}>
@@ -306,17 +294,70 @@ export default function RemoteControl() {
                   >
                     <IconPlus size={14} /> {t('table.rebuy')} {money(session.buyIn, currency)}
                   </button>
-                  <button
-                    className={`btn btn-sm ${p.out ? 'btn-primary' : 'btn-ghost'}`}
-                    onClick={() => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { out: !p.out, outAt: !p.out ? Date.now() : undefined } })}
-                  >
-                    {p.out ? t('table.backIn') : t('table.markOut')}
-                  </button>
+                  {isCash ? (
+                    (p.cashOut || 0) > 0 ? (
+                      <button
+                        className="btn btn-sm btn-primary"
+                        onClick={() => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { cashOut: 0, out: false, outAt: undefined } })}
+                      >
+                        {t('table.backIn')}
+                      </button>
+                    ) : (
+                      <button
+                        className={`btn btn-sm ${cashOutId === p.id ? 'btn-primary' : 'btn-ghost'}`}
+                        onClick={() => setCashOutId(cashOutId === p.id ? null : p.id)}
+                      >
+                        {t('table.cashOut')}
+                      </button>
+                    )
+                  ) : (
+                    <button
+                      className={`btn btn-sm ${p.out ? 'btn-primary' : 'btn-ghost'}`}
+                      onClick={() => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { out: !p.out, outAt: !p.out ? Date.now() : undefined } })}
+                    >
+                      {p.out ? t('table.backIn') : t('table.markOut')}
+                    </button>
+                  )}
                   <div className="spacer" />
                   <button className="icon-btn danger" style={{ width: 34, height: 34 }} onClick={() => dispatch({ type: 'LEDGER_REMOVE', id: p.id })} aria-label="Remove player">
                     <IconTrash size={15} />
                   </button>
                 </div>
+                {isCash && cashOutId === p.id && (
+                  <div className="remote-cashout">
+                    <div className="faint" style={{ fontSize: 12 }}>{t('table.cashOutPrompt', { name: p.name || 'Player' })}</div>
+                    <div className="input-affix" style={{ marginTop: 6 }}>
+                      <span className="affix">{currency}</span>
+                      <input
+                        className="input"
+                        type="number"
+                        inputMode="decimal"
+                        autoFocus
+                        defaultValue={p.buyIn || ''}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const v = Math.max(0, +(e.target as HTMLInputElement).value);
+                            dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { cashOut: v, out: true, outAt: Date.now() } });
+                            setCashOutId(null);
+                          }
+                        }}
+                        id={`cashout-${p.id}`}
+                      />
+                      <button
+                        className="btn btn-primary btn-sm"
+                        style={{ margin: 4 }}
+                        onClick={() => {
+                          const el = document.getElementById(`cashout-${p.id}`) as HTMLInputElement | null;
+                          const v = Math.max(0, +(el?.value ?? 0));
+                          dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { cashOut: v, out: true, outAt: Date.now() } });
+                          setCashOutId(null);
+                        }}
+                      >
+                        {t('table.cashOut')}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -326,160 +367,11 @@ export default function RemoteControl() {
             <IconPlus size={16} /> {t('table.addPlayer')}
           </button>
           <div style={{ textAlign: 'right' }}>
-            <div className="faint" style={{ fontSize: 11.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('table.poolTotal')}</div>
+            <div className="faint" style={{ fontSize: 11.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{isCash ? t('table.onTablePool') : t('table.poolTotal')}</div>
             <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--acc)' }}>{money(pool, currency)}</div>
           </div>
         </div>
       </div>
-
-      {/* --- TV design (skin + accent) --- */}
-      <button className="section-label collapsible-head" onClick={() => setShowDesign((v) => !v)}>
-        {t('table.tvDesign')}
-        <span className="hint">{t('table.tvDesignHint')}</span>
-        <span className={`chevron ${showDesign ? 'rot90' : ''}`} style={{ marginLeft: 8 }}>
-          <IconChevron size={16} />
-        </span>
-      </button>
-      {showDesign && (
-        <div className="card">
-          <div className="chip-toggle-row">
-            {TV_SKINS.map((sk) => (
-              <button
-                key={sk.id}
-                className={`chip-toggle ${(tvSkin ?? 'match') === sk.id ? '' : 'off'}`}
-                onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvSkin: sk.id } })}
-              >
-                {sk.key ? t(sk.key) : sk.name}
-              </button>
-            ))}
-          </div>
-          <div className="section-label" style={{ margin: '14px 2px 8px', padding: 0 }}>{t('settings.accent')}</div>
-          <div className="accent-grid">
-            {ACCENTS.map((a) => (
-              <button key={a.id} className={`accent-opt ${currentAccent === a.id ? 'active' : ''}`} onClick={() => setAccent(a.id)}>
-                <span className="dot" style={{ background: a.color }} />
-                {a.id}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* --- TV toggles --- */}
-      <div className="section-label">{t('settings.tvExtras')}</div>
-      <div className="card">
-        <div className="row">
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.showPlayers')}</div>
-            <div className="faint" style={{ fontSize: 12 }}>{t('table.showPlayersDesc')}</div>
-          </div>
-          <div className="spacer" />
-          <div
-            className={`toggle ${tvShowPlayers ? 'on' : ''}`}
-            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvShowPlayers: !tvShowPlayers } })}
-            role="switch"
-            aria-checked={tvShowPlayers}
-          />
-        </div>
-        <div className="divider" />
-        <div className="row">
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.showPayouts')}</div>
-            <div className="faint" style={{ fontSize: 12 }}>{t('table.showPayoutsDesc')}</div>
-          </div>
-          <div className="spacer" />
-          <div
-            className={`toggle ${tvShowPayouts ? 'on' : ''}`}
-            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvShowPayouts: !tvShowPayouts } })}
-            role="switch"
-            aria-checked={tvShowPayouts}
-          />
-        </div>
-        <div className="divider" />
-        <div className="row">
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.showBustOrder')}</div>
-            <div className="faint" style={{ fontSize: 12 }}>{t('table.showBustOrderDesc')}</div>
-          </div>
-          <div className="spacer" />
-          <div
-            className={`toggle ${tvShowBustOrder ? 'on' : ''}`}
-            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvShowBustOrder: !tvShowBustOrder } })}
-            role="switch"
-            aria-checked={tvShowBustOrder}
-          />
-        </div>
-        <div className="divider" />
-        <div className="row">
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{t('settings.quips')}</div>
-            <div className="faint" style={{ fontSize: 12 }}>{t('settings.quipsDesc')}</div>
-          </div>
-          <div className="spacer" />
-          <div
-            className={`toggle ${tvQuips ? 'on' : ''}`}
-            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvQuips: !tvQuips } })}
-            role="switch"
-            aria-checked={tvQuips}
-          />
-        </div>
-      </div>
-
-      {/* --- Custom sayings --- */}
-      <button className="section-label collapsible-head" onClick={() => setShowQuips((v) => !v)}>
-        {t('table.customQuips')}
-        <span className="hint">{t('table.customQuipsHint')}</span>
-        <span className={`chevron ${showQuips ? 'rot90' : ''}`} style={{ marginLeft: 8 }}>
-          <IconChevron size={16} />
-        </span>
-      </button>
-      {showQuips && (
-        <div className="card">
-          {(tvCustomQuips ?? []).length > 0 && (
-            <div className="remote-players" style={{ marginBottom: 10 }}>
-              {(tvCustomQuips ?? []).map((q, i) => (
-                <div className="remote-player-top" key={i}>
-                  <span style={{ flex: 1, fontSize: 13.5 }}>{q}</span>
-                  <button
-                    className="icon-btn danger"
-                    style={{ width: 34, height: 34 }}
-                    onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvCustomQuips: (tvCustomQuips ?? []).filter((_, j) => j !== i) } })}
-                    aria-label="Remove saying"
-                  >
-                    <IconTrash size={15} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="row" style={{ gap: 8 }}>
-            <input
-              className="input"
-              style={{ flex: 1 }}
-              value={newQuip}
-              placeholder={t('table.customQuipsPlaceholder')}
-              onChange={(e) => setNewQuip(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && newQuip.trim()) {
-                  dispatch({ type: 'UPDATE_SETTINGS', patch: { tvCustomQuips: [...(tvCustomQuips ?? []), newQuip.trim()] } });
-                  setNewQuip('');
-                }
-              }}
-            />
-            <button
-              className="btn btn-ghost btn-sm"
-              disabled={!newQuip.trim()}
-              onClick={() => {
-                if (!newQuip.trim()) return;
-                dispatch({ type: 'UPDATE_SETTINGS', patch: { tvCustomQuips: [...(tvCustomQuips ?? []), newQuip.trim()] } });
-                setNewQuip('');
-              }}
-            >
-              <IconPlus size={16} /> {t('table.addSaying')}
-            </button>
-          </div>
-        </div>
-      )}
     </>
   );
 }

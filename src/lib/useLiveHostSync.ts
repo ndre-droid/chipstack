@@ -44,6 +44,8 @@ export function useLiveHostSync() {
     state.settings.breakMinutes,
     state.settings.breakEvery,
     state.settings.language,
+    state.settings.gameMode,
+    state.settings.cashUseTimer,
   ]);
 
   // Bulk data that changes by typing (names, buy-ins, blinds, inventory) or is
