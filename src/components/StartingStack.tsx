@@ -10,12 +10,12 @@ import { useT, useFmt } from '../lib/i18n';
  * distribution engine as the Plan tab, computed for the current buy-in + first blind.
  */
 export default function StartingStack() {
-  const { state } = useStore();
+  const { state, dispatch } = useStore();
   const t = useT();
   const { money, num } = useFmt();
   const { denominations, session, settings } = state;
   const { buyIn, smallBias, maxDenoms, useAllChips, playerCount, blindLevels } = session;
-  const { unitValue, currency } = settings;
+  const { unitValue, currency, tvShowStartStack } = settings;
 
   const buyInUnits = moneyToUnits(buyIn, unitValue);
   const startBlind = blindLevels[0] ?? null;
@@ -50,6 +50,12 @@ export default function StartingStack() {
           <span className="faint">· {money(buyIn, currency)} ·</span>
           <span className="faint">{stack.chipCount} {t('plan.chips').toLowerCase()}</span>
         </div>
+        <button
+          className={`btn btn-block btn-sm mt12 ${tvShowStartStack ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvShowStartStack: !tvShowStartStack } })}
+        >
+          {tvShowStartStack ? t('table.hideFromTv') : t('table.castToTv')}
+        </button>
       </div>
     </>
   );

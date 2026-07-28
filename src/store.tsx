@@ -62,6 +62,7 @@ const defaultSettings: Settings = {
   language: 'en',
   gameMode: 'tournament',
   cashUseTimer: false,
+  tvShowStartStack: false,
   deviceIsTv: false,
   liveSessionCode: null,
   liveSessionRole: null,
@@ -127,6 +128,7 @@ type Action =
       language?: 'en' | 'de';
       gameMode?: 'tournament' | 'cash';
       cashUseTimer?: boolean;
+      tvShowStartStack?: boolean;
     }
   | { type: 'LEDGER_ADD'; name?: string }
   | { type: 'LEDGER_ADD_MANY'; n: number }
@@ -255,6 +257,7 @@ function reducer(state: AppState, action: Action): AppState {
           // the host also drives whether it's a tournament or cash game
           ...(action.gameMode !== undefined ? { gameMode: action.gameMode } : {}),
           ...(action.cashUseTimer !== undefined ? { cashUseTimer: action.cashUseTimer } : {}),
+          ...(action.tvShowStartStack !== undefined ? { tvShowStartStack: action.tvShowStartStack } : {}),
         },
       };
     case 'LEDGER_ADD':
@@ -361,6 +364,7 @@ function migrate(raw: string | null): AppState {
   if (settings.language !== 'en' && settings.language !== 'de') settings.language = 'en';
   if (settings.gameMode !== 'tournament' && settings.gameMode !== 'cash') settings.gameMode = 'tournament';
   if (typeof settings.cashUseTimer !== 'boolean') settings.cashUseTimer = false;
+  if (typeof settings.tvShowStartStack !== 'boolean') settings.tvShowStartStack = false;
   if (typeof settings.deviceIsTv !== 'boolean') settings.deviceIsTv = false;
   if (typeof settings.liveSessionCode !== 'string') settings.liveSessionCode = null;
   // Pairing was rebuilt (TV owns the doc/clock; codes are now 4 digits). Any persisted

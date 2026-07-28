@@ -46,6 +46,7 @@ export function useLiveHostSync() {
     state.settings.language,
     state.settings.gameMode,
     state.settings.cashUseTimer,
+    state.settings.tvShowStartStack,
   ]);
 
   // Bulk data that changes by typing (names, buy-ins, blinds, inventory) or is

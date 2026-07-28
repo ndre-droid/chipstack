@@ -54,6 +54,8 @@ export interface Settings {
   gameMode: 'tournament' | 'cash';
   /** Cash game only: whether the blind timer/ladder runs. Off = a single fixed level. */
   cashUseTimer: boolean;
+  /** Show the computed starting-stack breakdown as an overlay on the big screen. */
+  tvShowStartStack: boolean;
   /** This device is designated the big screen: it boots straight into TV mode,
    *  advertises a pairing code, and a phone connects to it. Per-device (never
    *  synced or shared), so only the actual TV carries it. */

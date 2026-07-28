@@ -9,6 +9,7 @@ import { firebaseConfigured } from '../lib/firebaseConfig';
 import type { Unsubscribe } from 'firebase/firestore';
 import { secondsLeft as clockSecondsLeft, initialClock } from '../lib/clockLogic';
 import type { ClockState } from '../lib/clockLogic';
+import { computeStack, moneyToUnits } from '../lib/distribution';
 
 const QUIPS = [
   'Blinds are going up — finish your beer, it’s the house rule now.',
@@ -42,7 +43,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const t = useT();
   const { money, num } = useFmt();
   const { blindLevels } = state.session;
-  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer } = state.settings;
+  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack } = state.settings;
   const isCash = gameMode === 'cash';
   // Cash game with the timer off = a single fixed blind level, no countdown.
   const showTimer = !isCash || cashUseTimer;
@@ -140,6 +141,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             language: doc.data.language,
             gameMode: doc.data.gameMode,
             cashUseTimer: doc.data.cashUseTimer,
+            tvShowStartStack: doc.data.tvShowStartStack,
           });
         } else if (isTv) {
           setPaired(false);
@@ -380,14 +382,31 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     () => denominations.filter((d) => d.enabled && d.value > 0).sort((a, b) => a.value - b.value),
     [denominations],
   );
-  // roster shown on the TV — names + amounts, live from the host's ledger
+  // roster shown on the TV — names + amounts, live from the host's ledger. A player
+  // who has left (busted, or cashed out in a cash game) shows their profit/loss.
   const roster = useMemo(
     () =>
       ledger.length
-        ? ledger.map((p) => ({ id: p.id, name: p.name || 'Player', amount: p.buyIn || 0, out: !!p.out || (p.cashOut || 0) > 0 }))
-        : Array.from({ length: playerCount }, (_, i) => ({ id: String(i), name: `Seat ${i + 1}`, amount: buyIn, out: false })),
+        ? ledger.map((p) => {
+            const left = !!p.out || (p.cashOut || 0) > 0;
+            const net = (p.cashOut || 0) > 0 ? (p.cashOut || 0) - (p.buyIn || 0) : null;
+            return { id: p.id, name: p.name || 'Player', amount: p.buyIn || 0, out: left, net };
+          })
+        : Array.from({ length: playerCount }, (_, i) => ({ id: String(i), name: `Seat ${i + 1}`, amount: buyIn, out: false, net: null as number | null })),
     [ledger, playerCount, buyIn],
   );
+
+  // The starting stack, computed for the big screen when the host casts it.
+  const startStack = useMemo(() => {
+    const units = moneyToUnits(buyIn, unitValue);
+    return computeStack(units, denominations, {
+      smallBias: state.session.smallBias,
+      blind: blindLevels[0] ?? null,
+      stacksNeeded: Math.max(1, playerCount),
+      maxDenoms: state.session.maxDenoms,
+      useAllChips: state.session.useAllChips,
+    });
+  }, [buyIn, unitValue, denominations, state.session.smallBias, state.session.maxDenoms, state.session.useAllChips, blindLevels, playerCount]);
 
   // prize-pool payout split (auto structure by entrant count)
   const payouts = useMemo(() => {
@@ -515,7 +534,13 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
                 {roster.map((p) => (
                   <div className={`tv-players-row ${p.out ? 'out' : ''}`} key={p.id}>
                     <span className="tv-players-name">{p.name}</span>
-                    <span className="tv-players-amt">{money(p.amount, currency)}</span>
+                    {p.net !== null ? (
+                      <span className={`tv-players-amt tv-net ${p.net >= 0 ? 'pos' : 'neg'}`}>
+                        {p.net >= 0 ? '+' : '−'}{money(Math.abs(p.net), currency)}
+                      </span>
+                    ) : (
+                      <span className="tv-players-amt">{money(p.amount, currency)}</span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -606,6 +631,25 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         <div className="tv-overlay" onClick={() => setShot(null)}>
           <div className="tv-overlay-label">{t('tv.shotClock')}</div>
           <div className={`tv-overlay-num ${shot <= 5 ? 'urgent' : ''}`}>{Math.max(0, shot)}</div>
+          <div className="tv-overlay-hint">{t('tv.tapToDismiss')}</div>
+        </div>
+      )}
+
+      {/* starting-stack overlay — cast from the phone (Table → Starting stack → Show on TV) */}
+      {tvShowStartStack && startStack.denomsUsed.length > 0 && (
+        <div className="tv-overlay tv-startstack" onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvShowStartStack: false } })}>
+          <div className="tv-overlay-label">{t('table.startingStack')}</div>
+          <div className="tv-startstack-grid">
+            {startStack.denomsUsed.map((d) => (
+              <div className="tv-startstack-col" key={d.id}>
+                <Chip value={d.value} color={d.color} accent={d.accent} size={92} shape={d.shape} />
+                <span className="tv-startstack-count">×{startStack.counts[d.id]}</span>
+              </div>
+            ))}
+          </div>
+          <div className="tv-startstack-total">
+            {num(startStack.totalValue)} {t('plan.chips').toLowerCase()} · {money(buyIn, currency)} · {startStack.chipCount} {t('plan.chips').toLowerCase()}
+          </div>
           <div className="tv-overlay-hint">{t('tv.tapToDismiss')}</div>
         </div>
       )}

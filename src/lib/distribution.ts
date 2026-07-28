@@ -115,76 +115,67 @@ export function computeStack(
     warnings.push(`Your minimum chips add up to ${minValue} — more than the ${targetUnits}-point buy-in. Lower a minimum.`);
   }
 
-  // The slider at (or near) its top means "use as many physical chips as possible".
-  // Seed that mode by genuinely emptying the smallest denomination into the stacks
-  // first, then the next-smallest, and so on — capped only by inventory / per-chip
-  // max — so the result maximises chip count instead of following a smooth pyramid.
-  const maxChips = opts.smallBias >= 0.999;
-
-  // The floor on the smallest chip (used by both the seed and the reconcile guard)
-  // keeps enough small chips around to post blinds and make change.
+  // The floor on the smallest chip keeps enough small chips around to post blinds
+  // and make change. It also caps how far the colour-up descent may thin the smalls.
   const floorBudget = opts.blind
     ? bigBlind * lerp(1, 16, opts.smallBias)
     : targetUnits * lerp(0.03, 0.4, opts.smallBias);
   const floorValue = Math.min(targetUnits * 0.5, floorBudget);
   const floorCount = clampCount(Math.round(floorValue / smallest.value), capOf(smallest));
 
-  if (maxChips) {
-    // Greedy smallest-first fill. Start at the user's minimums, then pour each
-    // denomination in ascending order up to its cap without overshooting the target.
-    let remaining = targetUnits;
-    pool.forEach((d) => {
-      counts[d.id] = userMin[d.id];
-      remaining -= userMin[d.id] * d.value;
-    });
-    for (const d of pool) {
+  // Greedy fill to the target in a given denomination order, starting from the
+  // user's minimums. Ascending order = maximise chip count (fill small first);
+  // descending = minimise it (fill big first).
+  const fillGreedy = (order: Denomination[]): Record<string, number> => {
+    const c: Record<string, number> = {};
+    pool.forEach((d) => (c[d.id] = userMin[d.id]));
+    let remaining = targetUnits - pool.reduce((s, d) => s + userMin[d.id] * d.value, 0);
+    for (const d of order) {
       if (remaining <= 0) break;
-      const room = capOf(d) - counts[d.id];
+      const room = capOf(d) - c[d.id];
       if (room <= 0) continue;
       const add = Math.min(room, Math.floor(remaining / d.value));
-      counts[d.id] += add;
+      c[d.id] += add;
       remaining -= add * d.value;
     }
-  } else {
-    // Pyramid shape. decay<1 => higher denoms get fewer chips.
-    // High bias => STEEPER decay => value must come from many small chips.
-    // Wide range so "fewer, bigger chips" genuinely thins the small chips out.
-    const decay = lerp(0.86, 0.38, opts.smallBias);
-    const shape = pool.map((_, i) => Math.pow(decay, i));
+    return c;
+  };
+  const descPool = [...pool].sort((a, b) => b.value - a.value);
 
-    // Scale the shape so its value equals the target, then round to whole chips.
-    const shapeValue = pool.reduce((s, d, i) => s + shape[i] * d.value, 0);
-    const scale = shapeValue > 0 ? targetUnits / shapeValue : 0;
-    pool.forEach((d, i) => {
-      const raw = Math.round(shape[i] * scale);
-      counts[d.id] = clampCount(raw, capOf(d));
-    });
+  // Colour-up descent. Instead of a discontinuous jump from "all small chips" to a
+  // pyramid, the whole slider is one smooth walk: start from the MAX-chip stack
+  // (smallest-first fill) and, as the slider drops, apply the GENTLEST value-preserving
+  // colour-up move each step (remove k small chips, add fewer bigger ones of equal
+  // value). Smallest-reduction-first means we first thin chips a little — trading a few
+  // small for one slightly-bigger — and only introduce much larger denominations later,
+  // where they drop the count sharply. Value is preserved, so the stack stays exact.
+  Object.assign(counts, fillGreedy(pool)); // ascending = max chips
+  reconcile(counts, pool, targetUnits, capOf, (d) => userMin[d.id] ?? 0);
+  const maxCount = pool.reduce((s, d) => s + counts[d.id], 0);
 
-    // Guarantee at least one of the smallest chip for change-making.
-    if (counts[smallest.id] === 0 && capOf(smallest) > 0 && smallest.value <= targetUnits) {
-      counts[smallest.id] = 1;
-    }
+  // The bottom of the slider: fewest chips (biggest-first), but still keep the small-chip
+  // floor so blinds stay postable. Used only to set the target chip count for the slider.
+  const floorMin: Record<string, number> = { ...userMin };
+  floorMin[smallest.id] = Math.max(userMin[smallest.id] ?? 0, Math.min(floorCount, capOf(smallest)));
+  const minStack = fillGreedy(descPool);
+  if (minStack[smallest.id] < floorMin[smallest.id]) minStack[smallest.id] = floorMin[smallest.id];
+  reconcile(minStack, pool, targetUnits, capOf, (d) => floorMin[d.id] ?? 0);
+  const minCount = pool.reduce((s, d) => s + minStack[d.id], 0);
 
-    // Apply the user's hard minimums and the playability floor on the smallest chip.
-    pool.forEach((d) => {
-      if (counts[d.id] < userMin[d.id]) counts[d.id] = userMin[d.id];
-    });
-    if (counts[smallest.id] < floorCount) counts[smallest.id] = floorCount;
+  // Slider → target chip count (bias 1 = max chips, bias 0 = fewest).
+  const targetCount = Math.round(lerp(minCount, maxCount, opts.smallBias));
+
+  let guard = 0;
+  while (pool.reduce((s, d) => s + counts[d.id], 0) > targetCount && guard++ < 100000) {
+    const move = gentlestColorUp(counts, pool, capOf, (d) => floorMin[d.id] ?? 0);
+    if (!move) break;
+    counts[move.i] -= move.x;
+    counts[move.j] += move.z;
   }
 
-  // Reconcile to the exact target. In max mode the greedy seed already holds all the
-  // small chips it can, so the reconcile only tops up with larger chips (its undershoot
-  // path adds big chips first) and never strips the smalls. In pyramid mode, pass 1
-  // protects the playability floor so small chips survive; if that can't land exactly,
-  // pass 2 relaxes to the user's hard minimums only.
-  const floorMin: Record<string, number> = { ...userMin };
-  if (!maxChips) floorMin[smallest.id] = Math.max(userMin[smallest.id] ?? 0, floorCount);
-  reconcile(counts, pool, targetUnits, capOf, (d) => floorMin[d.id] ?? 0);
+  // Value is preserved by every move, but guard exactness against edge rounding.
   let landed = pool.reduce((s, d) => s + counts[d.id] * d.value, 0);
   if (landed !== targetUnits) reconcile(counts, pool, targetUnits, capOf, (d) => userMin[d.id] ?? 0);
-  // The greedy reconcile steps one whole chip at a time, so it can stall short by
-  // less than the base chip when the pool's gcd is smaller than the base (e.g. base
-  // 10 with 25s in play → a 5-unit gap). Close that with a two-denomination swap.
   landed = pool.reduce((s, d) => s + counts[d.id] * d.value, 0);
   if (landed !== targetUnits) closeResidual(counts, pool, targetUnits, capOf, (d) => userMin[d.id] ?? 0);
 
@@ -348,6 +339,55 @@ function closeResidual(
     }
     if (!applied) return;
   }
+}
+
+function gcd(a: number, b: number): number {
+  a = Math.abs(a);
+  b = Math.abs(b);
+  while (b) {
+    [a, b] = [b, a % b];
+  }
+  return a || 1;
+}
+
+/**
+ * Find the single gentlest colour-up move on the stack: over every pair of
+ * denominations (small i, big j), removing `x` of i and adding `z` of j keeps the
+ * value identical when `x·vi = z·vj` (minimal such x,z via their gcd). The move's
+ * chip-count reduction is `x − z`; we pick the SMALLEST reduction that's still valid
+ * (stays within caps + minimums), tie-breaking toward the smallest chips so little
+ * chips are consumed before big ones ever appear. Returns null when no move remains.
+ */
+function gentlestColorUp(
+  counts: Record<string, number>,
+  pool: Denomination[],
+  capOf: (d: Denomination) => number,
+  minOf: (d: Denomination) => number,
+): { i: string; j: string; x: number; z: number } | null {
+  let best: { i: string; j: string; x: number; z: number; red: number; iv: number; jv: number } | null = null;
+  for (let a = 0; a < pool.length; a++) {
+    for (let b = a + 1; b < pool.length; b++) {
+      const di = pool[a]; // smaller value (pool is ascending)
+      const dj = pool[b]; // larger value
+      if (dj.value <= di.value) continue;
+      const g = gcd(di.value, dj.value);
+      const x = dj.value / g; // remove x of the small chip
+      const z = di.value / g; // add z of the big chip (x·vi === z·vj)
+      const red = x - z; // net chip-count reduction
+      if (red <= 0) continue;
+      if (counts[di.id] - x < minOf(di)) continue;
+      if (counts[dj.id] + z > capOf(dj)) continue;
+      if (
+        !best ||
+        red < best.red ||
+        (red === best.red && di.value < best.iv) ||
+        (red === best.red && di.value === best.iv && dj.value < best.jv)
+      ) {
+        best = { i: di.id, j: dj.id, x, z, red, iv: di.value, jv: dj.value };
+      }
+    }
+  }
+  return best ? { i: best.i, j: best.j, x: best.x, z: best.z } : null;
 }
 
 /**

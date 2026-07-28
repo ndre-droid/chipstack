@@ -1379,3 +1379,28 @@ input[type='color'] { cursor: pointer; }
   font-variant-numeric: tabular-nums; color: var(--text);
 }
 .start-stack-meta b { color: var(--acc); font-size: 15px; }
+
+/* Departed-player profit/loss in the TV roster */
+.tv-players-row .tv-net.pos { color: var(--good); }
+.tv-players-row .tv-net.neg { color: var(--bad); }
+
+/* Starting-stack overlay cast to the TV */
+.tv-startstack-grid {
+  display: flex; flex-wrap: wrap; justify-content: center;
+  gap: clamp(14px, 3.4vmin, 56px); margin: clamp(14px, 3vmin, 46px) 0;
+}
+.tv-startstack-col { display: flex; flex-direction: column; align-items: center; gap: clamp(4px, 0.8vmin, 12px); }
+.tv-startstack-count { font-family: var(--mono); font-weight: 700; font-size: clamp(20px, 3vmin, 52px); color: var(--tv-fg); }
+.tv-startstack-total { font-family: var(--mono); font-weight: 700; font-size: clamp(15px, 2.1vmin, 40px); color: var(--acc); }
+
+/* TV background preset swatches (Table → TV broadcast) */
+.bg-preset-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+.bg-preset {
+  position: relative; height: 54px; border-radius: var(--r-sm); overflow: hidden;
+  background-size: cover; background-position: center; border: 2px solid transparent;
+}
+.bg-preset.active { border-color: var(--acc); }
+.bg-preset span {
+  position: absolute; left: 6px; bottom: 4px; font-size: 11px; font-weight: 700; color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.75); letter-spacing: 0.01em;
+}

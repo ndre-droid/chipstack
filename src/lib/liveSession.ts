@@ -31,6 +31,8 @@ export interface LiveData {
   /** tournament vs cash game — reshapes the TV (pool label, payouts/bust visibility) */
   gameMode: 'tournament' | 'cash';
   cashUseTimer: boolean;
+  /** show the starting-stack breakdown overlay on the big screen */
+  tvShowStartStack: boolean;
 }
 
 export interface LiveDoc {
@@ -76,6 +78,7 @@ function dataOf(state: AppState): LiveData {
     language: state.settings.language ?? 'en',
     gameMode: state.settings.gameMode ?? 'tournament',
     cashUseTimer: state.settings.cashUseTimer ?? false,
+    tvShowStartStack: state.settings.tvShowStartStack ?? false,
   };
 }
 
