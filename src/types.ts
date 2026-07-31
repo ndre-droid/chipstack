@@ -26,6 +26,8 @@ export type AccentId = 'amber' | 'gold' | 'emerald' | 'cyan' | 'cobalt' | 'viole
 export type Skin = 'minimal' | 'casino' | 'playful' | 'scifi';
 export type ChipArt = 'deco' | 'classic' | 'diamond' | 'sunburst';
 
+export type { ChipCalibration } from './lib/chipVision/types';
+
 export interface Settings {
   unitValue: number;        // real money value of 1 chip-unit (default 0.01)
   currency: string;         // symbol, e.g. "€"
@@ -47,6 +49,7 @@ export interface Settings {
   tvBackgroundTone: number | null; // mean luminance 0..1 of the background, drives scrim strength
   appearance: Appearance;   // system / light / dark — applies to the minimal skin
   chipArt: ChipArt;         // chip face art style
+  chipCalibration?: import('./lib/chipVision/types').ChipCalibration; // per-device, NOT synced
   language: 'en' | 'de';
   /** Tournament: fixed prize pool, rising blinds, payout split + bust leaderboard.
    *  Cash: chips = money, blinds fixed (timer optional), players cash out anytime and
