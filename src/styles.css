@@ -1589,3 +1589,8 @@ input[type='color'] { cursor: pointer; }
   background: rgba(224,120,43,.15); }
 .cc-anom.blocking { background: rgba(192,57,43,.2); }
 .remote-chips .cc-open { margin-left: 6px; }
+.cc-players { display: flex; flex-direction: column; }
+.cc-player-row { display: flex; align-items: center; gap: 10px; padding: 8px 2px; border-top: 1px solid rgba(128,128,128,.15); }
+.cc-player-row:first-child { border-top: 0; }
+.cc-player-name { flex: 1; font-weight: 500; }
+.cc-player-chips { font-variant-numeric: tabular-nums; opacity: .8; min-width: 56px; text-align: right; }

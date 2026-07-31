@@ -6,6 +6,7 @@ import RemoteControl from './RemoteControl';
 import ConnectToTv from './ConnectToTv';
 import StartingStack from '../components/StartingStack';
 import TvBroadcast from '../components/TvBroadcast';
+import ChipCountCard from '../components/ChipCountCard';
 import { useT } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 
@@ -190,6 +191,9 @@ export default function TableScreen() {
           </div>
         </div>
       </div>
+
+      {/* Photo chip-count — always reachable, both modes, no TV session needed. */}
+      <ChipCountCard />
 
       {showClock && (
         <>
