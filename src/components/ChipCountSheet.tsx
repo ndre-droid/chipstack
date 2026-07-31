@@ -60,12 +60,19 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
   const dotTop = tilt.pitchDeg == null ? 50
     : Math.max(10, Math.min(90, 90 - (tilt.pitchDeg / 50) * 80));
 
+  const camMsg = cam.error === 'NotAllowedError' || cam.error === 'SecurityError' ? t('chipcount.cameraDenied')
+    : cam.error === 'NotReadableError' || cam.error === 'AbortError' ? t('chipcount.cameraBusy')
+    : t('chipcount.noCamera');
+
   return (
     <div className="cc-sheet">
       <div className="cc-stage" ref={stageRef}>
         <video className="cc-video" ref={cam.videoRef} playsInline muted />
         <div className="cc-guidebox" />
-        <div className="cc-hint">{cam.ready ? hint : t('chipcount.noCamera')}</div>
+        <div className="cc-hint">{cam.ready ? hint : camMsg}</div>
+        {!cam.ready && (
+          <button className="btn btn-primary cc-enable" onClick={cam.retry}>📷 {t('chipcount.cameraRetry')}</button>
+        )}
         <div className="cc-bubble"><div className={`cc-bubble-dot${tilt.inRange ? ' ok' : ''}`} style={{ top: `${dotTop}%` }} /></div>
       </div>
       <div className="cc-bar">

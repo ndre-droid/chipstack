@@ -1594,3 +1594,4 @@ input[type='color'] { cursor: pointer; }
 .cc-player-row:first-child { border-top: 0; }
 .cc-player-name { flex: 1; font-weight: 500; }
 .cc-player-chips { font-variant-numeric: tabular-nums; opacity: .8; min-width: 56px; text-align: right; }
+.cc-enable { position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); z-index: 2; }
