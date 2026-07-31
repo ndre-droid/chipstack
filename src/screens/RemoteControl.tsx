@@ -6,6 +6,7 @@ import type { Unsubscribe } from 'firebase/firestore';
 import { togglePlayPause, goLevel, startBreak, cancelBreak, secondsLeft, initialClock, setMinutesPerLevel } from '../lib/clockLogic';
 import type { ClockState } from '../lib/clockLogic';
 import { IconPlay, IconPause, IconChevron, IconPlus, IconTrash } from '../components/Icons';
+import { ChipCountSheet } from '../components/ChipCountSheet.tsx';
 
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -37,6 +38,7 @@ export default function RemoteControl() {
   const [koPickId, setKoPickId] = useState<string | null>(null); // busted player awaiting knockout attribution
   const [emojiOpenId, setEmojiOpenId] = useState<string | null>(null);
   const [momentText, setMomentText] = useState('');
+  const [countFor, setCountFor] = useState<{ id: string; name: string } | null>(null);
   const { bountyMode } = state.settings;
 
   const active = firebaseConfigured && liveSessionRole === 'host' && !!liveSessionCode;
@@ -289,6 +291,12 @@ export default function RemoteControl() {
                       value={p.chips || ''}
                       onChange={(e) => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { chips: Math.max(0, Math.round(+e.target.value)) || undefined } })}
                     />
+                    <button
+                      type="button"
+                      className="icon-btn cc-open"
+                      aria-label={t('chipcount.title')}
+                      onClick={() => setCountFor({ id: p.id, name: p.name })}
+                    >📷</button>
                   </div>
                 )}
                 <div className="remote-player-actions">
@@ -447,6 +455,14 @@ export default function RemoteControl() {
           </div>
         )}
       </div>
+
+      {countFor && (
+        <ChipCountSheet
+          playerId={countFor.id}
+          playerName={countFor.name}
+          onClose={() => setCountFor(null)}
+        />
+      )}
     </>
   );
 }
