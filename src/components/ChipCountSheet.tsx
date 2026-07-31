@@ -45,9 +45,11 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
   }, [captured]);
 
   const guideBox = (canvas: HTMLCanvasElement): Box => {
-    // Guide inset matches .cc-guidebox (12% vertical, 8% horizontal).
+    // Analyze a margin BEYOND the visual guide (.cc-guidebox is 12%/8%) so a stack
+    // that fills the guide has breathing room and isn't falsely flagged as cut off;
+    // the extra border is also more reliably felt for the background model.
     const w = canvas.width, h = canvas.height;
-    return { x0: w * 0.08, y0: h * 0.12, x1: w * 0.92, y1: h * 0.88 };
+    return { x0: w * 0.03, y0: h * 0.05, x1: w * 0.97, y1: h * 0.95 };
   };
 
   const onCapture = async () => {

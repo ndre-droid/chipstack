@@ -35,13 +35,16 @@ export function detectLean(leanDeg: number, columnIndex: number): { anomaly: Ano
 }
 
 export function detectCutOff(
-  x0: number, x1: number, topY: number, bottomY: number,
+  _x0: number, _x1: number, topY: number, bottomY: number,
   box: { x0: number; y0: number; x1: number; y1: number },
   columnIndex: number,
 ): Anomaly | null {
   const pad = 3;
-  const touches = x0 <= box.x0 + pad || x1 >= box.x1 - pad || topY <= box.y0 + pad || bottomY >= box.y1 - pad;
-  return touches ? a('cutOff', 'blocking', false, columnIndex) : null;
+  // Only VERTICAL clipping (top/bottom) actually loses chips from the count — a
+  // stack touching the left/right is harmless. Warn (not blocking) so it advises
+  // without preventing a count the user can still review.
+  const touches = topY <= box.y0 + pad || bottomY >= box.y1 - pad;
+  return touches ? a('cutOff', 'warn', false, columnIndex) : null;
 }
 
 export function detectWeakContrast(maskCoverage: number): Anomaly | null {
