@@ -980,6 +980,13 @@ input[type='color'] { cursor: pointer; }
   background: var(--surface-2); border: 1px solid var(--line);
   border-radius: var(--r-sm); padding: 12px; color: var(--text-dim);
 }
+/* single-line URL display (the "Show on TV" web address) — wraps cleanly, never
+   scrambled. Distinct from .code-cell (the 4-digit connect boxes). */
+.url-box {
+  font-family: var(--mono); font-size: 14px; line-height: 1.5; text-align: center;
+  overflow-wrap: anywhere; background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--r-sm); padding: 12px 14px; color: var(--text);
+}
 .qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 16px; }
 .qr-wrap img { width: 160px; height: 160px; border-radius: var(--r-sm); background: #fff; padding: 8px; }
 .import-box {
@@ -1065,6 +1072,9 @@ input[type='color'] { cursor: pointer; }
   --tv-line: rgba(255, 255, 255, 0.10);
   --acc: var(--acc-bright);
   --on-acc: #0c0c10;
+  /* TV is themed independently of the phone's <html> skin, so it carries its OWN
+     display font (per data-tv-skin below) rather than inheriting :root's. */
+  --font-display: var(--font);
   position: fixed; inset: 0; z-index: 120;
   display: flex; flex-direction: column;
   padding: clamp(12px, 3vmin, 72px);
@@ -1129,11 +1139,13 @@ input[type='color'] { cursor: pointer; }
   --tv-bg: radial-gradient(135% 90% at 50% -10%, #275a3d 0%, #123a24 46%, #08170e 100%);
   --tv-bg-base: #123a24;
   --tv-fg: #f1e9d4; --tv-dim: #c4d2c0; --tv-faint: #86a08c;
+  --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
   --tv-panel: rgba(217, 178, 98, 0.07); --tv-line: rgba(217, 178, 98, 0.22); --on-acc: #14120b;
 }
 .tv[data-tv-skin='playful'] {
   --tv-bg: #fbe9c8; --tv-bg-base: #fbe9c8;
   --tv-fg: #201a12; --tv-dim: #6d5d3d; --tv-faint: #a58c5c;
+  --font-display: 'Fredoka', var(--font);
   --tv-panel: rgba(32, 26, 18, 0.05); --tv-line: rgba(32, 26, 18, 0.15);
   --acc: var(--acc-deep); --on-acc: #ffffff;
 }
@@ -1144,6 +1156,12 @@ input[type='color'] { cursor: pointer; }
   --tv-panel: rgba(80, 140, 255, 0.06); --tv-line: rgba(80, 140, 255, 0.2); --on-acc: #04121a;
   --font-display: 'Orbitron', var(--font);
 }
+/* The TV's display font (per skin) drives the headline text so a skin change is
+   visible on the big screen (see .tv-blinds / .tv-level / .tv-flash below too).
+   The countdown stays monospace for tabular digits, except sci-fi (below). */
+.tv-pair-title,
+.tv-startstack-total { font-family: var(--font-display); }
+
 .tv[data-tv-skin='scifi'] .tv-time,
 .tv[data-tv-skin='scifi'] .tv-blinds,
 .tv[data-tv-skin='scifi'] .tv-level { font-family: var(--font-display); }
@@ -1200,8 +1218,8 @@ input[type='color'] { cursor: pointer; }
   color: var(--acc); font-size: clamp(12px, 1.6vmin, 34px); font-weight: 700;
 }
 .tv-clock { text-align: center; display: flex; flex-direction: column; align-items: center; }
-.tv-level { font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.18em; color: var(--tv-dim); font-size: clamp(14px, 2.3vmin, 46px); }
-.tv-blinds { font-family: var(--mono); font-weight: 700; color: var(--acc); font-size: clamp(30px, 6vmin, 150px); letter-spacing: -0.01em; margin-top: clamp(2px, 0.6vmin, 8px); }
+.tv-level { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.18em; color: var(--tv-dim); font-size: clamp(14px, 2.3vmin, 46px); }
+.tv-blinds { font-family: var(--font-display); font-weight: 700; color: var(--acc); font-size: clamp(30px, 6vmin, 150px); letter-spacing: -0.01em; margin-top: clamp(2px, 0.6vmin, 8px); font-variant-numeric: tabular-nums; }
 .tv-ante { color: var(--tv-dim); font-size: 0.48em; }
 .tv-time { font-family: var(--mono); font-weight: 700; font-size: clamp(72px, 19vmin, 480px); line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; margin: clamp(2px, 0.5vmin, 8px) 0; }
 .tv-time.urgent { color: var(--bad); }
@@ -1228,7 +1246,7 @@ input[type='color'] { cursor: pointer; }
 .tv-controls .tv-exit { color: #f0604d; }
 
 .tv-flash { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; background: color-mix(in srgb, var(--acc) 90%, #000); color: var(--on-acc); animation: tv-flash 0.4s ease; }
-.tv-flash > div:first-child { font-size: clamp(44px, 12vmin, 320px); font-weight: 800; letter-spacing: -0.03em; }
+.tv-flash > div:first-child { font-family: var(--font-display); font-size: clamp(44px, 12vmin, 320px); font-weight: 800; letter-spacing: -0.03em; }
 .tv-flash-sub { font-family: var(--mono); font-size: clamp(22px, 5vmin, 130px); font-weight: 700; }
 @keyframes tv-flash { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: none; } }
 
@@ -1310,15 +1328,27 @@ input[type='color'] { cursor: pointer; }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
-/* phone: 4-digit "Connect to TV" code entry */
-.code-boxes { display: flex; gap: 10px; justify-content: center; }
-.code-box {
+/* phone: live TV connection status (heartbeat) on the Connect-to-TV card */
+.live-status { display: flex; align-items: center; gap: 11px; }
+.live-status-text { min-width: 0; }
+.live-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; background: var(--text-faint); }
+.live-dot.on { background: var(--good); box-shadow: 0 0 0 4px color-mix(in srgb, var(--good) 22%, transparent); animation: live-pulse 2s ease-in-out infinite; }
+.live-dot.off { background: var(--bad); box-shadow: 0 0 0 4px color-mix(in srgb, var(--bad) 20%, transparent); }
+.live-dot.wait { background: var(--text-faint); animation: live-pulse 1.4s ease-in-out infinite; }
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+/* phone: 4-digit "Connect to TV" code entry.
+   NOTE: named .code-cell (not .code-box) on purpose — .code-box is the multi-line
+   URL / share-code display (see near .qr-wrap); reusing that name here clobbered it
+   and scrambled the "Show on TV" link into a tiny 68px box. Keep them separate. */
+.code-cells { display: flex; gap: 10px; justify-content: center; }
+.code-cell {
   flex: 1; min-width: 0; max-width: 68px; height: 58px; text-align: center;
-  font-family: var(--mono); font-weight: 700; font-size: 26px; color: var(--fg);
+  font-family: var(--mono); font-weight: 700; font-size: 26px; color: var(--text);
   background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm);
   transition: border-color 0.15s;
 }
-.code-box:focus { outline: none; border-color: var(--acc); }
+.code-cell:focus { outline: none; border-color: var(--acc); }
 
 /* portrait (un-rotated phone): stack the panels, clock first */
 @media (max-aspect-ratio: 1 / 1) {
@@ -1403,4 +1433,126 @@ input[type='color'] { cursor: pointer; }
 .bg-preset span {
   position: absolute; left: 6px; bottom: 4px; font-size: 11px; font-weight: 700; color: #fff;
   text-shadow: 0 1px 3px rgba(0,0,0,0.75); letter-spacing: 0.01em;
+}
+
+/* ============================================================
+   Feature pack: bounty, league, moments, penalties, emojis,
+   custom accent, + TV crown / color-up / elimination / confetti
+   ============================================================ */
+
+/* --- player emoji picker (remote) --- */
+.emoji-btn {
+  width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; font-size: 22px;
+  background: var(--surface-2); border: 1px solid var(--line); display: grid; place-items: center;
+}
+.emoji-grid { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.emoji-opt {
+  width: 38px; height: 38px; border-radius: 9px; font-size: 20px; background: var(--surface-2);
+  border: 1px solid var(--line); display: grid; place-items: center;
+}
+.emoji-opt.active { border-color: var(--acc); background: var(--acc-wash); }
+.remote-chips { margin-top: 8px; max-width: 220px; }
+
+/* --- knockout-bounty attribution (remote) --- */
+.ko-pick { margin-top: 8px; padding: 10px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm); }
+.ko-pick-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ko-pick-grid .ko-skip { color: var(--text-faint); }
+
+/* --- hand-of-the-night moments (remote) --- */
+.moment-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.moment-row { display: flex; align-items: center; gap: 8px; }
+.moment-txt { flex: 1; font-size: 13px; line-height: 1.4; }
+
+/* --- generic removable pill list (penalties / house rules) --- */
+.chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-list-item {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 6px 5px 11px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px;
+  font-size: 12.5px; line-height: 1.3;
+}
+.chip-list-item button { width: 20px; height: 20px; border-radius: 50%; background: var(--surface-3); color: var(--text-dim); font-size: 15px; line-height: 1; }
+.chip-list-item button:hover { color: var(--bad); }
+
+/* --- season league table (Cash tab) --- */
+.league-table { display: flex; flex-direction: column; }
+.league-h, .league-row {
+  display: grid; grid-template-columns: 2.2em 1fr 3em 5.5em 4em; gap: 6px; align-items: center;
+  padding: 8px 2px;
+}
+.league-h { border-bottom: 1px solid var(--line); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); }
+.league-row { border-bottom: 1px solid var(--line-soft); }
+.league-row:last-child { border-bottom: none; }
+.league-c-rank { text-align: center; font-weight: 700; }
+.league-c-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.league-c-num { text-align: right; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+.league-c-num.pos { color: var(--good); }
+.league-c-num.neg { color: var(--bad); }
+.league-history { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.league-game-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--text-dim); }
+
+/* --- custom accent swatch --- */
+.accent-opt.custom-accent .dot { background-size: cover; }
+
+/* --- TV: colour-up alarm --- */
+.tv-colorup {
+  margin-top: clamp(6px, 1.2vmin, 18px); font-family: var(--mono); font-weight: 700;
+  color: var(--on-acc); background: var(--acc); border-radius: 999px;
+  padding: clamp(5px, 0.9vmin, 12px) clamp(12px, 1.8vmin, 26px);
+  font-size: clamp(12px, 1.7vmin, 34px); letter-spacing: 0.01em;
+  animation: colorup-pulse 1.6s ease-in-out infinite;
+}
+@keyframes colorup-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+
+/* --- TV: house rule on the break --- */
+.tv-houserule {
+  margin-top: clamp(10px, 2vmin, 28px); max-width: 62vmin; text-align: center;
+  background: var(--tv-panel); border: 1px solid var(--tv-line); border-radius: 16px;
+  padding: clamp(10px, 1.8vmin, 24px) clamp(14px, 2.4vmin, 34px);
+}
+.tv-houserule-k { display: block; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--acc); font-size: clamp(11px, 1.4vmin, 24px); margin-bottom: 4px; }
+.tv-houserule-v { font-size: clamp(15px, 2.2vmin, 46px); font-weight: 600; line-height: 1.3; }
+
+/* --- TV: roster crown / emoji / bounty --- */
+.tv-players-emoji { flex-shrink: 0; font-size: clamp(14px, 1.9vmin, 40px); }
+.tv-crown { flex-shrink: 0; font-size: clamp(13px, 1.7vmin, 36px); }
+.tv-bounty { flex-shrink: 0; font-family: var(--mono); color: var(--acc); font-size: clamp(11px, 1.5vmin, 30px); margin-left: 6px; }
+
+/* --- TV: elimination flash --- */
+.tv-elim {
+  position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: clamp(6px, 1.4vmin, 20px);
+  background: color-mix(in srgb, var(--bad) 82%, #000); color: #fff;
+  animation: tv-flash 0.4s ease;
+}
+.tv-elim-lead { font-family: var(--mono); letter-spacing: 0.16em; font-size: clamp(18px, 3vmin, 70px); opacity: 0.9; }
+.tv-elim-name { font-family: var(--font-display); font-weight: 800; font-size: clamp(44px, 11vmin, 300px); letter-spacing: -0.02em; text-align: center; }
+.tv-elim-place { font-size: clamp(18px, 3vmin, 70px); font-weight: 700; opacity: 0.92; }
+
+/* --- TV: winner celebration + confetti --- */
+.tv-celebrate { gap: clamp(6px, 1.4vmin, 20px); }
+.tv-champ-cup { font-size: clamp(70px, 16vmin, 420px); line-height: 1; animation: tv-pop 0.6s ease; }
+.tv-champ-name { font-family: var(--font-display); font-weight: 800; font-size: clamp(40px, 10vmin, 280px); letter-spacing: -0.02em; color: var(--acc); text-align: center; }
+.tv-champ-sub { font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.14em; color: var(--tv-dim); font-size: clamp(16px, 2.6vmin, 60px); }
+.tv-confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: -1; }
+.tv-confetti i {
+  position: absolute; top: -12vh; left: calc(var(--i) * 1.66%);
+  width: clamp(7px, 0.9vmin, 16px); height: clamp(10px, 1.3vmin, 22px);
+  background: hsl(calc(var(--i) * 37deg) 90% 60%); border-radius: 2px; opacity: 0.92;
+  animation: confetti-fall calc(2.6s + var(--i) * 0.02s) linear infinite;
+  animation-delay: calc(var(--i) * -0.09s);
+}
+@keyframes confetti-fall {
+  0% { transform: translateY(-14vh) rotate(0deg); }
+  100% { transform: translateY(120vh) rotate(760deg); }
+}
+
+/* --- TV: penalty spinner result --- */
+.tv-overlay-penalty { font-size: clamp(20px, 3.4vmin, 90px); font-weight: 700; color: var(--acc); text-align: center; max-width: 80vw; }
+
+/* --- TV: idle spinning chip on the pairing card --- */
+.tv-pair-idle { display: grid; place-items: center; animation: tv-idle-spin 7s linear infinite; }
+.tv-pair-idle .chip-svg { width: clamp(36px, 5vmin, 72px); height: auto; }
+@keyframes tv-idle-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .tv-confetti i, .tv-pair-idle, .tv-colorup { animation: none; }
 }

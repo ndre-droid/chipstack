@@ -10,6 +10,7 @@ import { IconPlan, IconChips, IconTable, IconCash, IconSettings } from './compon
 import { useT } from './lib/i18n';
 import { useLiveHostSync } from './lib/useLiveHostSync';
 import { useNativeDeepLink, appSchemeUrl } from './lib/deepLink';
+import { customAccentVars } from './lib/color';
 
 type Tab = 'plan' | 'chips' | 'table' | 'cash';
 type View = Tab | 'settings';
@@ -56,7 +57,7 @@ function AppShell() {
   const [view, setView] = useState<View>('plan');
   const lastTab = useRef<Tab>('plan');
   const { state, dispatch } = useStore();
-  const { skin, accents, appearance, deviceIsTv } = state.settings;
+  const { skin, accents, appearance, deviceIsTv, customAccent } = state.settings;
   const activeSkin = skin ?? 'minimal';
   const activeAccent = accents?.[activeSkin] ?? 'amber';
   const t = useT();
@@ -100,7 +101,13 @@ function AppShell() {
     root.setAttribute('data-accent', activeAccent);
     if (activeSkin === 'minimal' && appearance !== 'system') root.setAttribute('data-theme', appearance);
     else root.removeAttribute('data-theme');
-  }, [activeSkin, activeAccent, appearance]);
+    // free custom accent overrides the preset hues (all skins) when set
+    const custom = customAccent && /^#[0-9a-fA-F]{6}$/.test(customAccent) ? customAccentVars(customAccent) : null;
+    for (const key of ['--acc', '--acc-bright', '--acc-deep']) {
+      if (custom) root.style.setProperty(key, custom[key]);
+      else root.style.removeProperty(key);
+    }
+  }, [activeSkin, activeAccent, appearance, customAccent]);
 
   const toSettings = () => {
     if (view === 'settings') setView(lastTab.current);

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useReducer } from 'react';
 import type { ReactNode } from 'react';
-import type { AppState, Denomination, BlindLevel, Preset, Settings, SessionConfig, LedgerPlayer, AccentId, Skin } from './types';
+import type { AppState, Denomination, BlindLevel, Preset, Settings, SessionConfig, LedgerPlayer, AccentId, Skin, ChipArt, LeagueGame, Moment } from './types';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -63,6 +63,11 @@ const defaultSettings: Settings = {
   gameMode: 'tournament',
   cashUseTimer: false,
   tvShowStartStack: false,
+  bountyMode: false,
+  bountyAmount: 5,
+  customAccent: null,
+  tvPenalties: [],
+  tvHouseRules: [],
   deviceIsTv: false,
   liveSessionCode: null,
   liveSessionRole: null,
@@ -88,6 +93,8 @@ const initialState: AppState = {
   session: defaultSession,
   presets: [],
   ledger: [],
+  league: [],
+  moments: [],
 };
 
 type Action =
@@ -129,12 +136,24 @@ type Action =
       gameMode?: 'tournament' | 'cash';
       cashUseTimer?: boolean;
       tvShowStartStack?: boolean;
+      chipArt?: ChipArt;
+      bountyMode?: boolean;
+      bountyAmount?: number;
+      customAccent?: string | null;
+      tvPenalties?: string[];
+      tvHouseRules?: string[];
+      moments?: Moment[];
     }
   | { type: 'LEDGER_ADD'; name?: string }
   | { type: 'LEDGER_ADD_MANY'; n: number }
   | { type: 'LEDGER_UPDATE'; id: string; patch: Partial<LedgerPlayer> }
   | { type: 'LEDGER_REMOVE'; id: string }
   | { type: 'LEDGER_CLEAR' }
+  | { type: 'LEAGUE_SAVE_GAME' }
+  | { type: 'LEAGUE_DELETE_GAME'; id: string }
+  | { type: 'LEAGUE_CLEAR' }
+  | { type: 'MOMENT_ADD'; text: string }
+  | { type: 'MOMENT_REMOVE'; id: string }
   | { type: 'RESET' };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -232,6 +251,7 @@ function reducer(state: AppState, action: Action): AppState {
         denominations: action.denominations,
         session: action.session,
         ledger: action.ledger,
+        ...(action.moments !== undefined ? { moments: action.moments } : {}),
         settings: {
           ...state.settings,
           currency: action.currency,
@@ -258,6 +278,12 @@ function reducer(state: AppState, action: Action): AppState {
           ...(action.gameMode !== undefined ? { gameMode: action.gameMode } : {}),
           ...(action.cashUseTimer !== undefined ? { cashUseTimer: action.cashUseTimer } : {}),
           ...(action.tvShowStartStack !== undefined ? { tvShowStartStack: action.tvShowStartStack } : {}),
+          ...(action.chipArt !== undefined ? { chipArt: action.chipArt } : {}),
+          ...(action.bountyMode !== undefined ? { bountyMode: action.bountyMode } : {}),
+          ...(action.bountyAmount !== undefined ? { bountyAmount: action.bountyAmount } : {}),
+          ...(action.customAccent !== undefined ? { customAccent: action.customAccent } : {}),
+          ...(action.tvPenalties !== undefined ? { tvPenalties: action.tvPenalties } : {}),
+          ...(action.tvHouseRules !== undefined ? { tvHouseRules: action.tvHouseRules } : {}),
         },
       };
     case 'LEDGER_ADD':
@@ -279,7 +305,35 @@ function reducer(state: AppState, action: Action): AppState {
     case 'LEDGER_REMOVE':
       return { ...state, ledger: state.ledger.filter((p) => p.id !== action.id) };
     case 'LEDGER_CLEAR':
-      return { ...state, ledger: [] };
+      // a fresh game night: clear players AND the night's logged moments
+      return { ...state, ledger: [], moments: [] };
+    case 'LEAGUE_SAVE_GAME': {
+      const players = state.ledger
+        .filter((p) => (p.buyIn || 0) > 0 || (p.cashOut || 0) > 0)
+        .map((p) => ({ name: p.name || 'Player', buyIn: p.buyIn || 0, cashOut: p.cashOut || 0 }));
+      if (!players.length) return state;
+      const game: LeagueGame = {
+        id: uid(),
+        date: Date.now(),
+        mode: state.settings.gameMode,
+        currency: state.settings.currency,
+        players,
+      };
+      return { ...state, league: [game, ...state.league] };
+    }
+    case 'LEAGUE_DELETE_GAME':
+      return { ...state, league: state.league.filter((g) => g.id !== action.id) };
+    case 'LEAGUE_CLEAR':
+      return { ...state, league: [] };
+    case 'MOMENT_ADD': {
+      const text = action.text.trim();
+      if (!text) return state;
+      const moment: Moment = { id: uid(), text, at: Date.now() };
+      // newest first, keep the last 30 so the doc stays small
+      return { ...state, moments: [moment, ...state.moments].slice(0, 30) };
+    }
+    case 'MOMENT_REMOVE':
+      return { ...state, moments: state.moments.filter((m) => m.id !== action.id) };
     case 'RESET':
       return {
         denominations: defaultDenoms(),
@@ -287,6 +341,8 @@ function reducer(state: AppState, action: Action): AppState {
         session: { ...defaultSession, blindLevels: defaultBlinds(10, 20) },
         presets: state.presets,
         ledger: state.ledger,
+        league: state.league,
+        moments: [],
       };
     default:
       return state;
@@ -365,6 +421,11 @@ function migrate(raw: string | null): AppState {
   if (settings.gameMode !== 'tournament' && settings.gameMode !== 'cash') settings.gameMode = 'tournament';
   if (typeof settings.cashUseTimer !== 'boolean') settings.cashUseTimer = false;
   if (typeof settings.tvShowStartStack !== 'boolean') settings.tvShowStartStack = false;
+  if (typeof settings.bountyMode !== 'boolean') settings.bountyMode = false;
+  if (typeof settings.bountyAmount !== 'number' || settings.bountyAmount < 0) settings.bountyAmount = 5;
+  if (typeof settings.customAccent !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(settings.customAccent)) settings.customAccent = null;
+  settings.tvPenalties = Array.isArray(settings.tvPenalties) ? settings.tvPenalties.filter((q): q is string => typeof q === 'string') : [];
+  settings.tvHouseRules = Array.isArray(settings.tvHouseRules) ? settings.tvHouseRules.filter((q): q is string => typeof q === 'string') : [];
   if (typeof settings.deviceIsTv !== 'boolean') settings.deviceIsTv = false;
   if (typeof settings.liveSessionCode !== 'string') settings.liveSessionCode = null;
   // Pairing was rebuilt (TV owns the doc/clock; codes are now 4 digits). Any persisted
@@ -402,8 +463,10 @@ function migrate(raw: string | null): AppState {
 
   const presets = Array.isArray(parsed.presets) ? (parsed.presets as Preset[]) : [];
   const ledger = Array.isArray(parsed.ledger) ? (parsed.ledger as LedgerPlayer[]) : [];
+  const league = Array.isArray(parsed.league) ? (parsed.league as LeagueGame[]) : [];
+  const moments = Array.isArray(parsed.moments) ? (parsed.moments as Moment[]) : [];
 
-  return { denominations, settings, session, presets, ledger };
+  return { denominations, settings, session, presets, ledger, league, moments };
 }
 
 const StoreContext = createContext<{ state: AppState; dispatch: React.Dispatch<Action> } | null>(null);

@@ -133,6 +133,40 @@ export default function TableScreen() {
             />
           </div>
         )}
+        {!isCash && (
+          <>
+            <div className="divider" style={{ margin: '12px 0' }} />
+            <div className="row">
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>🎯 {t('table.bounty')}</div>
+                <div className="faint" style={{ fontSize: 12 }}>{t('table.bountyDesc')}</div>
+              </div>
+              <div className="spacer" />
+              <div
+                className={`toggle ${state.settings.bountyMode ? 'on' : ''}`}
+                onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { bountyMode: !state.settings.bountyMode } })}
+                role="switch"
+                aria-checked={state.settings.bountyMode}
+              />
+            </div>
+            {state.settings.bountyMode && (
+              <div className="row" style={{ marginTop: 10 }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.bountyAmount')}</div>
+                <div className="spacer" />
+                <div className="input-affix" style={{ maxWidth: 120 }}>
+                  <span className="affix">{state.settings.currency}</span>
+                  <input
+                    className="input"
+                    type="number"
+                    inputMode="decimal"
+                    value={state.settings.bountyAmount || ''}
+                    onChange={(e) => dispatch({ type: 'UPDATE_SETTINGS', patch: { bountyAmount: Math.max(0, +e.target.value) } })}
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Connect to the TV — type the code the TV shows, right here on the Table tab */}

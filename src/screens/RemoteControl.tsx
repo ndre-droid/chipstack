@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { useT, useFmt } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
@@ -8,6 +8,9 @@ import type { ClockState } from '../lib/clockLogic';
 import { IconPlay, IconPause, IconChevron, IconPlus, IconTrash } from '../components/Icons';
 
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+// small avatar set for players (tap to set, tap the active one to clear)
+const EMOJIS = ['😎', '🤠', '🦈', '🐷', '🦁', '🐺', '🦊', '🐸', '👑', '🃏', '💀', '🔥', '🍀', '🎩', '🚀', '🐟'];
 
 /**
  * The phone's remote, shown on the Table tab only while this phone is hosting a
@@ -31,8 +34,10 @@ export default function RemoteControl() {
   const [now, setNow] = useState(Date.now());
   const [showBlinds, setShowBlinds] = useState(false);
   const [cashOutId, setCashOutId] = useState<string | null>(null);
-  const [syncState, setSyncState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
-  const syncTimer = useRef<number | null>(null);
+  const [koPickId, setKoPickId] = useState<string | null>(null); // busted player awaiting knockout attribution
+  const [emojiOpenId, setEmojiOpenId] = useState<string | null>(null);
+  const [momentText, setMomentText] = useState('');
+  const { bountyMode } = state.settings;
 
   const active = firebaseConfigured && liveSessionRole === 'host' && !!liveSessionCode;
 
@@ -71,27 +76,6 @@ export default function RemoteControl() {
       }),
     );
   };
-
-  // Force-push the full data to the TV right now. Changes normally sync
-  // automatically (useLiveHostSync), but if a write was dropped while the TV
-  // briefly disconnected, this re-sends everything so the phone can recover
-  // without reloading (which isn't possible inside the installed app).
-  const resync = () => {
-    if (!liveSessionCode) return;
-    if (syncTimer.current) window.clearTimeout(syncTimer.current);
-    setSyncState('sending');
-    import('../lib/liveSession')
-      .then(({ hostPushData }) => hostPushData(liveSessionCode, state))
-      .then(() => {
-        setSyncState('sent');
-        syncTimer.current = window.setTimeout(() => setSyncState('idle'), 2000);
-      })
-      .catch(() => {
-        setSyncState('error');
-        syncTimer.current = window.setTimeout(() => setSyncState('idle'), 3500);
-      });
-  };
-  useEffect(() => () => { if (syncTimer.current) window.clearTimeout(syncTimer.current); }, []);
 
   const setMinutes = (m: number) => {
     const n = Math.max(1, Math.min(180, m));
@@ -246,23 +230,7 @@ export default function RemoteControl() {
         <span className="hint">{t('table.remotePlayersHint')}</span>
       </div>
       <div className="card">
-        <div className="resync-row">
-          <div className="faint" style={{ fontSize: 12, flex: 1 }}>{t('table.buyInNote')}</div>
-          <button
-            className={`btn btn-sm ${syncState === 'error' ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={resync}
-            disabled={syncState === 'sending'}
-          >
-            {syncState === 'sending'
-              ? t('table.sending')
-              : syncState === 'sent'
-                ? t('table.sent')
-                : syncState === 'error'
-                  ? t('table.syncError')
-                  : t('table.sendToTv')}
-          </button>
-        </div>
-        <div className="faint" style={{ fontSize: 11, margin: '2px 0 10px' }}>{t('table.syncHint')}</div>
+        <div className="faint" style={{ fontSize: 12, margin: '0 0 10px' }}>{t('table.buyInNote')}</div>
         {ledger.length === 0 ? (
           <div className="empty" style={{ paddingBottom: 12 }}>{t('table.remotePlayersHint')}</div>
         ) : (
@@ -270,6 +238,13 @@ export default function RemoteControl() {
             {ledger.map((p) => (
               <div className={`remote-player ${p.out ? 'out' : ''}`} key={p.id}>
                 <div className="remote-player-top">
+                  <button
+                    className="emoji-btn"
+                    onClick={() => setEmojiOpenId(emojiOpenId === p.id ? null : p.id)}
+                    aria-label={t('table.emojiPick')}
+                  >
+                    {p.emoji || '🙂'}
+                  </button>
                   <input
                     className="ledger-name"
                     value={p.name}
@@ -287,6 +262,35 @@ export default function RemoteControl() {
                     />
                   </div>
                 </div>
+                {emojiOpenId === p.id && (
+                  <div className="emoji-grid">
+                    {EMOJIS.map((e) => (
+                      <button
+                        key={e}
+                        className={`emoji-opt ${p.emoji === e ? 'active' : ''}`}
+                        onClick={() => {
+                          dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { emoji: p.emoji === e ? undefined : e } });
+                          setEmojiOpenId(null);
+                        }}
+                      >
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!isCash && (
+                  <div className="remote-chips input-affix">
+                    <span className="affix">👑</span>
+                    <input
+                      className="input"
+                      type="number"
+                      inputMode="numeric"
+                      placeholder={t('table.chipsPlaceholder')}
+                      value={p.chips || ''}
+                      onChange={(e) => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { chips: Math.max(0, Math.round(+e.target.value)) || undefined } })}
+                    />
+                  </div>
+                )}
                 <div className="remote-player-actions">
                   <button
                     className="btn btn-ghost btn-sm"
@@ -313,7 +317,12 @@ export default function RemoteControl() {
                   ) : (
                     <button
                       className={`btn btn-sm ${p.out ? 'btn-primary' : 'btn-ghost'}`}
-                      onClick={() => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { out: !p.out, outAt: !p.out ? Date.now() : undefined } })}
+                      onClick={() => {
+                        const goingOut = !p.out;
+                        dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { out: goingOut, outAt: goingOut ? Date.now() : undefined } });
+                        // bounty on: ask who knocked them out (skippable)
+                        setKoPickId(goingOut && bountyMode ? p.id : null);
+                      }}
                     >
                       {p.out ? t('table.backIn') : t('table.markOut')}
                     </button>
@@ -358,6 +367,26 @@ export default function RemoteControl() {
                     </div>
                   </div>
                 )}
+                {!isCash && bountyMode && koPickId === p.id && (
+                  <div className="ko-pick">
+                    <div className="faint" style={{ fontSize: 12 }}>{t('table.koPrompt', { name: p.name || 'Player' })}</div>
+                    <div className="ko-pick-grid">
+                      {ledger.filter((o) => o.id !== p.id && !o.out).map((o) => (
+                        <button
+                          key={o.id}
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => {
+                            dispatch({ type: 'LEDGER_UPDATE', id: o.id, patch: { knockouts: (o.knockouts || 0) + 1 } });
+                            setKoPickId(null);
+                          }}
+                        >
+                          {o.emoji ? `${o.emoji} ` : ''}{o.name || 'Player'}
+                        </button>
+                      ))}
+                      <button className="btn btn-ghost btn-sm ko-skip" onClick={() => setKoPickId(null)}>{t('table.koSkip')}</button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -371,6 +400,52 @@ export default function RemoteControl() {
             <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--acc)' }}>{money(pool, currency)}</div>
           </div>
         </div>
+      </div>
+
+      {/* --- Hand of the night — log a moment, it rotates on the TV --- */}
+      <div className="section-label" style={{ marginTop: 18 }}>
+        {t('table.moments')}
+        <span className="hint">{t('table.momentsHint')}</span>
+      </div>
+      <div className="card">
+        <div className="row" style={{ gap: 8 }}>
+          <input
+            className="input"
+            style={{ flex: 1 }}
+            value={momentText}
+            placeholder={t('table.momentPlaceholder')}
+            maxLength={90}
+            onChange={(e) => setMomentText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && momentText.trim()) {
+                dispatch({ type: 'MOMENT_ADD', text: momentText });
+                setMomentText('');
+              }
+            }}
+          />
+          <button
+            className="btn btn-primary btn-sm"
+            disabled={!momentText.trim()}
+            onClick={() => {
+              dispatch({ type: 'MOMENT_ADD', text: momentText });
+              setMomentText('');
+            }}
+          >
+            {t('table.addSaying')}
+          </button>
+        </div>
+        {state.moments.length > 0 && (
+          <div className="moment-list">
+            {state.moments.map((m) => (
+              <div className="moment-row" key={m.id}>
+                <span className="moment-txt">📸 {m.text}</span>
+                <button className="icon-btn danger" style={{ width: 30, height: 30 }} onClick={() => dispatch({ type: 'MOMENT_REMOVE', id: m.id })} aria-label="Remove">
+                  <IconTrash size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );

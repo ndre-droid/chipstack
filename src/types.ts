@@ -56,6 +56,15 @@ export interface Settings {
   cashUseTimer: boolean;
   /** Show the computed starting-stack breakdown as an overlay on the big screen. */
   tvShowStartStack: boolean;
+  /** Knockout bounty (tournament): every player pays `bountyAmount` on top of the
+   *  buy-in; whoever eliminates them collects it. */
+  bountyMode: boolean;
+  bountyAmount: number;
+  /** Optional free custom accent colour (hex). Overrides the 8 presets when set. */
+  customAccent: string | null;
+  /** Custom entries added to the "who drinks?" penalty spinner + break house rules. */
+  tvPenalties: string[];
+  tvHouseRules: string[];
   /** This device is designated the big screen: it boots straight into TV mode,
    *  advertises a pairing code, and a phone connects to it. Per-device (never
    *  synced or shared), so only the actual TV carries it. */
@@ -94,6 +103,25 @@ export interface LedgerPlayer {
   cashOut: number; // final chip value cashed out
   out?: boolean;   // busted / eliminated this game (drives "players left" + struck-through on the TV)
   outAt?: number;  // epoch ms of elimination — orders the bust-out / finish leaderboard
+  chips?: number;  // current live chip count (in chip-units) — optional, drives the TV chip-leader crown
+  emoji?: string;  // optional avatar emoji shown next to the name
+  knockouts?: number; // knockout bounties won (count) — earnings = knockouts × bountyAmount
+}
+
+/** One finished game night, snapshotted into the season league. */
+export interface LeagueGame {
+  id: string;
+  date: number;    // epoch ms the night was saved
+  mode: 'tournament' | 'cash';
+  currency: string;
+  players: { name: string; buyIn: number; cashOut: number }[];
+}
+
+/** A memorable hand / moment logged during the night, rotated on the TV. */
+export interface Moment {
+  id: string;
+  text: string;
+  at: number;      // epoch ms
 }
 
 export interface AppState {
@@ -102,4 +130,6 @@ export interface AppState {
   session: SessionConfig;
   presets: Preset[];
   ledger: LedgerPlayer[];
+  league: LeagueGame[];
+  moments: Moment[];
 }

@@ -1,44 +1,24 @@
 import { doc, setDoc, onSnapshot, getDoc, serverTimestamp, type Unsubscribe } from 'firebase/firestore';
 import { getDb, firebaseConfigured } from './firebase';
-import type { AppState, Denomination, SessionConfig, LedgerPlayer, Skin, AccentId } from '../types';
+import type { AppState } from '../types';
 import type { ClockState } from './clockLogic';
+import { dataOf, type LiveData } from './liveData';
 
-/** The portion of app state the host phone pushes and the TV mirrors. */
-export interface LiveData {
-  denominations: Denomination[];
-  session: SessionConfig;
-  ledger: LedgerPlayer[];
-  currency: string;
-  unitValue: number;
-  /** big-screen background photo + its smart-placement analysis, so a phone upload shows on the TV */
-  tvBackground: string | null;
-  tvBackgroundFocus: { x: number; y: number } | null;
-  tvBackgroundTone: number | null;
-  /** TV look + behaviour the host controls remotely (design, timer length, toggles) */
-  minutesPerLevel: number;
-  skin: Skin;
-  tvSkin: Skin | 'match';
-  accents: Record<Skin, AccentId>;
-  tvQuips: boolean;
-  tvCustomQuips: string[];
-  tvShowPlayers: boolean;
-  tvShowPayouts: boolean;
-  tvShowBustOrder: boolean;
-  breakMinutes: number;
-  breakEvery: number;
-  /** app language — so the TV mirrors the phone's language (labels + number grouping) */
-  language: 'en' | 'de';
-  /** tournament vs cash game — reshapes the TV (pool label, payouts/bust visibility) */
-  gameMode: 'tournament' | 'cash';
-  cashUseTimer: boolean;
-  /** show the starting-stack breakdown overlay on the big screen */
-  tvShowStartStack: boolean;
+export type { LiveData };
+
+/** A Firestore server timestamp, once resolved. Null in the local echo before the
+ *  server fills it in. Read via `.toMillis()` for freshness checks. */
+interface FireTimestamp {
+  toMillis: () => number;
 }
 
 export interface LiveDoc {
   /** null while the TV is advertising a code but no phone has connected yet. */
   data: LiveData | null;
   clock: ClockState;
+  /** the TV heartbeat — bumped every few seconds while a TV is showing this
+   *  session, so the host phone can tell a live TV from a dropped one. */
+  tvSeenAt?: FireTimestamp | null;
 }
 
 export { firebaseConfigured };
@@ -52,34 +32,6 @@ function sessionRef(code: string) {
   const db = getDb();
   if (!db) throw new Error('Firebase is not configured');
   return doc(db, 'sessions', code);
-}
-
-function dataOf(state: AppState): LiveData {
-  return {
-    denominations: state.denominations,
-    session: state.session,
-    ledger: state.ledger,
-    currency: state.settings.currency,
-    unitValue: state.settings.unitValue,
-    tvBackground: state.settings.tvBackground ?? null,
-    tvBackgroundFocus: state.settings.tvBackgroundFocus ?? null,
-    tvBackgroundTone: state.settings.tvBackgroundTone ?? null,
-    minutesPerLevel: state.settings.minutesPerLevel,
-    skin: state.settings.skin,
-    tvSkin: state.settings.tvSkin,
-    accents: state.settings.accents,
-    tvQuips: state.settings.tvQuips,
-    tvCustomQuips: state.settings.tvCustomQuips ?? [],
-    tvShowPlayers: state.settings.tvShowPlayers ?? true,
-    tvShowPayouts: state.settings.tvShowPayouts ?? false,
-    tvShowBustOrder: state.settings.tvShowBustOrder ?? false,
-    breakMinutes: state.settings.breakMinutes ?? 5,
-    breakEvery: state.settings.breakEvery ?? 0,
-    language: state.settings.language ?? 'en',
-    gameMode: state.settings.gameMode ?? 'tournament',
-    cashUseTimer: state.settings.cashUseTimer ?? false,
-    tvShowStartStack: state.settings.tvShowStartStack ?? false,
-  };
 }
 
 /**
@@ -126,6 +78,14 @@ export async function hostPushData(code: string, state: AppState): Promise<void>
  */
 export async function pushClock(code: string, clock: ClockState): Promise<void> {
   await setDoc(sessionRef(code), { clock, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+/**
+ * TV: bump the heartbeat so the host phone can tell this TV is alive. Called on a
+ * short interval while a device is showing the big screen. Merge write, tiny.
+ */
+export async function tvHeartbeat(code: string): Promise<void> {
+  await setDoc(sessionRef(code), { tvSeenAt: serverTimestamp() }, { merge: true });
 }
 
 /** TV: verify a code exists before joining, so a mistyped code fails fast with a clear message. */

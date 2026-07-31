@@ -50,8 +50,9 @@ export default function SettingsScreen() {
   const activeStyle = STYLES.find((s) => s.id === settings.skin) ?? STYLES[0];
   const accentColor = (id: AccentId) => ACCENTS.find((a) => a.id === id)?.color ?? '#f0b429';
   const currentAccent = settings.accents?.[settings.skin] ?? 'amber';
+  // picking a preset clears any custom accent so the preset takes over
   const setAccent = (id: AccentId) =>
-    dispatch({ type: 'UPDATE_SETTINGS', patch: { accents: { ...settings.accents, [settings.skin]: id } } });
+    dispatch({ type: 'UPDATE_SETTINGS', patch: { accents: { ...settings.accents, [settings.skin]: id }, customAccent: null } });
 
   return (
     <div>
@@ -120,13 +121,32 @@ export default function SettingsScreen() {
           {ACCENTS.map((a) => (
             <button
               key={a.id}
-              className={`accent-opt ${currentAccent === a.id ? 'active' : ''}`}
+              className={`accent-opt ${!settings.customAccent && currentAccent === a.id ? 'active' : ''}`}
               onClick={() => setAccent(a.id)}
             >
               <span className="dot" style={{ background: a.color }} />
               {a.name}
             </button>
           ))}
+        </div>
+        <div className="divider" />
+        <div className="row">
+          <label className={`accent-opt custom-accent ${settings.customAccent ? 'active' : ''}`} style={{ cursor: 'pointer' }}>
+            <span className="dot" style={{ background: settings.customAccent || 'conic-gradient(red,orange,yellow,green,cyan,blue,violet,red)' }} />
+            {t('settings.customAccent')}
+            <input
+              type="color"
+              value={settings.customAccent || '#f0b429'}
+              onChange={(e) => dispatch({ type: 'UPDATE_SETTINGS', patch: { customAccent: e.target.value } })}
+              style={{ position: 'absolute', opacity: 0, width: 1, height: 1 }}
+            />
+          </label>
+          <div className="spacer" />
+          {settings.customAccent && (
+            <button className="btn btn-ghost btn-sm" onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { customAccent: null } })}>
+              {t('settings.usePreset')}
+            </button>
+          )}
         </div>
       </div>
 

@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react';
-import qrcode from 'qrcode-generator';
+import { useState } from 'react';
 import { useStore } from '../store';
 import { IconCheck, IconChevron } from './Icons';
 import { useT } from '../lib/i18n';
@@ -61,6 +60,19 @@ const PRESETS: { id: string; name: string; tone: number; url: string }[] = [
     id: 'amber', name: 'Amber', tone: 0.28,
     url: svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><defs><radialGradient id='g' cx='50%' cy='34%' r='82%'><stop offset='0%' stop-color='#3a2c12'/><stop offset='55%' stop-color='#211a10'/><stop offset='100%' stop-color='#0c0a06'/></radialGradient></defs><rect width='${W}' height='${H}' fill='url(#g)'/><circle cx='800' cy='300' r='460' fill='#f0b429' fill-opacity='0.12'/></svg>`),
   },
+  // Seasonal / themed nights
+  {
+    id: 'xmas', name: '🎄 Xmas', tone: 0.14,
+    url: svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><defs><radialGradient id='g' cx='50%' cy='30%' r='85%'><stop offset='0%' stop-color='#1c5138'/><stop offset='55%' stop-color='#0e3322'/><stop offset='100%' stop-color='#3a0f12'/></radialGradient></defs><rect width='${W}' height='${H}' fill='url(#g)'/><g fill='#fff' fill-opacity='0.55'>${Array.from({ length: 40 }, () => `<circle cx='${Math.round(Math.random() * W)}' cy='${Math.round(Math.random() * H)}' r='${1 + Math.round(Math.random() * 3)}'/>`).join('')}</g></svg>`),
+  },
+  {
+    id: 'halloween', name: '🎃 Halloween', tone: 0.16,
+    url: svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><defs><radialGradient id='g' cx='50%' cy='36%' r='82%'><stop offset='0%' stop-color='#c25a12'/><stop offset='45%' stop-color='#5a2a08'/><stop offset='100%' stop-color='#120a14'/></radialGradient></defs><rect width='${W}' height='${H}' fill='url(#g)'/><circle cx='1200' cy='230' r='120' fill='#f7a83e' fill-opacity='0.5'/></svg>`),
+  },
+  {
+    id: 'summer', name: '🌴 Summer', tone: 0.55,
+    url: svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#2ec5d3'/><stop offset='0.55' stop-color='#4a8fd6'/><stop offset='1' stop-color='#ffd66b'/></linearGradient></defs><rect width='${W}' height='${H}' fill='url(#g)'/><circle cx='300' cy='240' r='120' fill='#fff' fill-opacity='0.5'/></svg>`),
+  },
 ];
 
 /**
@@ -77,6 +89,17 @@ export default function TvBroadcast() {
   const [urlCopied, setUrlCopied] = useState(false);
   const [bgBusy, setBgBusy] = useState(false);
   const [bgError, setBgError] = useState<string | null>(null);
+  const [penaltyText, setPenaltyText] = useState('');
+  const [ruleText, setRuleText] = useState('');
+
+  const addToList = (key: 'tvPenalties' | 'tvHouseRules', text: string) => {
+    const v = text.trim();
+    if (!v) return;
+    dispatch({ type: 'UPDATE_SETTINGS', patch: { [key]: [...(settings[key] ?? []), v] } });
+  };
+  const removeFromList = (key: 'tvPenalties' | 'tvHouseRules', i: number) => {
+    dispatch({ type: 'UPDATE_SETTINGS', patch: { [key]: (settings[key] ?? []).filter((_, idx) => idx !== i) } });
+  };
 
   const activeSkin = settings.skin ?? 'minimal';
   const activeStyleBg = STYLES.find((s) => s.id === activeSkin)?.bg ?? STYLES[0].bg;
@@ -139,17 +162,6 @@ export default function TvBroadcast() {
     };
     reader.readAsDataURL(file);
   };
-
-  const urlQr = useMemo(() => {
-    try {
-      const qr = qrcode(0, 'M');
-      qr.addData(WEB_URL);
-      qr.make();
-      return qr.createDataURL(5, 16);
-    } catch {
-      return null;
-    }
-  }, []);
 
   return (
     <>
@@ -243,13 +255,56 @@ export default function TvBroadcast() {
             </div>
           </div>
 
-          {/* Show on TV */}
+          {/* Fun extras: penalty spinner entries + break house rules */}
+          <div className="card">
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>🎡 {t('table.penalties')}</div>
+            <div className="faint" style={{ fontSize: 12, marginBottom: 8 }}>{t('table.penaltiesDesc')}</div>
+            <div className="row" style={{ gap: 8 }}>
+              <input
+                className="input" style={{ flex: 1 }} value={penaltyText} maxLength={60}
+                placeholder={t('table.penaltyPlaceholder')}
+                onChange={(e) => setPenaltyText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { addToList('tvPenalties', penaltyText); setPenaltyText(''); } }}
+              />
+              <button className="btn btn-primary btn-sm" disabled={!penaltyText.trim()} onClick={() => { addToList('tvPenalties', penaltyText); setPenaltyText(''); }}>{t('table.addSaying')}</button>
+            </div>
+            {(settings.tvPenalties ?? []).length > 0 && (
+              <div className="chip-list mt8">
+                {(settings.tvPenalties ?? []).map((p, i) => (
+                  <span className="chip-list-item" key={i}>{p}<button onClick={() => removeFromList('tvPenalties', i)} aria-label="Remove">×</button></span>
+                ))}
+              </div>
+            )}
+            <div className="divider" />
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>📜 {t('table.houseRules')}</div>
+            <div className="faint" style={{ fontSize: 12, marginBottom: 8 }}>{t('table.houseRulesDesc')}</div>
+            <div className="row" style={{ gap: 8 }}>
+              <input
+                className="input" style={{ flex: 1 }} value={ruleText} maxLength={80}
+                placeholder={t('table.rulePlaceholder')}
+                onChange={(e) => setRuleText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { addToList('tvHouseRules', ruleText); setRuleText(''); } }}
+              />
+              <button className="btn btn-primary btn-sm" disabled={!ruleText.trim()} onClick={() => { addToList('tvHouseRules', ruleText); setRuleText(''); }}>{t('table.addSaying')}</button>
+            </div>
+            {(settings.tvHouseRules ?? []).length > 0 && (
+              <div className="chip-list mt8">
+                {(settings.tvHouseRules ?? []).map((p, i) => (
+                  <span className="chip-list-item" key={i}>{p}<button onClick={() => removeFromList('tvHouseRules', i)} aria-label="Remove">×</button></span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Show on TV — open this URL in the TV's own browser, then tap
+              "Use this device as the TV". No QR here: the TV already runs this
+              page, and the pairing QR (scan to control) lives on the TV screen. */}
           <div className="card">
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{t('table.showOnTvHere')}</div>
             <p className="faint" style={{ fontSize: 12.5, margin: '0 0 10px', lineHeight: 1.6 }}>
               {t('table.castHint')}
             </p>
-            <div className="code-box" style={{ textAlign: 'center', fontSize: 14, letterSpacing: '0.02em' }}>{WEB_URL}</div>
+            <div className="url-box">{WEB_URL}</div>
             <button className="btn btn-ghost btn-block btn-sm mt8" onClick={copyUrl}>
               {urlCopied ? (
                 <>
@@ -259,12 +314,6 @@ export default function TvBroadcast() {
                 t('settings.copyLink')
               )}
             </button>
-            {urlQr && (
-              <div className="qr-wrap">
-                <img src={urlQr} alt="Web app QR code" />
-                <span className="faint" style={{ fontSize: 11.5 }}>{t('tv.scanToConnect')}</span>
-              </div>
-            )}
           </div>
         </>
       )}

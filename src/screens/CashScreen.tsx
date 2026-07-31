@@ -4,6 +4,7 @@ import { settleUp } from '../lib/settle';
 import type { PlayerBalance } from '../lib/settle';
 import { IconPlus, IconTrash } from '../components/Icons';
 import { useT, useFmt } from '../lib/i18n';
+import SeasonLeague from '../components/SeasonLeague';
 
 export default function CashScreen() {
   const { state, dispatch } = useStore();
@@ -38,6 +39,7 @@ export default function CashScreen() {
             <IconPlus size={16} /> {t('cash.addPlayer')}
           </button>
         </div>
+        <SeasonLeague />
       </div>
     );
   }
@@ -163,6 +165,8 @@ export default function CashScreen() {
           ))
         )}
       </div>
+
+      <SeasonLeague />
     </div>
   );
 }

@@ -1,16 +1,7 @@
-let me cancel the brak in tv mode.
+when i scan the qr code on the tv, it puts my phone onto the weblink, there everything works fine. is it possible to make it open the app and give me the same cotroll as before. 
+on the players tab there is theri name and a money value next to it, make it obvious that thats what the have bought in for and not their current chip stack. 
+when i change the language in the settings it does not apply to the tv. 
+on the tv, where it says average stack, now it says 3,000 the comma is not used here in wurome in that manner we use a dot (.) when marking the thousand steps, plase do it that way. 
 
-when i enter the url in the tv, it shows the fron screen of the plan of the app, but not the TV big screen mode. can i somehow trigger the big crenn mode on the tv from my phone.oh no i see, i can start to trigger it on the tv. is there a way to synchronize whts on the tv, to my phone. so that then i have entered six players and their rebuys in my phone it also shows up on the tv. while i can still use my phone normally with other things?
-
-also i have generated these pictues with ai and want to ask if it is possible to ad a setting to include pictures in the big tv screen ui, as background, but also imbed it properly into the ui to make it look great and nt jsut slapl on. (if i haven't attached the pictures here let me know).
-
-also maybe a funtkion for  the future, where i upload a picutre into the app and it adapts the big screen layout into and around that picuture. since i like to have thematic poker evenings. 
-
-
-give me the option in setting to change the language to german or English.
-
-the cheeky little saying at the bottom of the big scree, make them better, and aso give me the optopn in setting to turn them of. 
-
-improve he app icon, to match the app.
-
-
+the synch was a little but buggy, ive been plaing around with it and then the tv disconnected, but didn't really show me, i only noticed when i could remote control it through my phone anymore. but then i reconnected and it worked fine.
+then i did some changes to the players on the phone, earlier it then changed it insantly on the tv, this time at first nothing changed, then i reloaded the page on my phone and it only then sent the command to my tv. this reload function wont work in the app, so make sure tht changes are transered right away, and in case it doesn't give me a refresh or send button on the phone to send it to the tv. 

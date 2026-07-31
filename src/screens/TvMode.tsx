@@ -10,6 +10,22 @@ import type { Unsubscribe } from 'firebase/firestore';
 import { secondsLeft as clockSecondsLeft, initialClock } from '../lib/clockLogic';
 import type { ClockState } from '../lib/clockLogic';
 import { computeStack, moneyToUnits } from '../lib/distribution';
+import { colorUpEvents } from '../lib/planning';
+import { customAccentVars } from '../lib/color';
+
+const PENALTIES = [
+  'downs a shot', 'buys the next round', 'shuffles for a whole level',
+  'tells a bad-beat story — the SHORT version', 'deals the next orbit',
+  'refills everyone’s snacks', 'no phone until the next break',
+];
+const HOUSE_RULES = [
+  'Splashing the pot = you deal the next round.',
+  'Verbal is binding. Say it, you did it.',
+  'Angle-shooting? Straight to the penalty spinner.',
+  'Whoever’s shortest stack picks the next music.',
+  'String bet = fold. No mercy.',
+  'Winner of the biggest pot so far cuts the deck.',
+];
 
 const QUIPS = [
   'Blinds are going up — finish your beer, it’s the house rule now.',
@@ -43,7 +59,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const t = useT();
   const { money, num } = useFmt();
   const { blindLevels } = state.session;
-  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack } = state.settings;
+  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack, bountyMode, bountyAmount, customAccent, tvPenalties, tvHouseRules } = state.settings;
   const isCash = gameMode === 'cash';
   // Cash game with the timer off = a single fixed blind level, no countdown.
   const showTimer = !isCash || cashUseTimer;
@@ -76,7 +92,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const [onBreak, setOnBreak] = useState(false);
   const [quipIdx, setQuipIdx] = useState(0);
   const [shot, setShot] = useState<number | null>(null);
-  const [spin, setSpin] = useState<{ name: string; done: boolean } | null>(null);
+  const [spin, setSpin] = useState<{ name: string; done: boolean; penalty?: string } | null>(null);
   const [paired, setPaired] = useState(false); // a phone has connected (doc has data)
   const [connectToast, setConnectToast] = useState(false); // brief "phone connected" cue
   const prevPaired = useRef(false);
@@ -142,6 +158,13 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             gameMode: doc.data.gameMode,
             cashUseTimer: doc.data.cashUseTimer,
             tvShowStartStack: doc.data.tvShowStartStack,
+            chipArt: doc.data.chipArt,
+            bountyMode: doc.data.bountyMode,
+            bountyAmount: doc.data.bountyAmount,
+            customAccent: doc.data.customAccent,
+            tvPenalties: doc.data.tvPenalties,
+            tvHouseRules: doc.data.tvHouseRules,
+            moments: doc.data.moments,
           });
         } else if (isTv) {
           setPaired(false);
@@ -161,6 +184,28 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [synced, liveSessionCode, liveSessionRole]);
+
+  // This device is the TV: beat a heartbeat into the session doc so the host phone
+  // can show a live "● TV connected / ⚠ TV offline" status and know a silent drop.
+  useEffect(() => {
+    if (!firebaseConfigured || !isTv || !liveSessionCode) return;
+    let stopped = false;
+    const beat = () =>
+      import('../lib/liveSession')
+        .then(({ tvHeartbeat }) => {
+          if (!stopped) return tvHeartbeat(liveSessionCode);
+        })
+        .catch(() => {
+          /* transient — the next beat retries */
+        });
+    beat();
+    const id = window.setInterval(beat, 12000);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTv, liveSessionCode]);
 
   const pushClockIfConnected = (li: number, ob: boolean, run: boolean, secs: number) => {
     if (!synced || !liveSessionCode) return;
@@ -281,11 +326,13 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     if (!paired) prevPaired.current = false;
   }, [paired]);
 
-  // the rotation = the user's own sayings first, then the built-ins
+  // the rotation = logged hand-of-the-night moments (📸) first, then the user's own
+  // sayings, then the built-ins
   const quips = useMemo(() => {
+    const moments = (state.moments ?? []).map((m) => `📸 ${m.text}`);
     const custom = (tvCustomQuips ?? []).map((q) => q.trim()).filter(Boolean);
-    return [...custom, ...QUIPS];
-  }, [tvCustomQuips]);
+    return [...moments, ...custom, ...QUIPS];
+  }, [tvCustomQuips, state.moments]);
 
   // rotate quips
   useEffect(() => {
@@ -345,6 +392,10 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     () => (ledger.length ? ledger.map((p) => p.name || 'Player') : Array.from({ length: playerCount }, (_, i) => `Seat ${i + 1}`)),
     [ledger, playerCount],
   );
+  const penalties = useMemo(() => {
+    const custom = (tvPenalties ?? []).map((p) => p.trim()).filter(Boolean);
+    return [...custom, ...PENALTIES];
+  }, [tvPenalties]);
   const spinRound = () => {
     if (!players.length) return;
     let n = 0;
@@ -356,13 +407,14 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         setTimeout(step, 60 + n * 12);
       } else {
         const winner = players[Math.floor(Math.random() * players.length)];
-        setSpin({ name: winner, done: true });
+        const penalty = penalties[Math.floor(Math.random() * penalties.length)];
+        setSpin({ name: winner, done: true, penalty });
         try {
           navigator.vibrate?.(200);
         } catch {
           /* ignore */
         }
-        setTimeout(() => setSpin(null), 4500);
+        setTimeout(() => setSpin(null), 6000);
       }
     };
     step();
@@ -390,11 +442,33 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         ? ledger.map((p) => {
             const left = !!p.out || (p.cashOut || 0) > 0;
             const net = (p.cashOut || 0) > 0 ? (p.cashOut || 0) - (p.buyIn || 0) : null;
-            return { id: p.id, name: p.name || 'Player', amount: p.buyIn || 0, out: left, net };
+            return {
+              id: p.id,
+              name: p.name || 'Player',
+              amount: p.buyIn || 0,
+              out: left,
+              net,
+              emoji: p.emoji || '',
+              chips: p.chips || 0,
+              knockouts: p.knockouts || 0,
+            };
           })
-        : Array.from({ length: playerCount }, (_, i) => ({ id: String(i), name: `Seat ${i + 1}`, amount: buyIn, out: false, net: null as number | null })),
+        : Array.from({ length: playerCount }, (_, i) => ({ id: String(i), name: `Seat ${i + 1}`, amount: buyIn, out: false, net: null as number | null, emoji: '', chips: 0, knockouts: 0 })),
     [ledger, playerCount, buyIn],
   );
+
+  // chip-leader crown: the still-in player with the most (host-entered) chips
+  const chipLeaderId = useMemo(() => {
+    let best: string | null = null;
+    let bestChips = 0;
+    for (const p of roster) {
+      if (!p.out && p.chips > bestChips) {
+        bestChips = p.chips;
+        best = p.id;
+      }
+    }
+    return best;
+  }, [roster]);
 
   // The starting stack, computed for the big screen when the host casts it.
   const startStack = useMemo(() => {
@@ -407,6 +481,19 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       useAllChips: state.session.useAllChips,
     });
   }, [buyIn, unitValue, denominations, state.session.smallBias, state.session.maxDenoms, state.session.useAllChips, blindLevels, playerCount]);
+
+  // color-up alarm: at the current level, which chips should be raced off?
+  const colorUpNow = useMemo(() => {
+    if (isCash || !showTimer) return null;
+    try {
+      const events = colorUpEvents(startStack.counts, denominations, blindLevels, 0, Math.max(1, playerCount));
+      const ev = events.find((e) => e.levelIndex === levelIdx);
+      if (!ev || !ev.retirements.length) return null;
+      return { from: ev.retirements.map((r) => r.fromValue), to: ev.retirements[0].toValue };
+    } catch {
+      return null;
+    }
+  }, [isCash, showTimer, levelIdx, denominations, blindLevels, playerCount, startStack]);
 
   // prize-pool payout split (auto structure by entrant count)
   const payouts = useMemo(() => {
@@ -433,7 +520,64 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   // "next break in N levels" cue
   const levelsToBreak = breakEvery > 0 ? (breakEvery - ((levelIdx + 1) % breakEvery)) % breakEvery : -1;
 
+  // --- Knockout bounty earnings (tournament) ---
+  const bountyAmt = bountyAmount ?? 5;
+  const bountyPool = bountyMode && !isCash ? (ledger.length || playerCount) * bountyAmt : 0;
+
+  // --- Elimination flash: fire a full-screen cue when a player is newly busted ---
+  const [elim, setElim] = useState<{ name: string; emoji: string; place: number } | null>(null);
+  const prevOut = useRef<Set<string>>(new Set());
+  const elimInit = useRef(false);
+  useEffect(() => {
+    if (isCash) return;
+    const nowOut = new Set(ledger.filter((p) => p.out).map((p) => p.id));
+    if (!elimInit.current) {
+      prevOut.current = nowOut; // don't flash for players already out when TV opens
+      elimInit.current = true;
+      return;
+    }
+    const fresh = ledger.find((p) => p.out && !prevOut.current.has(p.id));
+    prevOut.current = nowOut;
+    if (fresh) {
+      const place = ledger.length - nowOut.size + 1; // busts leave from the bottom up
+      setElim({ name: fresh.name || 'Player', emoji: fresh.emoji || '', place });
+      try { navigator.vibrate?.([120, 60, 220]); } catch { /* ignore */ }
+      const id = window.setTimeout(() => setElim(null), 4500);
+      return () => window.clearTimeout(id);
+    }
+  }, [ledger, isCash]);
+
+  // --- Winner celebration: one player left in a tournament with >1 entrant ---
+  const winner = useMemo(() => {
+    if (isCash || ledger.length < 2) return null;
+    const alive = ledger.filter((p) => !p.out && (p.cashOut || 0) === 0);
+    return alive.length === 1 ? alive[0] : null;
+  }, [ledger, isCash]);
+  const [celebrate, setCelebrate] = useState(false);
+  const wonRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (winner && wonRef.current !== winner.id) {
+      wonRef.current = winner.id;
+      setCelebrate(true);
+      try { navigator.vibrate?.([200, 80, 200, 80, 400]); } catch { /* ignore */ }
+    }
+    if (!winner) wonRef.current = null;
+  }, [winner]);
+
+  // --- House rule shown on the break (stable for the whole break) ---
+  const houseRules = useMemo(() => {
+    const custom = (tvHouseRules ?? []).map((r) => r.trim()).filter(Boolean);
+    return [...custom, ...HOUSE_RULES];
+  }, [tvHouseRules]);
+  const [houseRuleIdx, setHouseRuleIdx] = useState(0);
+  useEffect(() => {
+    if (onBreak) setHouseRuleIdx(Math.floor(Math.random() * Math.max(1, houseRules.length)));
+  }, [onBreak, houseRules.length]);
+
   const pct = Math.max(0, Math.min(100, (seconds / ((onBreak ? breakMins : minutesPerLevel) * 60)) * 100));
+
+  // custom accent overrides the preset hue on the TV too
+  const accentStyle = customAccent && /^#[0-9a-fA-F]{6}$/.test(customAccent) ? customAccentVars(customAccent) : null;
 
   return (
     <div
@@ -441,17 +585,18 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       data-tv-skin={effTvSkin}
       data-tv-accent={tvAccent}
       data-tv-focus-v={tvBackground ? focusV : undefined}
-      style={
-        tvBackground
-          ? ({
+      style={{
+        ...(accentStyle ?? {}),
+        ...(tvBackground
+          ? {
               backgroundImage: `url(${tvBackground})`,
               backgroundPosition: `${focus.x}% ${focus.y}%`,
-              ['--tv-focus-x' as string]: `${focus.x}%`,
-              ['--tv-focus-y' as string]: `${focus.y}%`,
-              ['--tv-scrim' as string]: scrim,
-            } as CSSProperties)
-          : undefined
-      }
+              ['--tv-focus-x']: `${focus.x}%`,
+              ['--tv-focus-y']: `${focus.y}%`,
+              ['--tv-scrim']: scrim,
+            }
+          : {}),
+      } as CSSProperties}
     >
       {tvBackground && <div className="tv-bg-scrim" />}
 
@@ -471,6 +616,9 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       {/* This device is the TV, waiting for a phone — show the code to type on the phone */}
       {firebaseConfigured && isTv && !paired && liveSessionCode && (
         <div className="tv-pair">
+          <div className="tv-pair-idle" aria-hidden>
+            <Chip value={legend[0]?.value ?? 100} color={legend[0]?.color ?? '#0C0C10'} accent={legend[0]?.accent ?? '#CBA85A'} size={56} shape={legend[0]?.shape} />
+          </div>
           <div className="tv-pair-lead">
             <div className="tv-pair-title">{t('tv.controlFromPhone')}</div>
             <div className="tv-pair-sub">{t('tv.enterOnPhone')}</div>
@@ -511,6 +659,12 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             <span className="tv-stat-k">{t('tv.avgStack')}</span>
             <span className="tv-stat-v">{num(avgStack)}<small> · {avgBB} BB</small></span>
           </div>
+          {bountyMode && !isCash && bountyPool > 0 && (
+            <div className="tv-stat">
+              <span className="tv-stat-k">🎯 {t('tv.bountyPool')}</span>
+              <span className="tv-stat-v">{money(bountyPool, currency)}<small> · {money(bountyAmt, currency)} {t('tv.each')}</small></span>
+            </div>
+          )}
           {!isCash && tvShowPayouts && payouts.length > 0 && poolMoney > 0 && (
             <div className="tv-players">
               <div className="tv-players-h">{t('tv.payouts')}</div>
@@ -533,7 +687,12 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               <div className="tv-players-list">
                 {roster.map((p) => (
                   <div className={`tv-players-row ${p.out ? 'out' : ''}`} key={p.id}>
+                    {p.emoji && <span className="tv-players-emoji">{p.emoji}</span>}
+                    {p.id === chipLeaderId && <span className="tv-crown" title="Chip leader">👑</span>}
                     <span className="tv-players-name">{p.name}</span>
+                    {bountyMode && !isCash && p.knockouts > 0 && (
+                      <span className="tv-bounty" title="Bounties">🎯{p.knockouts}</span>
+                    )}
                     {p.net !== null ? (
                       <span className={`tv-players-amt tv-net ${p.net >= 0 ? 'pos' : 'neg'}`}>
                         {p.net >= 0 ? '+' : '−'}{money(Math.abs(p.net), currency)}
@@ -573,9 +732,20 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               <div className={`tv-time ${running && seconds <= 30 ? 'urgent' : ''}`}>{fmtClock(seconds)}</div>
               <div className="tv-progress"><i style={{ transform: `scaleX(${pct / 100})` }} /></div>
               <div className="tv-next">{onBreak ? '' : next ? t('tv.next', { blinds: `${next.smallBlind} / ${next.bigBlind}` }) : t('tv.finalLevel')}</div>
+              {!onBreak && colorUpNow && (
+                <div className="tv-colorup">
+                  🎨 {t('tv.colorUpNow', { from: colorUpNow.from.join(', '), to: colorUpNow.to })}
+                </div>
+              )}
               {!onBreak && breakEvery > 0 && (
                 <div className="tv-break-cue">
                   {levelsToBreak === 0 ? t('tv.breakAfter') : t('tv.breakIn', { n: levelsToBreak })}
+                </div>
+              )}
+              {onBreak && houseRules.length > 0 && (
+                <div className="tv-houserule">
+                  <span className="tv-houserule-k">{t('tv.houseRule')}</span>
+                  <span className="tv-houserule-v">{houseRules[houseRuleIdx % houseRules.length]}</span>
                 </div>
               )}
             </>
@@ -659,7 +829,32 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         <div className="tv-overlay">
           <div className="tv-overlay-label">{t('tv.whoDrinksNext')}</div>
           <div className={`tv-overlay-name ${spin.done ? 'won' : ''}`}>{spin.name}</div>
+          {spin.done && spin.penalty && <div className="tv-overlay-penalty">{spin.penalty}</div>}
           {spin.done && <div className="tv-overlay-hint">🍻 {t('tv.youreUp')}</div>}
+        </div>
+      )}
+
+      {/* elimination flash — a player just busted */}
+      {elim && (
+        <div className="tv-elim">
+          <div className="tv-elim-lead">{t('tv.eliminated')}</div>
+          <div className="tv-elim-name">{elim.emoji && <span>{elim.emoji} </span>}{elim.name}</div>
+          <div className="tv-elim-place">{t('tv.finishPlace', { n: elim.place })}</div>
+        </div>
+      )}
+
+      {/* winner celebration — confetti + champion */}
+      {celebrate && winner && (
+        <div className="tv-overlay tv-celebrate" onClick={() => setCelebrate(false)}>
+          <div className="tv-confetti" aria-hidden>
+            {Array.from({ length: 60 }, (_, i) => (
+              <i key={i} style={{ ['--i' as string]: i } as CSSProperties} />
+            ))}
+          </div>
+          <div className="tv-champ-cup">🏆</div>
+          <div className="tv-champ-name">{winner.emoji ? `${winner.emoji} ` : ''}{winner.name || 'Player'}</div>
+          <div className="tv-champ-sub">{t('tv.champion')}</div>
+          <div className="tv-overlay-hint">{t('tv.tapToDismiss')}</div>
         </div>
       )}
     </div>
