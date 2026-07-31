@@ -59,5 +59,18 @@ ok('buildDenomRefs skips disabled denoms', () => {
   assert.equal(refs.length, 0);
 });
 
+ok('no denom body colour is misclassified as gold deco', () => {
+  const bodies = ['#ECE4D0','#C0392B','#31B6C9','#2E9E52','#E0782B','#0C0C10','#7A3D9C','#E4B41F','#9A5228'];
+  for (const hex of bodies) assert.equal(isGoldDeco(hexToLab(hex)), false, hex + ' flagged as deco');
+});
+
+ok('nearestDenom respects the reject boundary (near-threshold)', () => {
+  const refs = buildDenomRefs([{ value: 50, color: '#E0782B', enabled: true }]);
+  const off = nearestDenom(hexToLab('#9A5228'), refs, 20);   // brown, ΔE≈28.6 from orange
+  assert.equal(off.value, null, 'brown beyond reject=20 must be null');
+  const loose = nearestDenom(hexToLab('#9A5228'), refs, 40);
+  assert.equal(loose.value, 50, 'same colour within reject=40 matches');
+});
+
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');
 process.exit(failed ? 1 : 0);

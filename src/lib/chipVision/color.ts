@@ -29,16 +29,20 @@ export function labDistance(a: Lab, b: Lab): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
-/** Gold art-deco line: bright + yellow (high L*, positive b*, near-zero a*). */
 export function isGoldDeco(lab: Lab): boolean {
-  return lab[0] > 62 && lab[2] > 22 && lab[1] > -8 && lab[1] < 22;
+  // Thin metallic-gold lattice lines: bright, moderately-yellow, low-red.
+  // Bounded ABOVE on b* so a fully-saturated gold chip BODY (e.g. denom 1000,
+  // #E4B41F → b*≈73) is NOT misread as a deco line.
+  return lab[0] > 62 && lab[2] > 22 && lab[2] < 60 && lab[1] > -8 && lab[1] < 22;
 }
 
-/** Median Lab of body pixels, discarding gold-deco pixels. */
 export function dominantLab(pixels: Lab[]): Lab | null {
+  if (pixels.length === 0) return null;
   const body = pixels.filter((p) => !isGoldDeco(p));
-  const src = body.length >= 3 ? body : pixels;
-  if (src.length === 0) return null;
+  // Use the deco-filtered set only when body pixels are the MAJORITY. When most
+  // pixels look gold (a gold-family chip like denom 1000), the "deco" filter
+  // would strip the real body — fall back to all pixels.
+  const src = body.length >= pixels.length * 0.5 ? body : pixels;
   const med = (i: number) => {
     const s = src.map((p) => p[i]).sort((x, y) => x - y);
     return s[s.length >> 1];
