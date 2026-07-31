@@ -94,6 +94,16 @@ export function dataOf(state: AppState): LiveData {
  */
 export function liveSignature(state: AppState): string {
   const d = dataOf(state);
-  const bg = d.tvBackground ? `${d.tvBackground.length}:${d.tvBackground.slice(0, 24)}` : '';
+  const raw = d.tvBackground;
+  // The generated SVG presets differ only by a few colour values, so a
+  // length + first-24-chars proxy collides between them (they share a prefix and
+  // an identical length) — that was why switching presets never reached the TV.
+  // Include small backgrounds (the presets) in FULL; only large photo uploads are
+  // proxied, and then by sampling start+middle+end so different photos still differ.
+  const bg = !raw
+    ? ''
+    : raw.length < 50000
+      ? raw
+      : `${raw.length}:${raw.slice(0, 32)}:${raw.slice(raw.length >> 1, (raw.length >> 1) + 32)}:${raw.slice(-32)}`;
   return JSON.stringify({ ...d, tvBackground: bg });
 }

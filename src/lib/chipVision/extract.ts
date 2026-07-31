@@ -221,7 +221,13 @@ function segmentColumns(cv: any, mask: any, W: number, H: number): { x0: number;
 
 interface FittedEllipse { major: number; minor: number; cx: number; cy: number; angle: number }
 
-/** Fit an ellipse to the top ~25% of the region's foreground contour points. */
+/**
+ * Fit an ellipse to the column's TOP RIM — the topmost foreground pixel in each
+ * column x. Fitting the top EDGE (not the filled top band, which includes the
+ * straight column sides and inflates the minor axis, causing a ~2× overcount)
+ * recovers the true top-face aspect ratio, hence the correct per-chip scale.
+ * (Also avoids cv.findNonZero, which is absent in @techstark/opencv-js.)
+ */
 function fitTopEllipse(
   cv: any, mask: any,
   reg: { x0: number; x1: number; topY: number; bottomY: number },
@@ -229,14 +235,19 @@ function fitTopEllipse(
   const x0 = Math.max(0, Math.round(reg.x0));
   const x1 = Math.min(mask.cols, Math.round(reg.x1));
   const top = Math.max(0, Math.round(reg.topY));
-  const bandH = Math.max(1, Math.round((reg.bottomY - reg.topY) * 0.25));
-  const y1 = Math.min(mask.rows, top + bandH);
-  if (x1 <= x0 || y1 <= top) return null;
-  const roi = mask.roi(new cv.Rect(x0, top, x1 - x0, y1 - top));
-  const pts = new cv.Mat();
-  cv.findNonZero(roi, pts);
-  roi.delete();
-  if (pts.rows < 5) { pts.delete(); return null; }
+  // Scan down at most half the column looking for each column's top edge.
+  const maxScan = Math.min(mask.rows, top + Math.max(6, Math.round((reg.bottomY - reg.topY) * 0.5)));
+  if (x1 - x0 < 5 || maxScan <= top) return null;
+
+  const coords: number[] = [];
+  for (let x = x0; x < x1; x++) {
+    for (let y = top; y < maxScan; y++) {
+      if (mask.ucharPtr(y, x)[0] !== 0) { coords.push(x - x0, y - top); break; }
+    }
+  }
+  if (coords.length < 10) return null; // fewer than 5 rim points
+
+  const pts = cv.matFromArray(coords.length / 2, 1, cv.CV_32SC2, coords);
   const rot = cv.fitEllipse(pts);
   pts.delete();
   return {

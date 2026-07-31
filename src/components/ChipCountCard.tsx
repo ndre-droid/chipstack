@@ -7,14 +7,17 @@ import { ChipCountSheet } from './ChipCountSheet';
  * Always-visible entry point for the photo chip-count on the Table tab — works
  * in BOTH game modes and needs no live TV session (unlike the host RemoteControl
  * panel, which is where the per-row 📷 also appears while hosting). Lists the
- * ledger players; 📷 opens the capture sheet and writes that player's chip count.
+ * ledger players with what they bought in + their current balance; 📷 opens the
+ * capture sheet and writes that player's chip count.
  */
 export default function ChipCountCard() {
   const { state, dispatch } = useStore();
   const t = useT();
-  const { num } = useFmt();
+  const { money } = useFmt();
   const ledger = state.ledger;
   const playerCount = state.session.playerCount;
+  const unitValue = state.settings.unitValue;
+  const cur = state.settings.currency;
   const [countFor, setCountFor] = useState<{ id: string; name: string } | null>(null);
 
   return (
@@ -41,7 +44,13 @@ export default function ChipCountCard() {
                 {p.emoji ? p.emoji + ' ' : ''}
                 {p.name || 'Player'}
               </span>
-              <span className="cc-player-chips">{p.chips ? num(p.chips) : '—'}</span>
+              <div className="cc-player-stats">
+                <div><span className="cc-stat-k">{t('chipcount.boughtIn')} </span>{money(p.buyIn || 0, cur)}</div>
+                <div>
+                  <span className="cc-stat-k">{t('chipcount.balance')} </span>
+                  {p.chips ? money(p.chips * unitValue, cur) : '—'}
+                </div>
+              </div>
               <button
                 type="button"
                 className="icon-btn cc-open"

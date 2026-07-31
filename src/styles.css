@@ -1595,3 +1595,16 @@ input[type='color'] { cursor: pointer; }
 .cc-player-name { flex: 1; font-weight: 500; }
 .cc-player-chips { font-variant-numeric: tabular-nums; opacity: .8; min-width: 56px; text-align: right; }
 .cc-enable { position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); z-index: 2; }
+.cc-player-stats { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; text-align: right; opacity: .92; font-variant-numeric: tabular-nums; }
+.cc-stat-k { opacity: .5; }
+/* Shutter flash — confirms a photo was taken. */
+.cc-flash { position: absolute; inset: 0; background: #fff; opacity: .9; animation: cc-flash .28s ease-out forwards; pointer-events: none; z-index: 5; }
+@keyframes cc-flash { to { opacity: 0; } }
+/* Analyzing / error overlay over the frozen shot. */
+.cc-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; padding: 24px; text-align: center; background: rgba(0,0,0,.55); z-index: 4; }
+.cc-spinner { width: 52px; height: 52px; border-radius: 50%; border: 4px solid rgba(255,255,255,.25); border-top-color: #fff; animation: cc-spin .8s linear infinite; }
+@keyframes cc-spin { to { transform: rotate(360deg); } }
+.cc-overlay-t { color: #fff; font-weight: 600; max-width: 290px; line-height: 1.35; }
+.cc-overlay-ic { width: 52px; height: 52px; border-radius: 50%; background: #c0392b; color: #fff; font-size: 30px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.cc-overlay-btns { display: flex; gap: 10px; margin-top: 4px; }
