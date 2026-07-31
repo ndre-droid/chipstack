@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { useStore } from '../store';
 import Chip from '../components/Chip';
+import { ChipCalibrationWizard } from '../components/ChipCalibrationWizard.tsx';
 import { useT, useFmt } from '../lib/i18n';
 import type { Appearance, AccentId, Skin, ChipArt } from '../types';
 
@@ -46,6 +48,7 @@ export default function SettingsScreen() {
   const { settings } = state;
   const t = useT();
   const { money: fmtMoney } = useFmt();
+  const [calOpen, setCalOpen] = useState(false);
 
   const activeStyle = STYLES.find((s) => s.id === settings.skin) ?? STYLES[0];
   const accentColor = (id: AccentId) => ACCENTS.find((a) => a.id === id)?.color ?? '#f0b429';
@@ -169,6 +172,17 @@ export default function SettingsScreen() {
             </button>
           ))}
         </div>
+        <div className="mt8">
+          <button className="btn btn-ghost btn-sm" onClick={() => setCalOpen(true)}>{t('chipcount.calibrate')}</button>
+          {state.settings.chipCalibration && (
+            <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }}
+              onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { chipCalibration: undefined } })}>
+              {t('chipcount.calClear')}
+            </button>
+          )}
+          <p className="hint">{t('chipcount.calibrateIntro')}</p>
+        </div>
+        {calOpen && <ChipCalibrationWizard onClose={() => setCalOpen(false)} />}
       </div>
 
       <div className="section-label">{t('settings.moneyMapping')}</div>
