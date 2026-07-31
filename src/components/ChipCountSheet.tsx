@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store.tsx';
 import { useT } from '../lib/i18n.ts';
 import { useCameraCapture } from '../lib/useCameraCapture.ts';
@@ -20,7 +20,7 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
 
   // Request tilt permission once the sheet mounts.
-  useMemo(() => { tilt.request(); cam.setAutoTorch(true); }, []);
+  useEffect(() => { tilt.request(); cam.setAutoTorch(true); }, []);
 
   const guideBox = (canvas: HTMLCanvasElement): Box => {
     // Guide inset matches .cc-guidebox (12% vertical, 8% horizontal).
