@@ -43,6 +43,7 @@ ok('aggregate keeps unknown bands out of totals but lowers confidence', () => {
   const res = aggregate(cols, [], 1);
   assert.equal(res.totals.length, 0);
   assert.ok(res.confidence < 0.5);
+  assert.ok(res.anomalies.some((a) => a.code === 'unknownChips' && a.severity === 'warn'));
 });
 
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');

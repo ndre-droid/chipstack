@@ -60,5 +60,8 @@ export function aggregate(reconciled: ColumnResult[], anomalies: Anomaly[], fram
   if (hasUnknown) confidence = Math.min(confidence, 0.4);
   if (anomalies.some((x) => x.severity === 'blocking')) confidence = Math.min(confidence, 0.3);
 
-  return { totals, totalValue, anomalies, frames: frameCount, confidence };
+  const outAnomalies = hasUnknown
+    ? [...anomalies, { code: 'unknownChips', severity: 'warn' as const, autoFixed: false }]
+    : anomalies;
+  return { totals, totalValue, anomalies: outAnomalies, frames: frameCount, confidence };
 }

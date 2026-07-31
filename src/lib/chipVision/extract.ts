@@ -77,6 +77,7 @@ export async function extractColumns(
   let ci = 0;
   for (const rc of rawColumns) {
     const subCount = splitMergedColumn(rc.x0, rc.x1, diameterPx);
+    if (subCount > 1) anomalies.push({ code: 'mergedColumns', severity: 'warn', autoFixed: true, columnIndex: ci });
     const subW = (rc.x1 - rc.x0) / subCount;
     for (let s = 0; s < subCount; s++) {
       const cx0 = rc.x0 + s * subW, cx1 = cx0 + subW;
