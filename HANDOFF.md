@@ -434,6 +434,17 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 
 ## ⚠️ Open items / next steps
 
+### Photo → chip count (2026-07-31) — needs on-device validation
+Built + unit-tested + preview-checked. CANNOT be fully validated without the
+physical SLOWPLAY chips + a phone camera. On-device checklist:
+- RemoteControl player row → 📷 → grant camera; tilt bubble greens at ~20–30° down-look;
+  auto-torch kicks in when dim; capture reads the stacks; review breakdown is editable;
+  Save writes player.chips (→ TV crown updates).
+- Try: several stacks of the same colour (must sum), a leaning stack, a too-tall stack,
+  touching stacks (must warn/guide), navy 100 on dark felt (contrast guidance).
+- Settings → Chip art → Calibrate chip colours: photograph each denom once, then
+  re-count and confirm accuracy improved (esp. 50 vs 5000).
+
 0. **3D chips: built then REVERTED (2026-07-24 session).** A react-three-fiber prototype (true-3D
    ceramic chip stacks on the Plan hero + a rotatable chip showcase in Settings) was built, shipped,
    then removed — the user prefers the original SVG chips (`Chip.tsx` / `ChipStackViz.tsx`). The 3D
