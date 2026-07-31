@@ -3,7 +3,7 @@ import type { ColumnResult, Band, Anomaly, DenomRef, Lab } from './types.ts';
 import { dominantLab, nearestDenom } from './color.ts';
 import { singleChipHeightPx, bandCount, rawBandCount, leanAngleDeg } from './geometry.ts';
 import {
-  detectView, detectLean, detectCutOff, detectWeakContrast, detectGlare, splitMergedColumn,
+  detectView, detectLean, detectCutOff, detectWeakContrast, detectBusyBackground, detectGlare, splitMergedColumn,
 } from './anomaly.ts';
 
 export type Box = { x0: number; y0: number; x1: number; y1: number };
@@ -58,19 +58,25 @@ export async function extractColumns(
   cv.meanStdDev(lap, mean, stddev);
   const laplacianVariance = stddev.doubleAt(0, 0) ** 2;
 
-  // --- background (felt) model from the box corners ---
-  const corners = sampleCorners(lab, W, H);
-  const felt = medianLab(corners);
-  const mask = foregroundMask(cv, lab, felt, W, H);
+  // --- foreground mask: brightness (Otsu) split, robust to dark / low-light /
+  // coloured-lit surfaces where a colour-distance-to-felt threshold fails ---
+  const mask = foregroundMask(cv, gray, W, H);
   const maskCoverage = cv.countNonZero(mask) / (W * H);
 
   const anomalies: Anomaly[] = [];
   const contrast = detectWeakContrast(maskCoverage);
   if (contrast) anomalies.push(contrast);
+  const busy = detectBusyBackground(maskCoverage);
+  if (busy) anomalies.push(busy);
   const glare = detectGlare(saturatedRatio(lab, mask, W, H));
   if (glare) anomalies.push(glare);
 
-  const rawColumns = segmentColumns(cv, mask, W, H);      // {x0,x1,topY,bottomY,contour}
+  // A busy / low-contrast background yields one frame-sized blob. Skip column
+  // detection then, and drop any whole-frame region, so it can't masquerade as a
+  // giant "column" that trips the cut-off / merged-stacks warnings.
+  const rawColumns = (busy ? [] : segmentColumns(cv, mask, W, H)).filter(
+    (c) => (c.x1 - c.x0) <= 0.92 * W || (c.bottomY - c.topY) <= 0.92 * H,
+  ); // {x0,x1,topY,bottomY,contour}
   const diameterPx = rawColumns.length ? median(rawColumns.map((c) => c.x1 - c.x0)) : W;
 
   const columns: ColumnResult[] = [];
@@ -152,43 +158,30 @@ function labDist(a: number[], b: number[]): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 function median(xs: number[]): number { const s = [...xs].sort((a, b) => a - b); return s[s.length >> 1]; }
-function medianLab(px: Lab[]): Lab {
-  const m = (i: number) => median(px.map((p) => p[i]));
-  return [m(0), m(1), m(2)];
-}
 
-// ---- six OpenCV.js helper contracts ----
+// ---- OpenCV.js helper contracts ----
 // cv-Lab is scaled 0..255 per channel; real Lab = (L*100/255, a-128, b-128).
 
-/** Read the four box-corner 12×12 patches, cv-Lab → real-Lab, pooled. */
-function sampleCorners(lab: any, W: number, H: number): Lab[] {
-  const size = 12;
-  const xs = [0, Math.max(0, W - size)];
-  const ys = [0, Math.max(0, H - size)];
-  const out: Lab[] = [];
-  for (const y0 of ys) {
-    for (const x0 of xs) {
-      for (let y = y0; y < Math.min(H, y0 + size); y++) {
-        for (let x = x0; x < Math.min(W, x0 + size); x++) {
-          const p = lab.ucharPtr(y, x);
-          out.push([(p[0] * 100) / 255, p[1] - 128, p[2] - 128]);
-        }
-      }
-    }
-  }
-  return out;
-}
+/**
+ * Foreground mask via Otsu on brightness (chips vs surface), forcing the border
+ * majority to background so foreground = chips whether the surface is darker OR
+ * lighter than the chips. Far more robust than a fixed colour-distance-to-felt
+ * threshold under dark, textured, or coloured-lit surfaces (which produced one
+ * frame-sized blob). Open+close with a 5×5 kernel to de-noise.
+ */
+function foregroundMask(cv: any, gray: any, W: number, H: number): any {
+  const blur = new cv.Mat();
+  cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+  const mask = new cv.Mat();
+  cv.threshold(blur, mask, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+  blur.delete();
 
-/** Per-pixel ΔE to `felt` > 14 → 255, else 0; open then close with a 5×5 kernel. */
-function foregroundMask(cv: any, lab: any, felt: Lab, W: number, H: number): any {
-  const mask = new cv.Mat(H, W, cv.CV_8UC1);
-  const src = lab.data as Uint8Array;
-  const dst = mask.data as Uint8Array;
-  const [fl, fa, fb] = felt;
-  for (let p = 0, i = 0; p < W * H; p++, i += 3) {
-    const L = (src[i] * 100) / 255, A = src[i + 1] - 128, B = src[i + 2] - 128;
-    dst[p] = Math.hypot(L - fl, A - fa, B - fb) > 14 ? 255 : 0;
-  }
+  const d = mask.data as Uint8Array;
+  let borderFg = 0, borderN = 0;
+  for (let x = 0; x < W; x++) { borderFg += (d[x] ? 1 : 0) + (d[(H - 1) * W + x] ? 1 : 0); borderN += 2; }
+  for (let y = 0; y < H; y++) { borderFg += (d[y * W] ? 1 : 0) + (d[y * W + W - 1] ? 1 : 0); borderN += 2; }
+  if (borderN > 0 && borderFg / borderN > 0.5) cv.bitwise_not(mask, mask);
+
   const kernel = cv.Mat.ones(5, 5, cv.CV_8U);
   cv.morphologyEx(mask, mask, cv.MORPH_OPEN, kernel);
   cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel);

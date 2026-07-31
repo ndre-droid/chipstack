@@ -51,6 +51,14 @@ export function detectWeakContrast(maskCoverage: number): Anomaly | null {
   return maskCoverage < CONTRAST_MIN ? a('weakContrast', 'blocking', false) : null;
 }
 
+// Above this fraction, so much of the frame differs from the sampled background
+// that the surface/lighting isn't separable from the chips — one frame-sized
+// blob results (a dark, textured, or coloured-lit surface). Guide, don't guess.
+const BUSY_MAX = 0.5;
+export function detectBusyBackground(maskCoverage: number): Anomaly | null {
+  return maskCoverage > BUSY_MAX ? a('busyBackground', 'blocking', false) : null;
+}
+
 export function detectGlare(saturatedRatio: number): Anomaly | null {
   return saturatedRatio > GLARE_MAX ? a('glare', 'warn', false) : null;
 }

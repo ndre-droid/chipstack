@@ -72,8 +72,11 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
         45000,
         t('chipcount.timedOut'),
       );
-      if (res.totals.length === 0 && res.anomalies.length === 0) {
-        setAnalyzeErr(t('chipcount.noChips'));
+      if (res.totals.length === 0) {
+        // Nothing counted — show the most useful reason (bad surface/light, etc.)
+        // rather than an empty breakdown.
+        const blocking = res.anomalies.find((x) => x.severity === 'blocking');
+        setAnalyzeErr(blocking ? t('chipcount.anom.' + blocking.code) : t('chipcount.noChips'));
         return;
       }
       engineWarmed = true;
