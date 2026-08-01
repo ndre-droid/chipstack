@@ -65,7 +65,7 @@ export function ChipCountReview({ playerId, shot, result, denoms, onRetake, onCl
         )}
 
         {rows.map((r) => {
-          const uncertain = r.confidence < 0.75;
+          const uncertain = r.confidence < 0.85;
           return (
             <div key={r.value} className={`cc-row${uncertain ? ' low' : ''}`}>
               <span className="cc-swatch" style={{ background: colorOf.get(r.value) ?? '#888' }} />

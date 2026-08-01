@@ -5,9 +5,9 @@ type StackBox = { value: number; box: [number, number, number, number] };
 type Prefer = 'flash' | 'pro';
 
 // Tuning knobs for the vote-and-crop pipeline.
-const SAMPLES = 5;          // independent flash counts per stack (self-consistency vote)
-const POOL = 6;             // max concurrent API calls (keep the free-tier key happy)
-const TIEBREAK_CONF = 0.6;  // below this agreement, ask the stronger `pro` model to decide
+const SAMPLES = 6;          // independent flash counts per stack (self-consistency vote)
+const POOL = 4;             // max concurrent API calls (keep the free-tier key happy)
+const TIEBREAK_CONF = 0.8;  // below this agreement, ask the stronger `pro` model to decide
 const CROP_PAD = 0.12;      // fraction of the box to pad when cropping a stack
 
 /** Rough colour name from a hex, to help the model match stacks to denominations. */
@@ -283,7 +283,7 @@ export async function countChipsWithVision(
         if (pro != null) {
           const flashMode = count;
           count = pro;
-          agreement = pro === flashMode ? Math.max(agreement, 0.8) : 0.55; // confirmed vs overruled
+          agreement = pro === flashMode ? 0.9 : 0.55; // two models agree vs pro overruled flash
         }
       }
       return { value: b.value, count, confidence: agreement };
