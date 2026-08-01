@@ -8,7 +8,7 @@ export const TILT_MAX_DEG = 35;   // upper bound (sweet spot ≈ 20–30°)
  * `pitchDeg` ≈ how far the back camera looks down from horizontal (0 = level).
  * `steady` is true when orientation variance over ~500 ms is small.
  */
-export function useDeviceTilt() {
+export function useDeviceTilt(band: { min: number; max: number } = { min: TILT_MIN_DEG, max: TILT_MAX_DEG }) {
   const [pitchDeg, setPitchDeg] = useState<number | null>(null);
   const [steady, setSteady] = useState(false);
   const recent = useRef<number[]>([]);
@@ -36,6 +36,6 @@ export function useDeviceTilt() {
 
   useEffect(() => () => window.removeEventListener('deviceorientation', onOrient, true), []);
 
-  const inRange = pitchDeg != null && pitchDeg >= TILT_MIN_DEG && pitchDeg <= TILT_MAX_DEG;
+  const inRange = pitchDeg != null && pitchDeg >= band.min && pitchDeg <= band.max;
   return { pitchDeg, inRange, steady, request };
 }

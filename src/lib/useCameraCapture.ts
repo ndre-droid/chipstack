@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { contentScore } from './chipVision/frame.ts';
 
 export function useCameraCapture() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -52,6 +53,16 @@ export function useCameraCapture() {
 
   const toggleTorch = useCallback(() => applyTorch(!torchOn), [applyTorch, torchOn]);
 
+  const frameHasContent = useCallback((): boolean => {
+    const v = videoRef.current; if (!v || !v.videoWidth) return false;
+    const c = document.createElement('canvas'); c.width = 32; c.height = 18;
+    const ctx = c.getContext('2d')!; ctx.drawImage(v, 0, 0, 32, 18);
+    const d = ctx.getImageData(0, 0, 32, 18).data;
+    const luma: number[] = [];
+    for (let i = 0; i < d.length; i += 4) luma.push(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+    return contentScore(luma) > 0.02;
+  }, []);
+
   // Sample brightness ~2×/s; auto-torch when dark (if enabled + available).
   const autoTorch = useRef(false);
   const setAutoTorch = useCallback((v: boolean) => { autoTorch.current = v; }, []);
@@ -83,5 +94,5 @@ export function useCameraCapture() {
   }, []);
 
   const stop = useCallback(() => { streamRef.current?.getTracks().forEach((tk) => tk.stop()); }, []);
-  return { videoRef, ready, error, retry, torchOn, torchAvailable, toggleTorch, setAutoTorch, brightnessOk, captureBurst, stop };
+  return { videoRef, ready, error, retry, torchOn, torchAvailable, toggleTorch, setAutoTorch, brightnessOk, captureBurst, frameHasContent, stop };
 }
