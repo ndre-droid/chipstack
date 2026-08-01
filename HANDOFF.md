@@ -18,9 +18,9 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT** — rebuilt 2026-08-01 from `main` @ `bf2f7eb`; includes the whole photo-chip-count
-  feature + AI mode + the 2026-07-31 feature pack. Stable key unchanged → installs over the top,
-  data kept. Work landed on branch `feat/chip-photo-count`, fast-forwarded to `main` each push.)
+  (**CURRENT** — rebuilt 2026-08-01 from `main` @ `0456b04`; AI-only chip count with model
+  auto-discovery + hi-res prompt + per-stack self-check/confidence. Stable key unchanged → installs
+  over the top, data kept. Work on branch `feat/chip-photo-count`, fast-forwarded to `main` each push.)
 - **App Links host repo:** https://github.com/ndre-droid/ndre-droid.github.io — root Pages site
   serving `/.well-known/assetlinks.json` so Android verifies `com.chipstack.app` owns the
   `/chipstack` URLs (TV QR → opens the app). Validated by Google's Digital Asset Links API.
@@ -446,16 +446,33 @@ real room. Deleted: `src/lib/chipVision/{extract,opencv,index,color,geometry,ano
 `ChipCalibrationWizard`, `chipCalibration.ts`, `@techstark/opencv-js` dep, the workbox opencv precache rules,
 and `Settings.chipCountMode`/`chipCalibration`. Kept: `visionCount.ts` + trimmed `chipVision/types.ts`.
 
-**Engine:** `src/lib/chipVision/visionCount.ts` → Google Gemini (`MODEL = 'gemini-2.5-flash'`; `gemini-2.0-flash`
-was retired by Google Aug 2026 — **bump `MODEL` if retired again**, that's the whole fix). DIRECT browser
-call with the user's own key (`Settings.aiVisionKey`, on-device only, NOT synced). Gemini allows browser CORS
-with a key; OpenAI/Anthropic block it → would need a backend the app lacks. Reads photo in ANY light/surface/
-angle. Settings → **"Chip counting (AI)"** shows the key field always (no toggle). Editable review before save.
+**Engine:** `src/lib/chipVision/visionCount.ts` → Google Gemini, DIRECT browser call with the user's own key
+(`Settings.aiVisionKey`, on-device only, NOT synced). Gemini allows browser CORS with a key; OpenAI/Anthropic
+block it → would need a backend the app lacks. Settings → **"Chip counting (AI)"** shows the key field always
+(no toggle). Editable review before save. CONFIRMED WORKING end-to-end 2026-08-01 (user's real photos).
 
-**NEXT STEP:** user needs to end-to-end test — free key from aistudio.google.com → Settings → paste key → 📷
-→ report the numbers Gemini returns → tune the prompt in `visionCount.ts` if off (or bump to `gemini-2.5-pro`
-for harder counts). APK camera needs the **`CAMERA`** manifest permission (present). **PWA SW caches hard** —
-after a deploy the Settings section may not appear until SW cleared / app force-reopened / APK reinstalled.
+**Model = AUTO-DISCOVERED, never hardcoded** (`resolveModel`). Google kept retiring/gating ids
+(`gemini-2.0-flash` retired, then `gemini-2.5-flash` → "no longer available to new users" — the user's key is
+new). So we call Google **ListModels** with the key, pick the best usable vision model (`scoreModel`: newest
+version, prefer flash, avoid lite/preview/thinking), cache it, and **self-heal**: on a 404 / "not available"
+error mid-call we re-list (force) and retry once. `FALLBACK_MODEL='gemini-flash-latest'` only if the list call
+itself fails. Do NOT reintroduce a hardcoded model id.
+
+**Accuracy tuning done this session** (was off-by-one on short stacks, esp. red):
+- Image sent at **1536px** (was 1024), q0.92, high-quality smoothing — thin ~3.3 mm seams need the pixels.
+- Prompt counts each stack **two independent ways and reconciles**: (A) side seam lines (chips = seams+1),
+  (B) height:width proportion (~0.085 of the chip width per chip). Disagreement → lower confidence.
+- **Per-stack confidence is real now** (model-returned, was hardcoded 0.85; worst kept when summing a denom).
+  `ChipCountReview` flags rows < 0.75 with an amber outline + "⚠ check" badge so the user only eyeballs the
+  uncertain stack. All one API call — speed basically unchanged.
+
+**NEXT STEP / OPEN:** still leans **+1 on the short red stack** in testing. If the self-check flag isn't enough,
+next lever (offered, not yet built): **2-frame cross-check** — send 2 of the 3 burst frames (`cam.captureBurst(3)`
+already grabs them; only `frames[0]` is used) in the SAME request and have the model reconcile across both. One
+round-trip, a bit more data. Failing that, bias `scoreModel` toward `pro` for accuracy (slower, tighter free
+quota). APK camera needs the **`CAMERA`** manifest permission (present). **PWA SW caches hard** — after a deploy
+Settings/behaviour may not update until SW cleared / app force-reopened / APK reinstalled (this bit us twice —
+the "model 2.5-flash" error initially looked like stale cache but was actually Google gating the id).
 
 0. **3D chips: built then REVERTED (2026-07-24 session).** A react-three-fiber prototype (true-3D
    ceramic chip stacks on the Plan hero + a rotatable chip showcase in Settings) was built, shipped,
@@ -468,13 +485,15 @@ after a deploy the Settings section may not appear until SW cleared / app force-
    **Kept from that work:** the denom palette was matched to the real photos — `10` → `#31B6C9` (cyan),
    `100` → `#0C0C10` (black) in `store.tsx` `defaultDenoms()`. Existing users' saved colours are
    preserved by `migrate()` (only defaults change).
-1. **APK + Pages are CURRENT** (2026-08-01, `main` @ `bf2f7eb`). Ship flow used all session:
+1. **APK + Pages are CURRENT** (2026-08-01, `main` @ `0456b04`). Ship flow used all session:
    commit on `feat/chip-photo-count` → `git push origin feat/chip-photo-count:main` (fast-forward,
    triggers Pages deploy) → `gh workflow run "Build Android APK" -R ndre-droid/chipstack --ref main`
    (builds from remote `main`, so push FIRST). Stable signing key unchanged (APK cert == assetlinks
    fingerprint `E5:A4:…:2A`), installs OVER the existing APK, data preserved. Branch `feat/chip-photo-count`
    still exists on origin (can delete; `main` has everything). **Still pending on-device:** App Links
    verification (reinstall APK → scan TV QR → app opens). The **web app is the primary path**.
+   NOTE: CI warns those GitHub Actions target deprecated **Node 20** (auto-run on Node 24 for now) — bump
+   `actions/*` + `android-actions/setup-android` versions in `.github/workflows` when convenient.
 2. **i18n is partial.** Nav/header/Settings/TV/Plan/Chips/Table/Cash MAIN labels are translated
    (`src/lib/i18n.ts`, `useT()`); **number formatting now fully language-driven** via `useFmt()`
    (2026-07-26). NOT translated: engine-generated sentences (distribution.ts / planning.ts
