@@ -18,9 +18,10 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT** — rebuilt 2026-08-01 from `main` @ `ef924a1`; AI chip count now a **3-channel fuse**
-  (seam vote + measured geometry + on-device DSP) with per-stack crop + cross-stack calibration.
-  Stable key unchanged → installs over the top, data kept. Work on branch `feat/chip-photo-count`,
+  (**CURRENT** — rebuilt 2026-08-01 from `main` @ `5ab7653`; AI chip count = **3-channel fuse**
+  (seam vote + measured geometry + on-device DSP) with per-stack crop + cross-stack calibration +
+  on-device de-clutter/auto-exposure, now **batched into ~4 API calls/photo** for cost. Stable key
+  unchanged → installs over the top, data kept. Work on branch `feat/chip-photo-count`,
   fast-forwarded to `main` each push.)
 - **App Links host repo:** https://github.com/ndre-droid/ndre-droid.github.io — root Pages site
   serving `/.well-known/assetlinks.json` so Android verifies `com.chipstack.app` owns the
@@ -459,34 +460,48 @@ version, prefer flash, avoid lite/preview/thinking), cache it, and **self-heal**
 error mid-call we re-list (force) and retry once. `FALLBACK_MODEL='gemini-flash-latest'` only if the list call
 itself fails. Do NOT reintroduce a hardcoded model id.
 
-**Accuracy = 3-channel fuse (2026-08-01 session, commits 31380e2 → ef924a1).** Single-pass was too
-noisy (±1–2, false flags). `visionCount.ts` now:
-1. **Detect + box** every stack (1 flash call → per-stack bounding box + denom).
-2. **Crop** each stack from the FULL-res frame (pad 12%), send ≤1024px → thin ~3.3 mm seams get real
-   pixels. This was the biggest single win (whole-image wasted resolution on empty table).
-3. **Read each crop `SAMPLES=4`× (flash, temp 0.5), pooled `POOL=6`.** Every read returns BOTH a seam
-   count AND measured `stackHeight`+`chipDiameter` — two channels, one call.
-4. Channels: **(A) seam vote** = majority of the counts; **(B) geometry** = `round((height/diameter)/k)`,
+**Accuracy = 3-channel fuse, BATCHED (2026-08-01 session, commits 31380e2 → 5ab7653).** Single-pass
+was too noisy (±1–2, false flags). `visionCount.ts` now:
+1. **Detect + box** every stack (1 flash call, image sent at 1024px → per-stack box + denom).
+2. **Crop + clean** each stack: crop from full-res (pad 12%), then ON-DEVICE (no network time)
+   `tightenByColor()` re-crops tight using the stack's KNOWN denom colour (drops clutter that leaked
+   into the box; bails if it can't lock the colour) + `autoLevels()` per-crop auto-exposure (percentile
+   stretch + shadow gamma → backlit seams show). Crop sent at **768px = 1 Gemini image tile**.
+3. **Vote via a BATCHED multi-image read** (`readAllStacks`): count EVERY cropped stack in ONE call,
+   repeated `SAMPLES=3`× (flash, temp 0.5, pooled `POOL=6`). So a photo is **~1 detection + 3 reads =
+   ~4 API calls total** (was 1 + stacks×samples ≈ 16–20 → see COST below). Each read returns a seam
+   count AND measured `stackHeight`+`chipDiameter` per stack.
+4. Channels: **(A) seam vote** = majority of counts; **(B) geometry** = `round((height/diameter)/k)`,
    where `k` (chip thickness:diameter, nominal 0.085) is **cross-stack calibrated** from stacks the seam
    vote is UNANIMOUS on (all chips are the same SLOWPLAY chip → one confident stack rulers the shaky ones;
    k clamped [0.05,0.13]); **(C) on-device DSP** `dspCount()` — 1-D edge-energy profile along the stack
-   axis + autocorrelation for chip pitch, synchronous (~ms, 220px downscale), **adds NO network time**.
-5. **Fuse** (`countChipsWithVision`): channels A+B agree → lock, confidence ≥0.9 (this killed the green
-   FALSE flag). Off-by-1 + confident vote → keep vote, flag 0.6 (DSP can break it → 0.9). Real
-   disagreement → **DSP confirms** a channel and SKIPS the pro call (faster); if DSP abstains, `pro`
-   model decides and the row flags. **DSP is CONFIRM-ONLY** — must have strong periodicity (bestC≥0.45)
-   AND equal a candidate, else abstains → can never inject a wrong number.
+   axis + autocorrelation for chip pitch, synchronous (~ms, 220px downscale, uses the local 1024 crop).
+5. **Fuse** (`countChipsWithVision`): A+B agree AND short (≤4) → lock 0.9; A+B agree but TALL (>4) →
+   only 0.95 if DSP also confirms, else **0.8 → flags** (tall stacks can share the same error, so don't
+   show them as certain-but-wrong). Off-by-1 + confident vote → 0.6 (DSP can lift to 0.9). Real
+   disagreement → **DSP confirms** a channel (0.75) else prefer the confident channel and flag (0.5).
+   **NO `pro` network calls anymore** (removed — see COST/timeouts). **DSP is CONFIRM-ONLY** — must have
+   strong periodicity (bestC≥0.45) AND equal a candidate, else abstains → can never inject a wrong number.
 6. **Confidence = cross-channel agreement** (not model self-report). `ChipCountReview` flags rows
-   **< 0.85** with an amber outline + "⚠ check" badge.
+   **< 0.85** with an amber outline + "⚠ check" badge. Model still **AUTO-DISCOVERED** (`resolveModel`,
+   flash) — do NOT hardcode an id.
 
-Verified live by the user on real photos (2026-08-01): separated upright stacks land exact (orange 50s
-went 6→7, confident, unflagged); false flags reduced. **Model still AUTO-DISCOVERED** (`resolveModel`,
-prefer flash for reads / pro for tiebreak) — do NOT hardcode an id.
+**COST — READ THIS (user hit ~2€ testing).** The self-consistency voting fanned out to ~16–20 calls/photo,
+plus the old `pro` tiebreak (slow + pricey), and **every timeout + "Neu aufnehmen" retry was billed in full**.
+Fixes: (a) **batched** all crops into one call, vote by repeating it 3× → ~4 calls/photo; (b) **removed all
+`pro` calls** (DSP + the confident channel settle disagreements for free); (c) crops 768px (½ the image
+tokens), detection 1024px. Now **fractions of a cent per photo**. Told the user to set a **Google Cloud budget
+cap** on the key. Cheaper lever if wanted: `SAMPLES 3→1` (no voting, ~2 calls/photo).
+
+**TIMEOUTS fixed** (user got repeated "Zeitüberschreitung"): the old pro calls (10–30s, 2 RPM) + 16 flash
+calls blew the 60s budget. Now `REQ_TIMEOUT=18000` aborts any single hung request (AbortController), and the
+call count is tiny. Sheet outer timeout is 60s (`ChipCountSheet.tsx`).
 
 **Physical limits no algorithm fixes** (tell the user — it's capture, not code): a chip lying FLAT/on its
-face (no seams, no height → the red "4" that was really 1) miscounts; touching/leaning stacks merge seams.
-**Recipe: upright, separated stacks, all in frame, landscape.** Sheet timeout raised 30s→60s (more calls).
-APK camera needs the **`CAMERA`** manifest permission (present).
+face (no seams, no height → the red "4" that was really 1) miscounts; touching/leaning stacks merge seams;
+a 90°-rotated (sideways) photo degrades geometry/DSP axis assumptions. **Recipe: upright, separated stacks,
+all in frame, phone held normally (not rotated), no backlight.** APK camera needs the **`CAMERA`** manifest
+permission (present).
 
 **NEXT LEVER (offered, NOT built):** if a *clean* shot is still noisy → **multi-angle capture** (2 shots at
 a different angle; seams merged in one separate in the other; `cam.captureBurst(3)` already grabs frames but
@@ -505,7 +520,7 @@ reinstalled (bit us twice; the "model 2.5-flash" error once looked like stale ca
    **Kept from that work:** the denom palette was matched to the real photos — `10` → `#31B6C9` (cyan),
    `100` → `#0C0C10` (black) in `store.tsx` `defaultDenoms()`. Existing users' saved colours are
    preserved by `migrate()` (only defaults change).
-1. **APK + Pages are CURRENT** (2026-08-01, `main` @ `ef924a1`). Ship flow used all session:
+1. **APK + Pages are CURRENT** (2026-08-01, `main` @ `5ab7653`). Ship flow used all session:
    commit on `feat/chip-photo-count` → `git push origin feat/chip-photo-count:main` (fast-forward,
    triggers Pages deploy) → `gh workflow run "Build Android APK" -R ndre-droid/chipstack --ref main`
    (builds from remote `main`, so push FIRST). Stable signing key unchanged (APK cert == assetlinks
