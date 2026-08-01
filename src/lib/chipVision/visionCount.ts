@@ -142,8 +142,15 @@ export async function countChipsWithVision(
     `before answering.\n` +
     `- If several separate stacks share a colour, sum their chips for that denomination.\n` +
     `- Ignore anything that is not a poker chip (bags, cases, papers, background).\n\n` +
-    `Respond with ONLY JSON of this exact shape: ` +
-    `{"stacks":[{"value":<denomination>,"count":<chips>,"how":"<e.g. 3 seams so 4 chips>"}]}. No text outside the JSON.`;
+    `SELF-CHECK each stack with TWO independent methods and reconcile:\n` +
+    `  (A) count the seam lines on the side (chips = seams + 1);\n` +
+    `  (B) estimate from proportions: a chip is ~3.3 mm thick and ~39 mm wide, so a stack of N chips ` +
+    `is about N x 0.085 as TALL as the chip is WIDE (e.g. 4 chips ≈ 0.34 of the width). Judge the ` +
+    `stack's height-to-width ratio in the image and estimate N.\n` +
+    `  If A and B agree, confidence is high. If they differ, look again, pick the most reliable count, ` +
+    `and lower the confidence. Report confidence 0.0–1.0 per stack.\n\n` +
+    `Respond with ONLY JSON of this exact shape: {"stacks":[{"value":<denomination>,"count":<chips>,` +
+    `"confidence":<0..1>,"how":"<seams=X, ratio=Y, final=Z>"}]}. No text outside the JSON.`;
 
   const body = JSON.stringify({
     contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }],
@@ -158,15 +165,20 @@ export async function countChipsWithVision(
   try { parsed = JSON.parse(text); } catch { throw new Error('Could not read the AI result — retake.'); }
 
   const stacks: any[] = Array.isArray(parsed) ? parsed : parsed?.stacks ?? [];
-  const byValue = new Map<number, number>();
+  const byValue = new Map<number, { count: number; confidence: number }>();
   for (const s of stacks) {
     const v = Number(s?.value), c = Math.max(0, Math.round(Number(s?.count)));
     if (!v || !c || !denoms.some((d) => d.value === v)) continue; // drop hallucinated denoms
-    byValue.set(v, (byValue.get(v) ?? 0) + c);
+    // Model confidence 0..1; default a middling 0.7 if it omitted the field.
+    const conf = Number.isFinite(Number(s?.confidence)) ? Math.max(0, Math.min(1, Number(s.confidence))) : 0.7;
+    const prev = byValue.get(v);
+    // When several stacks share a denom, keep the WORST confidence so the row still flags.
+    byValue.set(v, { count: (prev?.count ?? 0) + c, confidence: Math.min(prev?.confidence ?? 1, conf) });
   }
   const totals: DenomTotal[] = [...byValue.entries()]
-    .map(([value, count]) => ({ value, count, confidence: 0.85 }))
+    .map(([value, { count, confidence }]) => ({ value, count, confidence }))
     .sort((a, b) => a.value - b.value);
   const totalValue = totals.reduce((s, t) => s + t.value * t.count, 0);
-  return { totals, totalValue, anomalies: [], frames: 1, confidence: totals.length ? 0.85 : 0 };
+  const overall = totals.length ? Math.min(...totals.map((t) => t.confidence)) : 0;
+  return { totals, totalValue, anomalies: [], frames: 1, confidence: overall };
 }

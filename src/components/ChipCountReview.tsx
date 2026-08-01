@@ -64,16 +64,22 @@ export function ChipCountReview({ playerId, shot, result, denoms, onRetake, onCl
           </div>
         )}
 
-        {rows.map((r) => (
-          <div key={r.value} className={`cc-row${r.confidence < 0.5 ? ' low' : ''}`}>
-            <span className="cc-swatch" style={{ background: colorOf.get(r.value) ?? '#888' }} />
-            <span style={{ flex: 1 }}>{r.value}</span>
-            <button className="cc-step" onClick={() => setCount(r.value, -1)}>−</button>
-            <span style={{ minWidth: 32, textAlign: 'center' }}>{r.count}</span>
-            <button className="cc-step" onClick={() => setCount(r.value, +1)}>+</button>
-            <span style={{ minWidth: 64, textAlign: 'right' }}>{num(r.value * r.count)}</span>
-          </div>
-        ))}
+        {rows.map((r) => {
+          const uncertain = r.confidence < 0.75;
+          return (
+            <div key={r.value} className={`cc-row${uncertain ? ' low' : ''}`}>
+              <span className="cc-swatch" style={{ background: colorOf.get(r.value) ?? '#888' }} />
+              <span style={{ flex: 1 }}>
+                {r.value}
+                {uncertain && <span className="cc-check">⚠ {t('chipcount.checkThis')}</span>}
+              </span>
+              <button className="cc-step" onClick={() => setCount(r.value, -1)}>−</button>
+              <span style={{ minWidth: 32, textAlign: 'center' }}>{r.count}</span>
+              <button className="cc-step" onClick={() => setCount(r.value, +1)}>+</button>
+              <span style={{ minWidth: 64, textAlign: 'right' }}>{num(r.value * r.count)}</span>
+            </div>
+          );
+        })}
 
         <div className="cc-total"><span>{t('chipcount.total')}</span><span>{num(total)}</span></div>
       </div>
