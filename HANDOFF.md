@@ -18,9 +18,10 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT** — rebuilt 2026-08-01 from `main` @ `0456b04`; AI-only chip count with model
-  auto-discovery + hi-res prompt + per-stack self-check/confidence. Stable key unchanged → installs
-  over the top, data kept. Work on branch `feat/chip-photo-count`, fast-forwarded to `main` each push.)
+  (**CURRENT** — rebuilt 2026-08-01 from `main` @ `ef924a1`; AI chip count now a **3-channel fuse**
+  (seam vote + measured geometry + on-device DSP) with per-stack crop + cross-stack calibration.
+  Stable key unchanged → installs over the top, data kept. Work on branch `feat/chip-photo-count`,
+  fast-forwarded to `main` each push.)
 - **App Links host repo:** https://github.com/ndre-droid/ndre-droid.github.io — root Pages site
   serving `/.well-known/assetlinks.json` so Android verifies `com.chipstack.app` owns the
   `/chipstack` URLs (TV QR → opens the app). Validated by Google's Digital Asset Links API.
@@ -458,21 +459,40 @@ version, prefer flash, avoid lite/preview/thinking), cache it, and **self-heal**
 error mid-call we re-list (force) and retry once. `FALLBACK_MODEL='gemini-flash-latest'` only if the list call
 itself fails. Do NOT reintroduce a hardcoded model id.
 
-**Accuracy tuning done this session** (was off-by-one on short stacks, esp. red):
-- Image sent at **1536px** (was 1024), q0.92, high-quality smoothing — thin ~3.3 mm seams need the pixels.
-- Prompt counts each stack **two independent ways and reconciles**: (A) side seam lines (chips = seams+1),
-  (B) height:width proportion (~0.085 of the chip width per chip). Disagreement → lower confidence.
-- **Per-stack confidence is real now** (model-returned, was hardcoded 0.85; worst kept when summing a denom).
-  `ChipCountReview` flags rows < 0.75 with an amber outline + "⚠ check" badge so the user only eyeballs the
-  uncertain stack. All one API call — speed basically unchanged.
+**Accuracy = 3-channel fuse (2026-08-01 session, commits 31380e2 → ef924a1).** Single-pass was too
+noisy (±1–2, false flags). `visionCount.ts` now:
+1. **Detect + box** every stack (1 flash call → per-stack bounding box + denom).
+2. **Crop** each stack from the FULL-res frame (pad 12%), send ≤1024px → thin ~3.3 mm seams get real
+   pixels. This was the biggest single win (whole-image wasted resolution on empty table).
+3. **Read each crop `SAMPLES=4`× (flash, temp 0.5), pooled `POOL=6`.** Every read returns BOTH a seam
+   count AND measured `stackHeight`+`chipDiameter` — two channels, one call.
+4. Channels: **(A) seam vote** = majority of the counts; **(B) geometry** = `round((height/diameter)/k)`,
+   where `k` (chip thickness:diameter, nominal 0.085) is **cross-stack calibrated** from stacks the seam
+   vote is UNANIMOUS on (all chips are the same SLOWPLAY chip → one confident stack rulers the shaky ones;
+   k clamped [0.05,0.13]); **(C) on-device DSP** `dspCount()` — 1-D edge-energy profile along the stack
+   axis + autocorrelation for chip pitch, synchronous (~ms, 220px downscale), **adds NO network time**.
+5. **Fuse** (`countChipsWithVision`): channels A+B agree → lock, confidence ≥0.9 (this killed the green
+   FALSE flag). Off-by-1 + confident vote → keep vote, flag 0.6 (DSP can break it → 0.9). Real
+   disagreement → **DSP confirms** a channel and SKIPS the pro call (faster); if DSP abstains, `pro`
+   model decides and the row flags. **DSP is CONFIRM-ONLY** — must have strong periodicity (bestC≥0.45)
+   AND equal a candidate, else abstains → can never inject a wrong number.
+6. **Confidence = cross-channel agreement** (not model self-report). `ChipCountReview` flags rows
+   **< 0.85** with an amber outline + "⚠ check" badge.
 
-**NEXT STEP / OPEN:** still leans **+1 on the short red stack** in testing. If the self-check flag isn't enough,
-next lever (offered, not yet built): **2-frame cross-check** — send 2 of the 3 burst frames (`cam.captureBurst(3)`
-already grabs them; only `frames[0]` is used) in the SAME request and have the model reconcile across both. One
-round-trip, a bit more data. Failing that, bias `scoreModel` toward `pro` for accuracy (slower, tighter free
-quota). APK camera needs the **`CAMERA`** manifest permission (present). **PWA SW caches hard** — after a deploy
-Settings/behaviour may not update until SW cleared / app force-reopened / APK reinstalled (this bit us twice —
-the "model 2.5-flash" error initially looked like stale cache but was actually Google gating the id).
+Verified live by the user on real photos (2026-08-01): separated upright stacks land exact (orange 50s
+went 6→7, confident, unflagged); false flags reduced. **Model still AUTO-DISCOVERED** (`resolveModel`,
+prefer flash for reads / pro for tiebreak) — do NOT hardcode an id.
+
+**Physical limits no algorithm fixes** (tell the user — it's capture, not code): a chip lying FLAT/on its
+face (no seams, no height → the red "4" that was really 1) miscounts; touching/leaning stacks merge seams.
+**Recipe: upright, separated stacks, all in frame, landscape.** Sheet timeout raised 30s→60s (more calls).
+APK camera needs the **`CAMERA`** manifest permission (present).
+
+**NEXT LEVER (offered, NOT built):** if a *clean* shot is still noisy → **multi-angle capture** (2 shots at
+a different angle; seams merged in one separate in the other; `cam.captureBurst(3)` already grabs frames but
+they're same-angle so low value — needs a real capture-UX change: "tilt ~15°, second shot"). **PWA SW caches
+hard** — after a deploy, Settings/behaviour may not update until SW cleared / app force-reopened / APK
+reinstalled (bit us twice; the "model 2.5-flash" error once looked like stale cache but was Google gating the id).
 
 0. **3D chips: built then REVERTED (2026-07-24 session).** A react-three-fiber prototype (true-3D
    ceramic chip stacks on the Plan hero + a rotatable chip showcase in Settings) was built, shipped,
@@ -485,7 +505,7 @@ the "model 2.5-flash" error initially looked like stale cache but was actually G
    **Kept from that work:** the denom palette was matched to the real photos — `10` → `#31B6C9` (cyan),
    `100` → `#0C0C10` (black) in `store.tsx` `defaultDenoms()`. Existing users' saved colours are
    preserved by `migrate()` (only defaults change).
-1. **APK + Pages are CURRENT** (2026-08-01, `main` @ `0456b04`). Ship flow used all session:
+1. **APK + Pages are CURRENT** (2026-08-01, `main` @ `ef924a1`). Ship flow used all session:
    commit on `feat/chip-photo-count` → `git push origin feat/chip-photo-count:main` (fast-forward,
    triggers Pages deploy) → `gh workflow run "Build Android APK" -R ndre-droid/chipstack --ref main`
    (builds from remote `main`, so push FIRST). Stable signing key unchanged (APK cert == assetlinks
