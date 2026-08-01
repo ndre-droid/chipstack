@@ -24,6 +24,10 @@ eq('geometry only -> 0.55', fuseStack({ seam: { count: 0, agreement: 0 }, geo: 7
 eq('seam only no geo -> agreement', fuseStack({ seam: { count: 4, agreement: 0.8 }, geo: null, dsp: null }), { count: 4, confidence: 0.8 });
 eq('seam only dsp-confirmed -> 0.9', fuseStack({ seam: { count: 4, agreement: 0.5 }, geo: null, dsp: { count: 4, strength: 0.5 } }), { count: 4, confidence: 0.9 });
 eq('real disagree dsp abstain -> 0.5', fuseStack({ seam: { count: 3, agreement: 0.6 }, geo: 8, dsp: null }), { count: 8, confidence: 0.5 });
+eq('no seam no geo -> 0,0', fuseStack({ seam: { count: 0, agreement: 0 }, geo: null, dsp: null }), { count: 0, confidence: 0 });
+eq('off-by-one dsp backs seam -> 0.9', fuseStack({ seam: { count: 5, agreement: 0.9 }, geo: 6, dsp: { count: 5, strength: 0.5 } }), { count: 5, confidence: 0.9 });
+eq('disagree dsp backs seam -> 0.75', fuseStack({ seam: { count: 3, agreement: 0.6 }, geo: 8, dsp: { count: 3, strength: 0.5 } }), { count: 3, confidence: 0.75 });
+eq('disagree dsp backs geo -> 0.75', fuseStack({ seam: { count: 3, agreement: 0.6 }, geo: 8, dsp: { count: 8, strength: 0.5 } }), { count: 8, confidence: 0.75 });
 
 // mergeAngles: a second, steeper angle that splits a merged seam wins the vote
 eq('mergeAngles merged-seam win', tally(mergeAngles({ votes: [3, 3], ratios: [] }, { votes: [4, 4, 4], ratios: [] }).votes), { count: 4, agreement: 3 / 5 });
