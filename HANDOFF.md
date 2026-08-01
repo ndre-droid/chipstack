@@ -18,9 +18,9 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (built 2026-07-28 run 30365131798 — **now BEHIND HEAD**: missing the 2026-07-31 TV sync/font
-  fixes + feature pack, which are also **not committed/pushed yet**. Commit → push → rebuild.
-  Stable key unchanged → installs over the top, data kept.)
+  (**CURRENT** — rebuilt 2026-08-01 from `main` @ `bf2f7eb`; includes the whole photo-chip-count
+  feature + AI mode + the 2026-07-31 feature pack. Stable key unchanged → installs over the top,
+  data kept. Work landed on branch `feat/chip-photo-count`, fast-forwarded to `main` each push.)
 - **App Links host repo:** https://github.com/ndre-droid/ndre-droid.github.io — root Pages site
   serving `/.well-known/assetlinks.json` so Android verifies `com.chipstack.app` owns the
   `/chipstack` URLs (TV QR → opens the app). Validated by Google's Digital Asset Links API.
@@ -434,16 +434,38 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 
 ## ⚠️ Open items / next steps
 
-### Photo → chip count (2026-07-31) — needs on-device validation
-Built + unit-tested + preview-checked. CANNOT be fully validated without the
-physical SLOWPLAY chips + a phone camera. On-device checklist:
-- RemoteControl player row → 📷 → grant camera; tilt bubble greens at ~20–30° down-look;
-  auto-torch kicks in when dim; capture reads the stacks; review breakdown is editable;
-  Save writes player.chips (→ TV crown updates).
-- Try: several stacks of the same colour (must sum), a leaning stack, a too-tall stack,
-  touching stacks (must warn/guide), navy 100 on dark felt (contrast guidance).
-- Settings → Chip art → Calibrate chip colours: photograph each denom once, then
-  re-count and confirm accuracy improved (esp. 50 vs 5000).
+### Photo → chip count — SHIPPED; on-device unreliable in user's room → AI mode added (2026-08-01)
+📷 count a player's chips from a photo → fills `LedgerPlayer.chips`. Entry points: a **"Count chips"
+card on the Table tab** (`components/ChipCountCard.tsx`, BOTH game modes, no TV session needed;
+shows buy-in + balance per player) AND the per-player 📷 in the host RemoteControl. All committed +
+pushed to `main` + in the current APK. Spec/plan: `docs/superpowers/{specs,plans}/2026-07-31-chip-photo-count*`.
+
+**TWO ENGINES** — Settings → *Chip counting* toggle (`Settings.chipCountMode` `'device'|'ai'`, per-device, NOT synced):
+- **On-device (free, default):** OpenCV.js pipeline in `src/lib/chipVision/` (self-calibrating top-rim
+  ellipse → per-chip scale; Otsu-brightness segmentation; colour→denom match; anomaly guards; mandatory
+  editable review). **PROVEN UNRELIABLE in the user's real setup** (dark shiny leatherette + club/UV
+  lighting + short ~13-chip thin 3.3 mm stacks): surface reflections merge everything into one blob;
+  their photo gave random per-stack counts (7/37/25 for stacks of ~13). Works only on a plain LIGHT
+  matte surface, bright even light, separated stacks. Hard limit of classic CV, not a bug.
+- **AI (reliable, needs key):** `src/lib/chipVision/visionCount.ts` → Google Gemini `gemini-2.0-flash`
+  via a DIRECT browser call with the user's own key (`Settings.aiVisionKey`, on-device only, NOT synced).
+  Reads the photo in ANY light/surface/angle. Gemini allows browser CORS with a key (verified 400-on-bad-key);
+  OpenAI/Anthropic block browser CORS → would need a backend the app lacks. Free tier ≈ free for this usage.
+  Same freeze + editable review flow.
+
+**CURRENT STATUS / NEXT STEP:** user CHOSE AI mode; it's built + deployed but **NOT yet end-to-end tested
+by the user** (needs their free Gemini key from aistudio.google.com + a real capture). Next: user gets a
+key → Settings → Chip counting → **AI** → paste key → 📷 → report the numbers Gemini returns → tune the
+prompt in `visionCount.ts` if off. (On-device stays available for plain-light-surface use.)
+
+**OpenCV gotchas** (memory `opencv-integration-gotchas.md`): `window.cv` is a **Promise** — `await` it;
+load OpenCV as a plain `<script>` via `?url` (NOT bundled, else Emscripten never boots → the original
+"counting…" hang); v5 has **no `cv.findNonZero`** (build a `CV_32SC2` points Mat manually); workbox
+`globIgnores: ['**/opencv-*.js']` keeps the 13 MB chunk out of precache. APK camera needs the **`CAMERA`
+manifest permission** (now present) — Capacitor prompts at runtime. Debug method: prod `vite preview`
+(dist), inject the built `opencv-*.js`, `await window.cv`, replay `extract.ts` ops on a synthetic/real
+canvas (dev mode mangles OpenCV, unreliable). **PWA service worker caches hard** — after a deploy the
+Settings section may not appear until SW is cleared / app force-reopened / APK reinstalled.
 
 0. **3D chips: built then REVERTED (2026-07-24 session).** A react-three-fiber prototype (true-3D
    ceramic chip stacks on the Plan hero + a rotatable chip showcase in Settings) was built, shipped,
@@ -456,15 +478,13 @@ physical SLOWPLAY chips + a phone camera. On-device checklist:
    **Kept from that work:** the denom palette was matched to the real photos — `10` → `#31B6C9` (cyan),
    `100` → `#0C0C10` (black) in `store.tsx` `defaultDenoms()`. Existing users' saved colours are
    preserved by `migrate()` (only defaults change).
-1. **APK is BEHIND HEAD** (last built 2026-07-28, run 30365131798, from `383ffe0`). The 2026-07-31
-   work (TV sync/font fixes + the whole feature pack) is **committed nowhere yet** — must
-   `git commit` + `git push` (Pages auto-deploys) then rebuild the APK with `gh workflow run
-   "Build Android APK" -R ndre-droid/chipstack --ref main` (builds from remote `main`, so push
-   first). Stable signing key unchanged (verified each build: APK cert == assetlinks fingerprint
-   `E5:A4:…:2A`), installs OVER the existing APK, data preserved. **PENDING on-device:**
-   reinstall this APK (re-triggers App Links verification now that assetlinks is live), then scan the
-   TV QR → should open the app directly. The **web app is the primary path** (that's what the TV runs).
-   The APK workflow builds from **remote `main`**, so always `git push` before triggering.
+1. **APK + Pages are CURRENT** (2026-08-01, `main` @ `bf2f7eb`). Ship flow used all session:
+   commit on `feat/chip-photo-count` → `git push origin feat/chip-photo-count:main` (fast-forward,
+   triggers Pages deploy) → `gh workflow run "Build Android APK" -R ndre-droid/chipstack --ref main`
+   (builds from remote `main`, so push FIRST). Stable signing key unchanged (APK cert == assetlinks
+   fingerprint `E5:A4:…:2A`), installs OVER the existing APK, data preserved. Branch `feat/chip-photo-count`
+   still exists on origin (can delete; `main` has everything). **Still pending on-device:** App Links
+   verification (reinstall APK → scan TV QR → app opens). The **web app is the primary path**.
 2. **i18n is partial.** Nav/header/Settings/TV/Plan/Chips/Table/Cash MAIN labels are translated
    (`src/lib/i18n.ts`, `useT()`); **number formatting now fully language-driven** via `useFmt()`
    (2026-07-26). NOT translated: engine-generated sentences (distribution.ts / planning.ts
