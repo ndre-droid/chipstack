@@ -1,4 +1,4 @@
-import { tally, median, fuseStack, mergeAngles, flaggedStackIds, matchStacks } from './fuse.ts';
+import { tally, median, fuseStack, mergeAngles, flaggedStackIds, matchStacks, parseRead } from './fuse.ts';
 
 let failures = 0;
 function eq(label: string, got: unknown, want: unknown) {
@@ -42,6 +42,13 @@ const fresh = matchStacks(
   [{ value: 100, box: [0.1, 0.1, 0.2, 0.5] }, { value: 25, box: [0.12, 0.12, 0.22, 0.52] }],
 );
 eq('matchStacks by denom+position', fresh.get('s1'), [0.12, 0.12, 0.22, 0.52]);
+
+// parseRead: count + geometry ratio + extent + seams
+eq('parseRead full', parseRead({ count: 5, stackHeight: 0.4, chipDiameter: 0.2, extent: [0.1, 0.5], seams: [0.2, 0.3] }),
+  { count: 5, r: 2, extent: [0.1, 0.5], seams: [0.2, 0.3] });
+eq('parseRead no geometry', parseRead({ count: 3 }), { count: 3, r: null, extent: null, seams: null });
+eq('parseRead bad count', parseRead({ count: -1 }), null);
+eq('parseRead clamps insane ratio', parseRead({ count: 2, stackHeight: 5, chipDiameter: 0.01 }).r, null);
 
 console.log(failures ? `\n${failures} FAILED` : '\nALL PASS');
 if (failures) process.exit(1);

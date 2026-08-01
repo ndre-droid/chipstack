@@ -1,14 +1,12 @@
-import type { CountResult, DenomTotal } from './types.ts';
-import { tally, median, fuseStack, type SeamVote } from './fuse.ts';
+import type { CountResult, DenomTotal, StackResult } from './types.ts';
+import { tally, median, fuseStack, parseRead, type SeamVote, type StackRead } from './fuse.ts';
 
 interface VisionDenom { value: number; color: string }
 type StackBox = { value: number; box: [number, number, number, number] };
 type Prefer = 'flash' | 'pro';
-/** One flash/pro reading of a single stack: chip count + measured height:diameter ratio. */
-type StackRead = { count: number; r: number | null };
 
 // Tuning knobs for the vote-and-crop pipeline.
-const SAMPLES = 3;          // independent flash reads per stack (self-consistency vote)
+const SAMPLES = 2;          // independent flash reads per stack (self-consistency vote)
 const POOL = 6;             // max concurrent API calls (keep the free-tier key happy)
 const REQ_TIMEOUT = 18000;  // per-request abort (ms) so one slow call can't stall the batch
 const CROP_PAD = 0.12;      // fraction of the box to pad when cropping a stack
@@ -337,15 +335,6 @@ async function detectStacks(apiKey: string, b64: string, list: string): Promise<
     .filter((s): s is StackBox => !!s.box && Number.isFinite(s.value) && s.value > 0);
 }
 
-/** Parse one {count,stackHeight,chipDiameter} object into a StackRead (or null). */
-function parseRead(obj: any): StackRead | null {
-  const n = Math.round(Number(obj?.count));
-  if (!Number.isFinite(n) || n < 0) return null;
-  const h = Number(obj?.stackHeight), d = Number(obj?.chipDiameter);
-  const r = Number.isFinite(h) && Number.isFinite(d) && d > 0.01 && h > 0 ? h / d : NaN;
-  return { count: n, r: Number.isFinite(r) && r >= 0.03 && r <= 4 ? r : null };
-}
-
 /**
  * Read ALL stacks in ONE request (Gemini accepts many images per call). Each crop is a
  * single isolated stack; for each we get a seam count AND a measured height:diameter ratio.
@@ -361,10 +350,11 @@ async function readAllStacks(apiKey: string, cropsB64: string[], values: number[
     `1) COUNT the chips. Look at the VERTICAL SIDE: each chip is a thin ~3.3 mm disc; between two stacked ` +
     `chips there is a seam line. Number of chips = number of seams + 1. The flat top face is the TOP chip — ` +
     `count it once, never as an extra layer. Count the seams slowly, then recount to confirm.\n` +
-    `2) MEASURE two lengths as fractions (0..1) of THAT image: "stackHeight" (bottom edge of the lowest chip ` +
-    `to the top edge of the highest) and "chipDiameter" (width of a single chip).\n` +
+    `2) MEASURE, as fractions (0..1) of THAT image: "stackHeight" (bottom edge of the lowest chip ` +
+    `to the top edge of the highest), "chipDiameter" (width of a single chip), and "extent":[yTop,yBottom] ` +
+    `= the top and bottom y of the stack in the image. Optionally include "seams":[y,...] = the y of each seam.\n` +
     `Respond with ONLY a JSON array with EXACTLY ${n} entries, in image order: ` +
-    `[{"count":<int>,"stackHeight":<0..1>,"chipDiameter":<0..1>}, ...].`;
+    `[{"count":<int>,"stackHeight":<0..1>,"chipDiameter":<0..1>,"extent":[<0..1>,<0..1>],"seams":[<0..1>,...]}, ...].`;
   const parts: any[] = [{ text: prompt }];
   cropsB64.forEach((b64, k) => {
     parts.push({ text: `Image ${k + 1} (denomination ${values[k]}):` });
@@ -407,6 +397,19 @@ async function countWholeVoted(apiKey: string, b64: string, list: string, denoms
     .sort((a, b) => a.value - b.value);
 }
 
+/** Sum per-stack results into DenomTotal rows, keeping the worst confidence per denom so the row flags. */
+function sumStacksToDenoms(stacks: StackResult[]): DenomTotal[] {
+  const byValue = new Map<number, { count: number; confidence: number }>();
+  for (const s of stacks) {
+    const prev = byValue.get(s.value);
+    byValue.set(s.value, { count: (prev?.count ?? 0) + s.count, confidence: Math.min(prev?.confidence ?? 1, s.confidence) });
+  }
+  return [...byValue.entries()]
+    .map(([value, { count, confidence }]) => ({ value, count, confidence }))
+    .filter((t) => t.count > 0)
+    .sort((a, b) => a.value - b.value);
+}
+
 /**
  * Count chips from a photo using Google's Gemini vision model, DIRECT from the browser
  * with the user's own key (no backend). Pipeline:
@@ -433,6 +436,7 @@ export async function countChipsWithVision(
   const valid = boxes.filter((b) => denoms.some((d) => d.value === b.value));
 
   let totals: DenomTotal[];
+  let stacks: StackResult[] = [];
   if (!valid.length) {
     // Detection failed — degrade gracefully to a voted whole-image count.
     totals = await countWholeVoted(apiKey, fullB64, list, denoms);
@@ -463,8 +467,15 @@ export async function countChipsWithVision(
     );
     const votes: number[][] = valid.map(() => []);
     const ratios: number[][] = valid.map(() => []);
+    const extents: [number, number][][] = valid.map(() => []);
     for (const reads of samples) {
-      reads.forEach((res, i) => { if (res) { votes[i].push(res.count); if (res.r != null) ratios[i].push(res.r); } });
+      reads.forEach((res, i) => {
+        if (res) {
+          votes[i].push(res.count);
+          if (res.r != null) ratios[i].push(res.r);
+          if (res.extent) extents[i].push(res.extent);
+        }
+      });
     }
 
     // Seam vote + robust ratio per stack.
@@ -479,26 +490,24 @@ export async function countChipsWithVision(
     });
     const kStar = Math.max(K_MIN, Math.min(K_MAX, median(ks) ?? NOMINAL_K));
 
-    // Fuse the two channels per stack.
-    const perStack = valid.map((b, i) => {
+    // Fuse the two channels per stack, plus the measured extent for the editor's end-caps.
+    stacks = valid.map((b, i) => {
       const geo = rMed[i] != null ? Math.max(1, Math.round(rMed[i]! / kStar)) : null;
       const { count, confidence } = fuseStack({ seam: seam[i], geo, dsp: dsp[i] });
-      return { value: b.value, count, confidence };
+      const exT = median(extents[i].map((e) => e[0])), exB = median(extents[i].map((e) => e[1]));
+      const span: [number, number] = exT != null && exB != null && exB > exT ? [exT, exB] : [0.06, 0.94];
+      return {
+        id: `${b.value}-${i}`, value: b.value, count, confidence,
+        crop: cropCanvases[i], span, flagged: confidence < 0.85,
+        box: b.box, votes: votes[i], ratios: ratios[i],
+      };
     });
 
     // Sum stacks that share a denomination; keep the worst confidence so the row flags.
-    const byValue = new Map<number, { count: number; confidence: number }>();
-    for (const s of perStack) {
-      const prev = byValue.get(s.value);
-      byValue.set(s.value, { count: (prev?.count ?? 0) + s.count, confidence: Math.min(prev?.confidence ?? 1, s.confidence) });
-    }
-    totals = [...byValue.entries()]
-      .map(([value, { count, confidence }]) => ({ value, count, confidence }))
-      .filter((t) => t.count > 0)
-      .sort((a, b) => a.value - b.value);
+    totals = sumStacksToDenoms(stacks);
   }
 
   const totalValue = totals.reduce((s, t) => s + t.value * t.count, 0);
   const overall = totals.length ? Math.min(...totals.map((t) => t.confidence)) : 0;
-  return { totals, totalValue, anomalies: [], frames: 1, confidence: overall };
+  return { totals, totalValue, anomalies: [], frames: 1, confidence: overall, stacks };
 }

@@ -94,3 +94,25 @@ export function matchStacks(
   }
   return out;
 }
+
+export interface StackRead {
+  count: number;
+  r: number | null;                    // height:diameter ratio, or null
+  extent: [number, number] | null;     // [yTop, yBottom] 0..1 in the crop, or null
+  seams: number[] | null;              // optional model seam positions 0..1, or null
+}
+
+/** Parse one model stack object into a StackRead (or null when unusable). */
+export function parseRead(obj: any): StackRead | null {
+  const n = Math.round(Number(obj?.count));
+  if (!Number.isFinite(n) || n < 0) return null;
+  const h = Number(obj?.stackHeight), d = Number(obj?.chipDiameter);
+  const rr = Number.isFinite(h) && Number.isFinite(d) && d > 0.01 && h > 0 ? h / d : NaN;
+  const r = Number.isFinite(rr) && rr >= 0.03 && rr <= 4 ? rr : null;
+  const ex = Array.isArray(obj?.extent) && obj.extent.length >= 2
+    ? [Number(obj.extent[0]), Number(obj.extent[1])] : null;
+  const extent = ex && ex.every(Number.isFinite) && ex[1] > ex[0] ? [ex[0], ex[1]] as [number, number] : null;
+  const seams = Array.isArray(obj?.seams)
+    ? obj.seams.map(Number).filter((v: number) => Number.isFinite(v) && v >= 0 && v <= 1) : null;
+  return { count: n, r, extent, seams: seams && seams.length ? seams : null };
+}
