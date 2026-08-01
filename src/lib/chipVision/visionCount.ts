@@ -7,9 +7,9 @@ type Prefer = 'flash' | 'pro';
 type StackRead = { count: number; r: number | null };
 
 // Tuning knobs for the vote-and-crop pipeline.
-const SAMPLES = 4;          // independent flash reads per stack (self-consistency vote)
+const SAMPLES = 3;          // independent flash reads per stack (self-consistency vote)
 const POOL = 6;             // max concurrent API calls (keep the free-tier key happy)
-const TIEBREAK_CONF = 0.8;  // fallback path (no geometry): below this, ask `pro` to decide
+const REQ_TIMEOUT = 18000;  // per-request abort (ms) so one slow call can't stall the batch
 const CROP_PAD = 0.12;      // fraction of the box to pad when cropping a stack
 const NOMINAL_K = 0.085;    // chip thickness / diameter (3.3 mm / 39 mm) — geometry prior
 const K_MIN = 0.05, K_MAX = 0.13; // plausible band for the calibrated ratio
@@ -292,14 +292,19 @@ async function generate(apiKey: string, body: string, prefer: Prefer): Promise<R
   let model = await resolveModel(apiKey, prefer);
   for (let attempt = 0; attempt < 2; attempt++) {
     let res: Response;
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), REQ_TIMEOUT);
     try {
       res = await fetch(`${MODELS_URL}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
+        signal: ctrl.signal,
       });
     } catch {
       throw new Error('Could not reach the AI. Check your internet connection.');
+    } finally {
+      clearTimeout(to);
     }
     if (res.ok) return res;
 
@@ -473,14 +478,10 @@ export async function countChipsWithVision(
 
       if (!nSeam && nGeo == null) return { value: b.value, count: 0, confidence: 0 };
 
-      // No usable geometry — old vote path with a pro tiebreak on low agreement.
+      // No usable geometry — seam vote only (DSP may still confirm below).
       if (nGeo == null) {
-        let count = nSeam, agreement = a;
-        if (agreement < TIEBREAK_CONF) {
-          const pro = await readStack(apiKey, crops[i], b.value, 0, 'pro').catch(() => null);
-          if (pro) { count = pro.count; agreement = pro.count === nSeam ? 0.9 : 0.55; }
-        }
-        return { value: b.value, count, confidence: agreement };
+        if (dsp[i] && dsp[i]!.strength >= 0.45 && dsp[i]!.count === nSeam) return { value: b.value, count: nSeam, confidence: Math.max(a, 0.9) };
+        return { value: b.value, count: nSeam, confidence: a };
       }
       if (!nSeam) return { value: b.value, count: nGeo, confidence: 0.55 }; // geometry only
 
@@ -505,18 +506,11 @@ export async function countChipsWithVision(
         return { value: b.value, count: nSeam, confidence: 0.6 };
       }
 
-      // Real disagreement → if DSP backs a channel, take it and SKIP the pro call (faster).
+      // Real disagreement → the independent DSP channel breaks it if it has a strong read.
       if (dspBacks(nSeam)) return { value: b.value, count: nSeam, confidence: 0.75 };
       if (dspBacks(nGeo)) return { value: b.value, count: nGeo, confidence: 0.75 };
 
-      // DSP abstained → let pro decide; whichever channel it backs wins.
-      const pro = await readStack(apiKey, crops[i], b.value, 0, 'pro').catch(() => null);
-      if (pro) {
-        const nPro = pro.count;
-        if (nPro === nSeam || nPro === nGeo) return { value: b.value, count: nPro, confidence: 0.75 };
-        return { value: b.value, count: nPro, confidence: 0.5 };
-      }
-      // No pro available — prefer the confident channel.
+      // DSP abstained → prefer the confident channel, and flag the row for a glance.
       return { value: b.value, count: a >= 0.8 ? nSeam : nGeo, confidence: 0.5 };
     }));
 
