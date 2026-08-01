@@ -63,7 +63,7 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
       const denoms = state.denominations.filter((d) => d.enabled).map((d) => ({ value: d.value, color: d.color }));
       const res = await withTimeout(
         countChipsWithVision(frames[0], denoms, state.settings.aiVisionKey),
-        30000,
+        60000,
         t('chipcount.timedOut'),
       );
       if (res.totals.length === 0) {
