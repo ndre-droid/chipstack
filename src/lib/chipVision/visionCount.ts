@@ -1,5 +1,5 @@
 import type { CountResult, DenomTotal, StackResult } from './types.ts';
-import { tally, median, fuseStack, parseRead, type SeamVote, type StackRead } from './fuse.ts';
+import { tally, median, fuseStack, parseRead, mergeAngles, matchStacks, flaggedStackIds, type SeamVote, type StackRead } from './fuse.ts';
 
 interface VisionDenom { value: number; color: string }
 type StackBox = { value: number; box: [number, number, number, number] };
@@ -510,4 +510,80 @@ export async function countChipsWithVision(
   const totalValue = totals.reduce((s, t) => s + t.value * t.count, 0);
   const overall = totals.length ? Math.min(...totals.map((t) => t.confidence)) : 0;
   return { totals, totalValue, anomalies: [], frames: 1, confidence: overall, stacks };
+}
+
+/**
+ * Second-angle recount. Detect stacks in the new (steeper-angle) frame, match the
+ * flagged prior stacks to same-denomination boxes, re-read just those, pool the new
+ * votes/ratios with the prior via mergeAngles, recompute the calibration k across
+ * ALL stacks, and re-fuse the flagged ones. Confident stacks are returned unchanged.
+ * ~1 detection + SAMPLES reads on the flagged subset only.
+ */
+export async function recountStacks(
+  canvas: HTMLCanvasElement,
+  denoms: VisionDenom[],
+  apiKey: string,
+  prior: CountResult,
+): Promise<CountResult> {
+  const flaggedIds = new Set(flaggedStackIds(prior.stacks));
+  const flagged = prior.stacks.filter((s) => flaggedIds.has(s.id));
+  if (!flagged.length) return prior;
+
+  const list = denoms.map((d) => `${d.value} = ${colorName(d.color)} (${d.color})`).join('; ');
+  const fullB64 = toJpegBase64(canvas, 1024);
+  const fresh = await detectStacks(apiKey, fullB64, list).catch(() => [] as StackBox[]);
+  const match = matchStacks(
+    flagged.map((s) => ({ id: s.id, value: s.value, box: s.box })),
+    fresh.map((f) => ({ value: f.value, box: f.box })),
+  );
+
+  // Crop + clean each matched flagged stack from the new frame.
+  const colorByValue = new Map(denoms.map((d) => [d.value, d.color]));
+  const targets = flagged.filter((s) => match.has(s.id));
+  if (!targets.length) return prior; // second angle found nothing to improve
+  const cropCanvases = targets.map((s) => {
+    const base = resized(cropCanvas(canvas, match.get(s.id)!, CROP_PAD), 1024);
+    const hex = colorByValue.get(s.value);
+    const tight = hex ? tightenByColor(base, hex) : base;
+    return autoLevels(tight);
+  });
+  const crops = cropCanvases.map((cc) => toJpegBase64(cc, 768));
+  const dsp2 = cropCanvases.map((cc) => dspCount(cc));
+  const values = targets.map((s) => s.value);
+  const samples = await mapPool(Array.from({ length: SAMPLES }, (_, i) => i), POOL, () =>
+    readAllStacks(apiKey, crops, values, 0.5).catch(() => targets.map(() => null)),
+  );
+
+  // Pool angle-2 votes/ratios with the prior per target, recompute k, re-fuse.
+  const a2votes: number[][] = targets.map(() => []);
+  const a2ratios: number[][] = targets.map(() => []);
+  for (const reads of samples) reads.forEach((res, i) => { if (res) { a2votes[i].push(res.count); if (res.r != null) a2ratios[i].push(res.r); } });
+
+  const merged = targets.map((s, i) => mergeAngles({ votes: s.votes, ratios: s.ratios }, { votes: a2votes[i], ratios: a2ratios[i] }));
+  const mergedSeam = merged.map((m) => tally(m.votes));
+  const mergedR = merged.map((m) => median(m.ratios));
+
+  // Recalibrate k across ALL stacks: confident prior stacks + newly-unanimous flagged.
+  const ks: number[] = [];
+  for (const s of prior.stacks) {
+    if (!flaggedIds.has(s.id)) {
+      const r = median(s.ratios), v = tally(s.votes);
+      if (v.agreement >= 0.999 && v.count >= 2 && r != null) ks.push(r / v.count);
+    }
+  }
+  targets.forEach((_, i) => { if (mergedSeam[i].agreement >= 0.999 && mergedSeam[i].count >= 2 && mergedR[i] != null) ks.push(mergedR[i]! / mergedSeam[i].count); });
+  const kStar = Math.max(K_MIN, Math.min(K_MAX, median(ks) ?? NOMINAL_K));
+
+  const updated = new Map<string, StackResult>();
+  targets.forEach((s, i) => {
+    const geo = mergedR[i] != null ? Math.max(1, Math.round(mergedR[i]! / kStar)) : null;
+    const { count, confidence } = fuseStack({ seam: mergedSeam[i], geo, dsp: dsp2[i] ?? null });
+    updated.set(s.id, { ...s, count, confidence, flagged: confidence < 0.85, votes: merged[i].votes, ratios: merged[i].ratios });
+  });
+
+  const stacks = prior.stacks.map((s) => updated.get(s.id) ?? s);
+  const totals = sumStacksToDenoms(stacks);
+  const totalValue = totals.reduce((sum, t) => sum + t.value * t.count, 0);
+  const confidence = totals.length ? Math.min(...totals.map((t) => t.confidence)) : 0;
+  return { totals, stacks, totalValue, anomalies: [], frames: (prior.frames ?? 1) + 1, confidence };
 }
