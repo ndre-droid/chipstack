@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useStore } from '../store.tsx';
 import { useT, useFmt } from '../lib/i18n.ts';
 import { ChipSeamEditor } from './ChipSeamEditor.tsx';
@@ -20,7 +20,6 @@ export function ChipCountReview({ playerId, shot, result, denoms, onRetake, onCl
   const t = useT();
   const { num } = useFmt();
   const { dispatch } = useStore();
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Fallback-path rows (whole-image path, no per-stack detections): mutated directly by the +/- stepper.
   const [rows, setRows] = useState<Row[]>(
@@ -31,9 +30,11 @@ export function ChipCountReview({ playerId, shot, result, denoms, onRetake, onCl
   const [stacks, setStacks] = useState<StackResult[]>(() => result.stacks);
   const [editing, setEditing] = useState<StackResult | null>(null);
 
-  // Paint the captured frame for context.
-  useEffect(() => {
-    const c = canvasRef.current; if (!c) return;
+  // Paint the captured frame for context. Callback ref (not useEffect keyed on `shot`) so the
+  // canvas repaints immediately whenever it (re)mounts — e.g. returning from the seam editor,
+  // which remounts this subtree without `shot` itself changing.
+  const paintShot = useCallback((c: HTMLCanvasElement | null) => {
+    if (!c) return;
     c.width = shot.width; c.height = shot.height;
     c.getContext('2d')!.drawImage(shot, 0, 0);
   }, [shot]);
@@ -102,7 +103,7 @@ export function ChipCountReview({ playerId, shot, result, denoms, onRetake, onCl
   return (
     <div className="cc-sheet">
       <div className="cc-review">
-        <canvas ref={canvasRef} className="cc-canvas" />
+        <canvas ref={paintShot} className="cc-canvas" />
 
         {result.anomalies.length > 0 && (
           <div className="cc-anoms">
