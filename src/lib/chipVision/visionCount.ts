@@ -355,29 +355,48 @@ async function detectStacks(apiKey: string, b64: string, list: string): Promise<
     .filter((s): s is StackBox => !!s.box && Number.isFinite(s.value) && s.value > 0);
 }
 
-/**
- * Read ONE isolated stack (a per-stack crop): count the chips by seams AND measure the
- * stack height + chip diameter (two independent channels in one call). Returns the count
- * and the height:diameter ratio r (or null if the measurement was unusable).
- */
-async function readStack(apiKey: string, b64: string, denomValue: number, temperature: number, prefer: Prefer): Promise<StackRead | null> {
-  const prompt =
-    `This close-up shows ONE stack of poker chips, all the same colour (denomination ${denomValue}).\n` +
-    `Do BOTH tasks:\n` +
-    `1) COUNT the chips. Look at the VERTICAL SIDE: each chip is a thin ~3.3 mm disc; between two stacked ` +
-    `chips there is a seam line. Number of chips = number of seams + 1. The flat top face is the TOP chip — ` +
-    `count it once, never as an extra layer. Count the seams slowly bottom to top, then recount to confirm.\n` +
-    `2) MEASURE two lengths, each as a fraction (0..1) of the image: "stackHeight" = the stack's total height ` +
-    `along its axis (bottom edge of the lowest chip to the top edge of the highest), and "chipDiameter" = the ` +
-    `width (diameter) of a single chip.\n` +
-    `Respond with ONLY JSON: {"count":<integer>,"stackHeight":<0..1>,"chipDiameter":<0..1>}.`;
-  const p = await askJson(apiKey, prompt, b64, temperature, prefer);
-  const obj = Array.isArray(p) ? p?.[0] : p;
+/** Parse one {count,stackHeight,chipDiameter} object into a StackRead (or null). */
+function parseRead(obj: any): StackRead | null {
   const n = Math.round(Number(obj?.count));
   if (!Number.isFinite(n) || n < 0) return null;
   const h = Number(obj?.stackHeight), d = Number(obj?.chipDiameter);
   const r = Number.isFinite(h) && Number.isFinite(d) && d > 0.01 && h > 0 ? h / d : NaN;
   return { count: n, r: Number.isFinite(r) && r >= 0.03 && r <= 4 ? r : null };
+}
+
+/**
+ * Read ALL stacks in ONE request (Gemini accepts many images per call). Each crop is a
+ * single isolated stack; for each we get a seam count AND a measured height:diameter ratio.
+ * Batching keeps the whole photo to ~1 detection + SAMPLES reads instead of one call per
+ * stack per sample — the big cost + latency saver. Returns one StackRead|null per crop,
+ * in the SAME order as `cropsB64`.
+ */
+async function readAllStacks(apiKey: string, cropsB64: string[], values: number[], temperature: number): Promise<(StackRead | null)[]> {
+  const n = cropsB64.length;
+  const prompt =
+    `You are given ${n} separate close-up images, labelled Image 1..${n}. Each image shows ONE stack of ` +
+    `poker chips of a single colour. For EACH image do BOTH tasks:\n` +
+    `1) COUNT the chips. Look at the VERTICAL SIDE: each chip is a thin ~3.3 mm disc; between two stacked ` +
+    `chips there is a seam line. Number of chips = number of seams + 1. The flat top face is the TOP chip — ` +
+    `count it once, never as an extra layer. Count the seams slowly, then recount to confirm.\n` +
+    `2) MEASURE two lengths as fractions (0..1) of THAT image: "stackHeight" (bottom edge of the lowest chip ` +
+    `to the top edge of the highest) and "chipDiameter" (width of a single chip).\n` +
+    `Respond with ONLY a JSON array with EXACTLY ${n} entries, in image order: ` +
+    `[{"count":<int>,"stackHeight":<0..1>,"chipDiameter":<0..1>}, ...].`;
+  const parts: any[] = [{ text: prompt }];
+  cropsB64.forEach((b64, k) => {
+    parts.push({ text: `Image ${k + 1} (denomination ${values[k]}):` });
+    parts.push({ inline_data: { mime_type: 'image/jpeg', data: b64 } });
+  });
+  const body = JSON.stringify({ contents: [{ parts }], generationConfig: { temperature, responseMimeType: 'application/json' } });
+  const res = await generate(apiKey, body, 'flash');
+  const j = await res.json();
+  const text = j?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) return values.map(() => null);
+  let arr: any;
+  try { arr = JSON.parse(text); } catch { return values.map(() => null); }
+  const list: any[] = Array.isArray(arr) ? arr : arr?.stacks ?? [];
+  return values.map((_, k) => parseRead(list[k]));
 }
 
 /** Fallback PASS — no boxes found: vote a whole-image count per denomination. */
@@ -410,8 +429,9 @@ async function countWholeVoted(apiKey: string, b64: string, list: string, denoms
  * Count chips from a photo using Google's Gemini vision model, DIRECT from the browser
  * with the user's own key (no backend). Pipeline:
  *   1. detect + box each stack;
- *   2. crop each stack and read it SAMPLES times — every read returns a seam count AND a
- *      measured height:diameter ratio (two independent physical channels, one call each);
+ *   2. crop each stack, then read ALL crops together in one batched call, repeated SAMPLES
+ *      times to vote — every read returns a seam count AND a measured height:diameter ratio
+ *      (two independent physical channels). Batching = ~1 detection + SAMPLES calls per photo;
  *   3. calibrate the chip thickness ratio k from the stacks the seam-vote is unanimous on
  *      (all chips are the same SLOWPLAY chip, so one confident stack rulers the rest);
  *   4. fuse per stack: geometry count = round(ratio / k). If the seam vote and geometry
@@ -425,7 +445,7 @@ export async function countChipsWithVision(
   apiKey: string,
 ): Promise<CountResult> {
   const list = denoms.map((d) => `${d.value} = ${colorName(d.color)} (${d.color})`).join('; ');
-  const fullB64 = toJpegBase64(canvas, 1536);
+  const fullB64 = toJpegBase64(canvas, 1024); // detection only needs rough boxes — keep it cheap
 
   const boxes = await detectStacks(apiKey, fullB64, list).catch(() => [] as StackBox[]);
   const valid = boxes.filter((b) => denoms.some((d) => d.value === b.value));
@@ -445,19 +465,25 @@ export async function countChipsWithVision(
       const tight = hex ? tightenByColor(base, hex) : base;
       return autoLevels(tight);
     });
-    const crops = cropCanvases.map((cc) => toJpegBase64(cc, 1024));
+    // Send crops at 768px = a single Gemini image tile (half the tokens of 1024); the stack
+    // fills the frame so seams stay resolvable. DSP still uses the fuller local 1024 copy.
+    const crops = cropCanvases.map((cc) => toJpegBase64(cc, 768));
     // On-device DSP read per stack — synchronous, ~ms, runs before any network wait.
     const dsp = cropCanvases.map((cc) => dspCount(cc));
 
-    // Fire SAMPLES reads per stack, pooled for the free-tier rate limit. Each read gives a
-    // seam count and a height:diameter ratio.
-    const tasks = valid.flatMap((_, i) => Array.from({ length: SAMPLES }, () => i));
+    // Vote by repeating ONE batched multi-image read SAMPLES times (all stacks per call).
+    // This is ~1 detection + SAMPLES reads total, instead of SAMPLES per stack — far cheaper
+    // and far fewer requests (fewer rate-limit 429s / timeouts). Each read gives a seam count
+    // and a height:diameter ratio per stack.
+    const values = valid.map((v) => v.value);
+    const samples = await mapPool(Array.from({ length: SAMPLES }, (_, i) => i), POOL, () =>
+      readAllStacks(apiKey, crops, values, 0.5).catch(() => valid.map(() => null)),
+    );
     const votes: number[][] = valid.map(() => []);
     const ratios: number[][] = valid.map(() => []);
-    await mapPool(tasks, POOL, async (i) => {
-      const res = await readStack(apiKey, crops[i], valid[i].value, 0.5, 'flash').catch(() => null);
-      if (res) { votes[i].push(res.count); if (res.r != null) ratios[i].push(res.r); }
-    });
+    for (const reads of samples) {
+      reads.forEach((res, i) => { if (res) { votes[i].push(res.count); if (res.r != null) ratios[i].push(res.r); } });
+    }
 
     // Seam vote + robust ratio per stack.
     const seam = valid.map((_, i) => (votes[i].length ? tally(votes[i]) : { count: 0, agreement: 0 }));
