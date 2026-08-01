@@ -31,7 +31,9 @@ function toJpegBase64(canvas: HTMLCanvasElement, maxDim: number): string {
   return c.toDataURL('image/jpeg', 0.85).split(',')[1];
 }
 
-const MODEL = 'gemini-2.0-flash';
+// Gemini vision model. gemini-2.0-flash was retired (Aug 2026) → 2.5-flash: GA, vision,
+// fast, generous free tier. If Google retires this one too, bump the id here.
+const MODEL = 'gemini-2.5-flash';
 
 /**
  * Count chips by sending the photo to Google's Gemini vision model. Runs directly
