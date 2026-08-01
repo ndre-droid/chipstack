@@ -31,9 +31,89 @@ function toJpegBase64(canvas: HTMLCanvasElement, maxDim: number): string {
   return c.toDataURL('image/jpeg', 0.85).split(',')[1];
 }
 
-// Gemini vision model. gemini-2.0-flash was retired (Aug 2026) → 2.5-flash: GA, vision,
-// fast, generous free tier. If Google retires this one too, bump the id here.
-const MODEL = 'gemini-2.5-flash';
+// Google keeps retiring model ids and gating them "to new users only", so we don't
+// hardcode one. Instead we ASK the user's key which models it can use (ListModels)
+// and pick the best current vision model. FALLBACK is only used if that list fails.
+const FALLBACK_MODEL = 'gemini-flash-latest';
+const MODELS_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+let cachedModel: string | null = null;
+
+/** Rank a model name: newer version > flash > pro; avoid lite/preview/thinking. */
+function scoreModel(name: string): number {
+  let s = 0;
+  const v = name.match(/gemini-(\d+(?:\.\d+)?)/i);
+  if (v) s += parseFloat(v[1]) * 100; // higher version wins
+  if (/flash/i.test(name)) s += 40;   // flash: fast + cheap + multimodal
+  else if (/pro/i.test(name)) s += 20;
+  if (/latest/i.test(name)) s += 5;
+  if (/-lite/i.test(name)) s -= 15;
+  if (/preview|exp\b|experimental/i.test(name)) s -= 20;
+  if (/thinking/i.test(name)) s -= 10; // slower/costlier, not needed for counting
+  return s;
+}
+
+/** Discover a usable vision model for this key (cached). Falls back if the list call fails. */
+async function resolveModel(apiKey: string, force = false): Promise<string> {
+  if (cachedModel && !force) return cachedModel;
+  try {
+    const r = await fetch(`${MODELS_URL}?key=${encodeURIComponent(apiKey)}`);
+    if (r.ok) {
+      const j = await r.json();
+      const models: any[] = j?.models ?? [];
+      const usable = models
+        .filter((m) =>
+          (m?.supportedGenerationMethods ?? []).includes('generateContent') &&
+          /gemini/i.test(m?.name ?? '') &&
+          !/(embedding|aqa|imagen|tts|audio|image-generation)/i.test(m?.name ?? ''),
+        )
+        .map((m) => String(m.name).replace(/^models\//, ''))
+        .sort((a, b) => scoreModel(b) - scoreModel(a));
+      if (usable.length) {
+        cachedModel = usable[0];
+        return cachedModel;
+      }
+    }
+  } catch { /* fall through to fallback */ }
+  return FALLBACK_MODEL;
+}
+
+/**
+ * POST to generateContent with the discovered model. If the model was retired or
+ * gated ("no longer available to new users"), rediscover from the live list and
+ * retry once with a different model. Returns the OK response or throws a clean error.
+ */
+async function generate(apiKey: string, body: string): Promise<Response> {
+  let model = await resolveModel(apiKey);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(`${MODELS_URL}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+    } catch {
+      throw new Error('Could not reach the AI. Check your internet connection.');
+    }
+    if (res.ok) return res;
+
+    let e: any = null;
+    try { e = await res.json(); } catch { /* no JSON body */ }
+    let msg = e?.error?.message || `AI error ${res.status}`;
+    const modelGone = res.status === 404 ||
+      /no longer available|not available|is not found|not found|not supported|unknown name|call listmodels/i.test(msg);
+
+    if (attempt === 0 && modelGone) {
+      const fresh = await resolveModel(apiKey, true); // force a fresh ListModels
+      if (fresh !== model) { model = fresh; continue; }
+    }
+    if ((res.status === 400 || res.status === 403) && !modelGone) msg = 'The AI key was rejected — check it in Settings.';
+    if (res.status === 429) msg = 'AI rate limit reached — wait a moment and retry.';
+    throw new Error(msg);
+  }
+  throw new Error('No usable AI model for this key — update the app, or check Google AI Studio.');
+}
 
 /**
  * Count chips by sending the photo to Google's Gemini vision model. Runs directly
@@ -53,28 +133,12 @@ export async function countChipsWithVision(
     `If several stacks share a colour, sum them. Ignore anything that is not a poker chip. ` +
     `Respond with ONLY JSON of this shape: {"stacks":[{"value":<denomination>,"count":<chips>}]}. No commentary.`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }],
-        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
-      }),
-    });
-  } catch {
-    throw new Error('Could not reach the AI. Check your internet connection.');
-  }
-  if (!res.ok) {
-    let msg = `AI error ${res.status}`;
-    try { const e = await res.json(); msg = e?.error?.message || msg; } catch { /* keep default */ }
-    if (res.status === 400 || res.status === 403) msg = 'The AI key was rejected — check it in Settings.';
-    if (res.status === 429) msg = 'AI rate limit reached — wait a moment and retry.';
-    throw new Error(msg);
-  }
+  const body = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }],
+    generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+  });
 
+  const res = await generate(apiKey, body);
   const j = await res.json();
   const text = j?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error('The AI returned no result — retake.');
