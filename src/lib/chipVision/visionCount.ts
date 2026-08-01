@@ -3,12 +3,16 @@ import type { CountResult, DenomTotal } from './types.ts';
 interface VisionDenom { value: number; color: string }
 type StackBox = { value: number; box: [number, number, number, number] };
 type Prefer = 'flash' | 'pro';
+/** One flash/pro reading of a single stack: chip count + measured height:diameter ratio. */
+type StackRead = { count: number; r: number | null };
 
 // Tuning knobs for the vote-and-crop pipeline.
-const SAMPLES = 6;          // independent flash counts per stack (self-consistency vote)
-const POOL = 4;             // max concurrent API calls (keep the free-tier key happy)
-const TIEBREAK_CONF = 0.8;  // below this agreement, ask the stronger `pro` model to decide
+const SAMPLES = 4;          // independent flash reads per stack (self-consistency vote)
+const POOL = 6;             // max concurrent API calls (keep the free-tier key happy)
+const TIEBREAK_CONF = 0.8;  // fallback path (no geometry): below this, ask `pro` to decide
 const CROP_PAD = 0.12;      // fraction of the box to pad when cropping a stack
+const NOMINAL_K = 0.085;    // chip thickness / diameter (3.3 mm / 39 mm) — geometry prior
+const K_MIN = 0.05, K_MAX = 0.13; // plausible band for the calibrated ratio
 
 /** Rough colour name from a hex, to help the model match stacks to denominations. */
 function colorName(hex: string): string {
@@ -76,6 +80,14 @@ function tally(counts: number[]): { count: number; agreement: number } {
     if (n > bestN || (n === bestN && c < best)) { best = c; bestN = n; }
   }
   return { count: best, agreement: bestN / counts.length };
+}
+
+/** Median of a numeric list, or null if empty. */
+function median(xs: number[]): number | null {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
 /** Run an async fn over items with bounded concurrency, preserving order. */
@@ -198,19 +210,29 @@ async function detectStacks(apiKey: string, b64: string, list: string): Promise<
     .filter((s): s is StackBox => !!s.box && Number.isFinite(s.value) && s.value > 0);
 }
 
-/** Count ONE isolated stack (a per-stack crop). Returns chip count or null. */
-async function countOneStack(apiKey: string, b64: string, denomValue: number, temperature: number, prefer: Prefer): Promise<number | null> {
+/**
+ * Read ONE isolated stack (a per-stack crop): count the chips by seams AND measure the
+ * stack height + chip diameter (two independent channels in one call). Returns the count
+ * and the height:diameter ratio r (or null if the measurement was unusable).
+ */
+async function readStack(apiKey: string, b64: string, denomValue: number, temperature: number, prefer: Prefer): Promise<StackRead | null> {
   const prompt =
-    `This close-up shows ONE stack of poker chips, all the same colour (denomination ${denomValue}). ` +
-    `Count how many individual chips are in the stack.\n` +
-    `- Look at the VERTICAL SIDE. Each chip is a thin ~3.3 mm disc; between two stacked chips there is a ` +
-    `visible seam line. Number of chips = number of seams + 1.\n` +
-    `- The flat top face is the TOP chip — count it once, never as an extra layer.\n` +
-    `- Count the seams slowly from bottom to top, then recount to confirm.\n` +
-    `Respond with ONLY JSON: {"count":<integer>}.`;
+    `This close-up shows ONE stack of poker chips, all the same colour (denomination ${denomValue}).\n` +
+    `Do BOTH tasks:\n` +
+    `1) COUNT the chips. Look at the VERTICAL SIDE: each chip is a thin ~3.3 mm disc; between two stacked ` +
+    `chips there is a seam line. Number of chips = number of seams + 1. The flat top face is the TOP chip — ` +
+    `count it once, never as an extra layer. Count the seams slowly bottom to top, then recount to confirm.\n` +
+    `2) MEASURE two lengths, each as a fraction (0..1) of the image: "stackHeight" = the stack's total height ` +
+    `along its axis (bottom edge of the lowest chip to the top edge of the highest), and "chipDiameter" = the ` +
+    `width (diameter) of a single chip.\n` +
+    `Respond with ONLY JSON: {"count":<integer>,"stackHeight":<0..1>,"chipDiameter":<0..1>}.`;
   const p = await askJson(apiKey, prompt, b64, temperature, prefer);
-  const n = Math.round(Number(Array.isArray(p) ? p?.[0]?.count : p?.count));
-  return Number.isFinite(n) && n >= 0 ? n : null;
+  const obj = Array.isArray(p) ? p?.[0] : p;
+  const n = Math.round(Number(obj?.count));
+  if (!Number.isFinite(n) || n < 0) return null;
+  const h = Number(obj?.stackHeight), d = Number(obj?.chipDiameter);
+  const r = Number.isFinite(h) && Number.isFinite(d) && d > 0.01 && h > 0 ? h / d : NaN;
+  return { count: n, r: Number.isFinite(r) && r >= 0.03 && r <= 4 ? r : null };
 }
 
 /** Fallback PASS — no boxes found: vote a whole-image count per denomination. */
@@ -241,10 +263,16 @@ async function countWholeVoted(apiKey: string, b64: string, list: string, denoms
 
 /**
  * Count chips from a photo using Google's Gemini vision model, DIRECT from the browser
- * with the user's own key (no backend). Pipeline: (1) detect + box each stack; (2) crop
- * each stack and count it 5× independently, majority-vote the count; (3) when a stack's
- * votes disagree, let the stronger `pro` model break the tie. Confidence is the real
- * vote agreement, not the model's self-report.
+ * with the user's own key (no backend). Pipeline:
+ *   1. detect + box each stack;
+ *   2. crop each stack and read it SAMPLES times — every read returns a seam count AND a
+ *      measured height:diameter ratio (two independent physical channels, one call each);
+ *   3. calibrate the chip thickness ratio k from the stacks the seam-vote is unanimous on
+ *      (all chips are the same SLOWPLAY chip, so one confident stack rulers the rest);
+ *   4. fuse per stack: geometry count = round(ratio / k). If the seam vote and geometry
+ *      agree, lock it (high confidence). If they disagree, that is the real uncertainty —
+ *      let the pro model break it, and flag the row.
+ * Confidence is cross-channel agreement, not the model's self-report.
  */
 export async function countChipsWithVision(
   canvas: HTMLCanvasElement,
@@ -265,28 +293,61 @@ export async function countChipsWithVision(
     // Crop each detected stack so it fills the frame (thin seams get real pixels).
     const crops = valid.map((b) => toJpegBase64(cropCanvas(canvas, b.box, CROP_PAD), 1024));
 
-    // Fire SAMPLES flash counts per stack, pooled for the free-tier rate limit.
+    // Fire SAMPLES reads per stack, pooled for the free-tier rate limit. Each read gives a
+    // seam count and a height:diameter ratio.
     const tasks = valid.flatMap((_, i) => Array.from({ length: SAMPLES }, () => i));
     const votes: number[][] = valid.map(() => []);
+    const ratios: number[][] = valid.map(() => []);
     await mapPool(tasks, POOL, async (i) => {
-      const n = await countOneStack(apiKey, crops[i], valid[i].value, 0.5, 'flash').catch(() => null);
-      if (n != null) votes[i].push(n);
+      const res = await readStack(apiKey, crops[i], valid[i].value, 0.5, 'flash').catch(() => null);
+      if (res) { votes[i].push(res.count); if (res.r != null) ratios[i].push(res.r); }
     });
 
-    // Tally each stack; break low-agreement ties with the pro model.
+    // Seam vote + robust ratio per stack.
+    const seam = valid.map((_, i) => (votes[i].length ? tally(votes[i]) : { count: 0, agreement: 0 }));
+    const rMed = valid.map((_, i) => median(ratios[i]));
+
+    // Cross-stack calibration: k = ratio / count on stacks the vote is unanimous about
+    // (≥2 chips, so the ratio is meaningful). Median across them; clamp to a sane band.
+    const ks: number[] = [];
+    valid.forEach((_, i) => {
+      if (seam[i].agreement >= 0.999 && seam[i].count >= 2 && rMed[i] != null) ks.push(rMed[i]! / seam[i].count);
+    });
+    const kStar = Math.max(K_MIN, Math.min(K_MAX, median(ks) ?? NOMINAL_K));
+
+    // Fuse the two channels per stack.
     const perStack = await Promise.all(valid.map(async (b, i) => {
-      const vs = votes[i];
-      if (!vs.length) return { value: b.value, count: 0, confidence: 0 };
-      let { count, agreement } = tally(vs);
-      if (agreement < TIEBREAK_CONF) {
-        const pro = await countOneStack(apiKey, crops[i], b.value, 0, 'pro').catch(() => null);
-        if (pro != null) {
-          const flashMode = count;
-          count = pro;
-          agreement = pro === flashMode ? 0.9 : 0.55; // two models agree vs pro overruled flash
+      const nSeam = seam[i].count, a = seam[i].agreement;
+      const nGeo = rMed[i] != null ? Math.max(1, Math.round(rMed[i]! / kStar)) : null;
+
+      if (!nSeam && nGeo == null) return { value: b.value, count: 0, confidence: 0 };
+
+      // No usable geometry — old vote path with a pro tiebreak on low agreement.
+      if (nGeo == null) {
+        let count = nSeam, agreement = a;
+        if (agreement < TIEBREAK_CONF) {
+          const pro = await readStack(apiKey, crops[i], b.value, 0, 'pro').catch(() => null);
+          if (pro) { count = pro.count; agreement = pro.count === nSeam ? 0.9 : 0.55; }
         }
+        return { value: b.value, count, confidence: agreement };
       }
-      return { value: b.value, count, confidence: agreement };
+      if (!nSeam) return { value: b.value, count: nGeo, confidence: 0.55 }; // geometry only
+
+      // Two independent channels agree → trust it, don't flag.
+      if (nSeam === nGeo) return { value: b.value, count: nSeam, confidence: Math.max(a, 0.9) };
+
+      // Off by one and the seam vote is confident → keep seam, but flag for a glance.
+      if (Math.abs(nSeam - nGeo) === 1 && a >= 0.8) return { value: b.value, count: nSeam, confidence: 0.6 };
+
+      // Real disagreement → let pro decide; whichever channel it backs wins.
+      const pro = await readStack(apiKey, crops[i], b.value, 0, 'pro').catch(() => null);
+      if (pro) {
+        const nPro = pro.count;
+        if (nPro === nSeam || nPro === nGeo) return { value: b.value, count: nPro, confidence: 0.75 };
+        return { value: b.value, count: nPro, confidence: 0.5 };
+      }
+      // No pro available — prefer the confident channel.
+      return { value: b.value, count: a >= 0.8 ? nSeam : nGeo, confidence: 0.5 };
     }));
 
     // Sum stacks that share a denomination; keep the worst confidence so the row flags.
