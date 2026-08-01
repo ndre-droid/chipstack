@@ -347,6 +347,10 @@ const dict: Record<Lang, Record<string, string>> = {
     'chipcount.calSaved': 'Calibration saved',
     'chipcount.calClear': 'Clear calibration',
     'chipcount.noCamera': 'Camera unavailable on this device',
+    'chipcount.editTitle': 'Fix this stack',
+    'chipcount.editHint': 'Tap a gap to add a chip, tap a line to remove one. Drag the ends to fit.',
+    'chipcount.editDone': 'Done',
+    'chipcount.editCount': 'Chips',
   },
   de: {
     'nav.plan': 'Plan',
@@ -686,6 +690,10 @@ const dict: Record<Lang, Record<string, string>> = {
     'chipcount.calSaved': 'Kalibrierung gespeichert',
     'chipcount.calClear': 'Kalibrierung löschen',
     'chipcount.noCamera': 'Kamera auf diesem Gerät nicht verfügbar',
+    'chipcount.editTitle': 'Stapel korrigieren',
+    'chipcount.editHint': 'Tippe in eine Lücke für einen Chip mehr, auf eine Linie für einen weniger. Enden ziehen zum Anpassen.',
+    'chipcount.editDone': 'Fertig',
+    'chipcount.editCount': 'Chips',
   },
 };
 

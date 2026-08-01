@@ -1609,3 +1609,12 @@ input[type='color'] { cursor: pointer; }
 .cc-overlay-t { color: #fff; font-weight: 600; max-width: 290px; line-height: 1.35; }
 .cc-overlay-ic { width: 52px; height: 52px; border-radius: 50%; background: #c0392b; color: #fff; font-size: 30px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
 .cc-overlay-btns { display: flex; gap: 10px; margin-top: 4px; }
+.cc-editor { position: absolute; inset: 0; display: flex; flex-direction: column; background: #0b0d10; color: #fff; z-index: 5; }
+.cc-editor-hint { padding: 10px 14px; font-size: 13px; opacity: .85; }
+.cc-editor-stage { position: relative; flex: 1; margin: 0 auto; touch-action: none; display: flex; }
+.cc-editor-img { max-height: 100%; max-width: 100%; object-fit: contain; display: block; margin: auto; }
+.cc-seam { position: absolute; left: 0; right: 0; height: 2px; background: rgba(255,209,102,.95); pointer-events: none; }
+.cc-cap { position: absolute; left: 0; right: 0; height: 14px; margin-top: -7px; cursor: ns-resize;
+  background: rgba(80,200,255,.25); border-top: 2px solid #4cc9f0; border-bottom: 2px solid #4cc9f0; }
+.cc-editor-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; gap: 12px; }
+.cc-editor-count { font-size: 16px; }
