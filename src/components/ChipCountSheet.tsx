@@ -3,16 +3,11 @@ import { useStore } from '../store.tsx';
 import { useT } from '../lib/i18n.ts';
 import { useCameraCapture } from '../lib/useCameraCapture.ts';
 import { useDeviceTilt, TILT_MIN_DEG, TILT_MAX_DEG } from '../lib/useDeviceTilt.ts';
-import { analyzeFrames, type Box } from '../lib/chipVision/index.ts';
 import { countChipsWithVision } from '../lib/chipVision/visionCount.ts';
 import type { CountResult } from '../lib/chipVision/types.ts';
 import { ChipCountReview } from './ChipCountReview.tsx';
 
 export interface ChipCountSheetProps { playerId: string; playerName: string; onClose: () => void }
-
-// True after the first successful analysis this session, so the "first time,
-// preparing the vision engine" hint only shows while the ~15 MB engine loads once.
-let engineWarmed = false;
 
 function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
   return Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(msg)), ms))]);
@@ -45,14 +40,6 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
     }
   }, [captured]);
 
-  const guideBox = (canvas: HTMLCanvasElement): Box => {
-    // Analyze a margin BEYOND the visual guide (.cc-guidebox is 12%/8%) so a stack
-    // that fills the guide has breathing room and isn't falsely flagged as cut off;
-    // the extra border is also more reliably felt for the background model.
-    const w = canvas.width, h = canvas.height;
-    return { x0: w * 0.03, y0: h * 0.05, x1: w * 0.97, y1: h * 0.95 };
-  };
-
   const onCapture = async () => {
     if (!cam.ready || analyzing) return;
     navigator.vibrate?.(30);
@@ -65,28 +52,20 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
     setCaptured(frames[0]); // freeze the shot on screen
     cam.stop();             // close the live camera (battery + privacy)
 
-    const useAi = state.settings.chipCountMode === 'ai';
-    if (useAi && !state.settings.aiVisionKey) {
+    if (!state.settings.aiVisionKey) {
       setAnalyzeErr(t('chipcount.aiNeedsKey'));
       return;
     }
-    if (useAi) engineWarmed = true; // no local engine to "prepare" for AI
 
     setAnalyzing(true);
     setAnalyzeErr(null);
     try {
       const denoms = state.denominations.filter((d) => d.enabled).map((d) => ({ value: d.value, color: d.color }));
-      const res = useAi
-        ? await withTimeout(
-            countChipsWithVision(frames[0], denoms, state.settings.aiVisionKey!),
-            30000,
-            t('chipcount.timedOut'),
-          )
-        : await withTimeout(
-            analyzeFrames(frames, guideBox(frames[0]), state.denominations, state.settings.chipCalibration, []),
-            45000,
-            t('chipcount.timedOut'),
-          );
+      const res = await withTimeout(
+        countChipsWithVision(frames[0], denoms, state.settings.aiVisionKey),
+        30000,
+        t('chipcount.timedOut'),
+      );
       if (res.totals.length === 0) {
         // Nothing counted — show the most useful reason (bad surface/light, etc.)
         // rather than an empty breakdown.
@@ -94,7 +73,6 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
         setAnalyzeErr(blocking ? t('chipcount.anom.' + blocking.code) : t('chipcount.noChips'));
         return;
       }
-      engineWarmed = true;
       setShot(frames[0]);
       setResult(res);
     } catch (e: any) {
@@ -163,7 +141,7 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
         {analyzing && (
           <div className="cc-overlay">
             <div className="cc-spinner" />
-            <div className="cc-overlay-t">{engineWarmed ? t('chipcount.analyzing') : t('chipcount.preparing')}</div>
+            <div className="cc-overlay-t">{t('chipcount.analyzing')}</div>
           </div>
         )}
 

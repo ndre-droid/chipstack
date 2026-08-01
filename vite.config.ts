@@ -38,17 +38,6 @@ export default defineConfig({
             },
             workbox: {
               globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-              // The ~15 MB OpenCV.js chunk (photo chip-count) must NOT be precached
-              // for offline install — it's fetched lazily only when that feature is
-              // opened. Exclude it from precache and cache it at runtime on first use.
-              globIgnores: ['**/opencv-*.js'],
-              runtimeCaching: [
-                {
-                  urlPattern: /opencv-.*\.js$/,
-                  handler: 'CacheFirst',
-                  options: { cacheName: 'opencv-cache', expiration: { maxEntries: 1 } },
-                },
-              ],
               cleanupOutdatedCaches: true,
             },
           }),
