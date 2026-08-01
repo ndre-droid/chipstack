@@ -434,38 +434,28 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 
 ## ⚠️ Open items / next steps
 
-### Photo → chip count — SHIPPED; on-device unreliable in user's room → AI mode added (2026-08-01)
+### Photo → chip count — AI (Gemini) ONLY; on-device OpenCV removed (2026-08-01)
 📷 count a player's chips from a photo → fills `LedgerPlayer.chips`. Entry points: a **"Count chips"
 card on the Table tab** (`components/ChipCountCard.tsx`, BOTH game modes, no TV session needed;
-shows buy-in + balance per player) AND the per-player 📷 in the host RemoteControl. All committed +
-pushed to `main` + in the current APK. Spec/plan: `docs/superpowers/{specs,plans}/2026-07-31-chip-photo-count*`.
+shows buy-in + balance per player) AND the per-player 📷 in the host RemoteControl. Spec/plan:
+`docs/superpowers/{specs,plans}/2026-07-31-chip-photo-count*` (on-device parts now historical).
 
-**TWO ENGINES** — Settings → *Chip counting* toggle (`Settings.chipCountMode` `'device'|'ai'`, per-device, NOT synced):
-- **On-device (free, default):** OpenCV.js pipeline in `src/lib/chipVision/` (self-calibrating top-rim
-  ellipse → per-chip scale; Otsu-brightness segmentation; colour→denom match; anomaly guards; mandatory
-  editable review). **PROVEN UNRELIABLE in the user's real setup** (dark shiny leatherette + club/UV
-  lighting + short ~13-chip thin 3.3 mm stacks): surface reflections merge everything into one blob;
-  their photo gave random per-stack counts (7/37/25 for stacks of ~13). Works only on a plain LIGHT
-  matte surface, bright even light, separated stacks. Hard limit of classic CV, not a bug.
-- **AI (reliable, needs key):** `src/lib/chipVision/visionCount.ts` → Google Gemini `gemini-2.0-flash`
-  via a DIRECT browser call with the user's own key (`Settings.aiVisionKey`, on-device only, NOT synced).
-  Reads the photo in ANY light/surface/angle. Gemini allows browser CORS with a key (verified 400-on-bad-key);
-  OpenAI/Anthropic block browser CORS → would need a backend the app lacks. Free tier ≈ free for this usage.
-  Same freeze + editable review flow.
+**AI ONLY** (commit fb88edf). The old on-device OpenCV pipeline was **removed** — it miscounted even in
+ideal conditions (plain light matte surface, bright even light, separated stacks) and worse in the user's
+real room. Deleted: `src/lib/chipVision/{extract,opencv,index,color,geometry,anomaly,aggregate}.ts` + tests,
+`ChipCalibrationWizard`, `chipCalibration.ts`, `@techstark/opencv-js` dep, the workbox opencv precache rules,
+and `Settings.chipCountMode`/`chipCalibration`. Kept: `visionCount.ts` + trimmed `chipVision/types.ts`.
 
-**CURRENT STATUS / NEXT STEP:** user CHOSE AI mode; it's built + deployed but **NOT yet end-to-end tested
-by the user** (needs their free Gemini key from aistudio.google.com + a real capture). Next: user gets a
-key → Settings → Chip counting → **AI** → paste key → 📷 → report the numbers Gemini returns → tune the
-prompt in `visionCount.ts` if off. (On-device stays available for plain-light-surface use.)
+**Engine:** `src/lib/chipVision/visionCount.ts` → Google Gemini (`MODEL = 'gemini-2.5-flash'`; `gemini-2.0-flash`
+was retired by Google Aug 2026 — **bump `MODEL` if retired again**, that's the whole fix). DIRECT browser
+call with the user's own key (`Settings.aiVisionKey`, on-device only, NOT synced). Gemini allows browser CORS
+with a key; OpenAI/Anthropic block it → would need a backend the app lacks. Reads photo in ANY light/surface/
+angle. Settings → **"Chip counting (AI)"** shows the key field always (no toggle). Editable review before save.
 
-**OpenCV gotchas** (memory `opencv-integration-gotchas.md`): `window.cv` is a **Promise** — `await` it;
-load OpenCV as a plain `<script>` via `?url` (NOT bundled, else Emscripten never boots → the original
-"counting…" hang); v5 has **no `cv.findNonZero`** (build a `CV_32SC2` points Mat manually); workbox
-`globIgnores: ['**/opencv-*.js']` keeps the 13 MB chunk out of precache. APK camera needs the **`CAMERA`
-manifest permission** (now present) — Capacitor prompts at runtime. Debug method: prod `vite preview`
-(dist), inject the built `opencv-*.js`, `await window.cv`, replay `extract.ts` ops on a synthetic/real
-canvas (dev mode mangles OpenCV, unreliable). **PWA service worker caches hard** — after a deploy the
-Settings section may not appear until SW is cleared / app force-reopened / APK reinstalled.
+**NEXT STEP:** user needs to end-to-end test — free key from aistudio.google.com → Settings → paste key → 📷
+→ report the numbers Gemini returns → tune the prompt in `visionCount.ts` if off (or bump to `gemini-2.5-pro`
+for harder counts). APK camera needs the **`CAMERA`** manifest permission (present). **PWA SW caches hard** —
+after a deploy the Settings section may not appear until SW cleared / app force-reopened / APK reinstalled.
 
 0. **3D chips: built then REVERTED (2026-07-24 session).** A react-three-fiber prototype (true-3D
    ceramic chip stacks on the Plan hero + a rotatable chip showcase in Settings) was built, shipped,
