@@ -58,6 +58,85 @@ function cropCanvas(src: HTMLCanvasElement, box: [number, number, number, number
   return c;
 }
 
+/** Downscale a canvas to <= maxDim on its long side (returns src if already small). */
+function resized(src: HTMLCanvasElement, maxDim: number): HTMLCanvasElement {
+  const scale = Math.min(1, maxDim / Math.max(src.width, src.height));
+  if (scale >= 1) return src;
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(src.width * scale));
+  c.height = Math.max(1, Math.round(src.height * scale));
+  const ctx = c.getContext('2d')!; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, c.width, c.height);
+  return c;
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+/**
+ * Re-crop tight to the stack using its KNOWN denomination colour: mask pixels near that
+ * colour, take the robust bounding box of the match, and crop to it. Removes clutter
+ * (sunglasses/bag/paper) that leaked into the padded detection box. Bails to the input
+ * if it can't get a confident colour lock (e.g. glare, or a near-grey chip on grey table).
+ */
+function tightenByColor(src: HTMLCanvasElement, hex: string): HTMLCanvasElement {
+  const w = src.width, h = src.height;
+  const ctx = src.getContext('2d')!;
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const [tr, tg, tb] = hexToRgb(hex);
+  const tLuma = 0.299 * tr + 0.587 * tg + 0.114 * tb;
+  const darkTarget = tLuma < 60;
+  const xs: number[] = [], ys: number[] = [];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4, r = d[i], g = d[i + 1], b = d[i + 2];
+      const match = darkTarget
+        ? 0.299 * r + 0.587 * g + 0.114 * b < 75           // dark chip: match dark pixels
+        : (r - tr) ** 2 + (g - tg) ** 2 + (b - tb) ** 2 < 90 * 90; // coloured chip: RGB distance
+      if (match) { xs.push(x); ys.push(y); }
+    }
+  }
+  if (xs.length < 0.01 * w * h) return src; // not enough of the chip colour → don't risk it
+  xs.sort((a, b) => a - b); ys.sort((a, b) => a - b);
+  const q = (arr: number[], p: number) => arr[Math.min(arr.length - 1, Math.max(0, Math.floor(p * arr.length)))];
+  const padX = w * 0.08, padY = h * 0.08;
+  const x0 = Math.max(0, q(xs, 0.02) - padX), x1 = Math.min(w, q(xs, 0.98) + padX);
+  const y0 = Math.max(0, q(ys, 0.02) - padY), y1 = Math.min(h, q(ys, 0.98) + padY);
+  const cw = Math.max(1, Math.round(x1 - x0)), ch = Math.max(1, Math.round(y1 - y0));
+  if (cw < w * 0.3 && ch < h * 0.3) return src; // suspiciously tiny → probably a bad lock
+  const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+  c.getContext('2d')!.drawImage(src, Math.round(x0), Math.round(y0), cw, ch, 0, 0, cw, ch);
+  return c;
+}
+
+/**
+ * Per-crop auto-exposure: stretch the luminance histogram (1st–99th percentile) and lift
+ * shadows with a mild gamma, so backlit/underexposed seams become visible. On-device, ~ms.
+ */
+function autoLevels(src: HTMLCanvasElement): HTMLCanvasElement {
+  const w = src.width, h = src.height;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d')!; ctx.drawImage(src, 0, 0);
+  const img = ctx.getImageData(0, 0, w, h), d = img.data;
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < d.length; i += 4) hist[Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2])]++;
+  const total = (d.length / 4) | 0;
+  let acc = 0, lo = 0, hi = 255;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= total * 0.01) { lo = v; break; } }
+  acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= total * 0.01) { hi = v; break; } }
+  if (hi - lo < 8) return src; // already well-exposed / flat → leave it
+  const inv = 255 / (hi - lo), gamma = 0.85, lut = new Uint8Array(256);
+  for (let v = 0; v < 256; v++) {
+    const t = Math.min(1, Math.max(0, (v - lo) * inv / 255));
+    lut[v] = Math.round(Math.pow(t, gamma) * 255);
+  }
+  for (let i = 0; i < d.length; i += 4) { d[i] = lut[d[i]]; d[i + 1] = lut[d[i + 1]]; d[i + 2] = lut[d[i + 2]]; }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
 /** Validate + clamp a model-returned box into a usable [x0,y0,x1,y1] or null. */
 function normBox(raw: any): [number, number, number, number] | null {
   if (!Array.isArray(raw) || raw.length < 4) return null;
@@ -351,8 +430,16 @@ export async function countChipsWithVision(
     // Detection failed — degrade gracefully to a voted whole-image count.
     totals = await countWholeVoted(apiKey, fullB64, list, denoms);
   } else {
-    // Crop each detected stack so it fills the frame (thin seams get real pixels).
-    const cropCanvases = valid.map((b) => cropCanvas(canvas, b.box, CROP_PAD));
+    // Crop each stack, then clean it up on-device (no network time): tighten to the chip
+    // colour to drop clutter that leaked into the box, then auto-expose so backlit seams
+    // show. Both the model image and the DSP read use the cleaned crop.
+    const colorByValue = new Map(denoms.map((d) => [d.value, d.color]));
+    const cropCanvases = valid.map((b) => {
+      const base = resized(cropCanvas(canvas, b.box, CROP_PAD), 1024);
+      const hex = colorByValue.get(b.value);
+      const tight = hex ? tightenByColor(base, hex) : base;
+      return autoLevels(tight);
+    });
     const crops = cropCanvases.map((cc) => toJpegBase64(cc, 1024));
     // On-device DSP read per stack — synchronous, ~ms, runs before any network wait.
     const dsp = cropCanvases.map((cc) => dspCount(cc));
