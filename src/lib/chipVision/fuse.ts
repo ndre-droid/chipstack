@@ -1,0 +1,96 @@
+export interface SeamVote { count: number; agreement: number }
+
+/** Majority vote over a list of counts. Ties break toward the smaller count. */
+export function tally(counts: number[]): SeamVote {
+  const m = new Map<number, number>();
+  let best = counts[0], bestN = 0;
+  for (const c of counts) {
+    const n = (m.get(c) ?? 0) + 1; m.set(c, n);
+    if (n > bestN || (n === bestN && c < best)) { best = c; bestN = n; }
+  }
+  return { count: best, agreement: bestN / counts.length };
+}
+
+/** Median of a numeric list, or null if empty. */
+export function median(xs: number[]): number | null {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+export interface StackFuseInput {
+  seam: SeamVote;                                   // pooled seam vote (all angles/samples)
+  geo: number | null;                               // geometry count = round(ratio / k), or null
+  dsp: { count: number; strength: number } | null;  // on-device DSP read, or null
+}
+
+/**
+ * Fuse the seam-vote, geometry, and DSP channels for one stack into a count +
+ * a cross-channel confidence. DSP is CONFIRM-ONLY: it must have strong periodicity
+ * (strength >= 0.45) and land exactly on a candidate, else it abstains.
+ * (Verbatim port of the previous inline fusion in visionCount.ts.)
+ */
+export function fuseStack(inp: StackFuseInput): { count: number; confidence: number } {
+  const { seam, geo, dsp } = inp;
+  const nSeam = seam.count, a = seam.agreement, nGeo = geo;
+  const dspBacks = (n: number) => !!dsp && dsp.strength >= 0.45 && dsp.count === n;
+
+  if (!nSeam && nGeo == null) return { count: 0, confidence: 0 };
+  if (nGeo == null) {
+    if (dspBacks(nSeam)) return { count: nSeam, confidence: Math.max(a, 0.9) };
+    return { count: nSeam, confidence: a };
+  }
+  if (!nSeam) return { count: nGeo, confidence: 0.55 };
+
+  if (nSeam === nGeo) {
+    const conf = dspBacks(nSeam) ? 0.95 : nSeam <= 4 ? 0.9 : 0.8;
+    return { count: nSeam, confidence: conf };
+  }
+  if (Math.abs(nSeam - nGeo) === 1 && a >= 0.8) {
+    if (dspBacks(nSeam)) return { count: nSeam, confidence: 0.9 };
+    if (dspBacks(nGeo)) return { count: nGeo, confidence: 0.6 };
+    return { count: nSeam, confidence: 0.6 };
+  }
+  if (dspBacks(nSeam)) return { count: nSeam, confidence: 0.75 };
+  if (dspBacks(nGeo)) return { count: nGeo, confidence: 0.75 };
+  return { count: a >= 0.8 ? nSeam : nGeo, confidence: 0.5 };
+}
+
+/** Pool a second angle's votes/ratios into the first angle's for re-fusing. */
+export function mergeAngles(
+  a: { votes: number[]; ratios: number[] },
+  b: { votes: number[]; ratios: number[] },
+): { votes: number[]; ratios: number[] } {
+  return { votes: [...a.votes, ...b.votes], ratios: [...a.ratios, ...b.ratios] };
+}
+
+/** Ids of stacks whose confidence is below the flag threshold (default 0.85). */
+export function flaggedStackIds(stacks: { id: string; confidence: number }[], threshold = 0.85): string[] {
+  return stacks.filter((s) => s.confidence < threshold).map((s) => s.id);
+}
+
+type Box = [number, number, number, number];
+const cx = (b: Box) => (b[0] + b[2]) / 2, cy = (b: Box) => (b[1] + b[3]) / 2;
+
+/**
+ * Match prior (angle-1) stacks to freshly detected (angle-2) boxes of the SAME
+ * denomination, choosing the nearest center. Returns prior-id -> fresh box for
+ * every prior stack that found a same-denom match.
+ */
+export function matchStacks(
+  prior: { id: string; value: number; box: Box }[],
+  fresh: { value: number; box: Box }[],
+): Map<string, Box> {
+  const out = new Map<string, Box>();
+  for (const p of prior) {
+    let best: Box | null = null, bestD = Infinity;
+    for (const f of fresh) {
+      if (f.value !== p.value) continue;
+      const d = (cx(f.box) - cx(p.box)) ** 2 + (cy(f.box) - cy(p.box)) ** 2;
+      if (d < bestD) { bestD = d; best = f.box; }
+    }
+    if (best) out.set(p.id, best);
+  }
+  return out;
+}

@@ -1,4 +1,5 @@
 import type { CountResult, DenomTotal } from './types.ts';
+import { tally, median, fuseStack, type SeamVote } from './fuse.ts';
 
 interface VisionDenom { value: number; color: string }
 type StackBox = { value: number; box: [number, number, number, number] };
@@ -148,25 +149,6 @@ function normBox(raw: any): [number, number, number, number] | null {
   x1 = Math.max(0, Math.min(1, x1)); y1 = Math.max(0, Math.min(1, y1));
   if (x1 - x0 < 0.02 || y1 - y0 < 0.02) return null; // degenerate
   return [x0, y0, x1, y1];
-}
-
-/** Majority vote over a list of counts. Ties break toward the smaller count. */
-function tally(counts: number[]): { count: number; agreement: number } {
-  const m = new Map<number, number>();
-  let best = counts[0], bestN = 0;
-  for (const c of counts) {
-    const n = (m.get(c) ?? 0) + 1; m.set(c, n);
-    if (n > bestN || (n === bestN && c < best)) { best = c; bestN = n; }
-  }
-  return { count: best, agreement: bestN / counts.length };
-}
-
-/** Median of a numeric list, or null if empty. */
-function median(xs: number[]): number | null {
-  if (!xs.length) return null;
-  const s = [...xs].sort((a, b) => a - b);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
 /**
@@ -486,7 +468,7 @@ export async function countChipsWithVision(
     }
 
     // Seam vote + robust ratio per stack.
-    const seam = valid.map((_, i) => (votes[i].length ? tally(votes[i]) : { count: 0, agreement: 0 }));
+    const seam: SeamVote[] = valid.map((_, i) => (votes[i].length ? tally(votes[i]) : { count: 0, agreement: 0 }));
     const rMed = valid.map((_, i) => median(ratios[i]));
 
     // Cross-stack calibration: k = ratio / count on stacks the vote is unanimous about
@@ -498,47 +480,11 @@ export async function countChipsWithVision(
     const kStar = Math.max(K_MIN, Math.min(K_MAX, median(ks) ?? NOMINAL_K));
 
     // Fuse the two channels per stack.
-    const perStack = await Promise.all(valid.map(async (b, i) => {
-      const nSeam = seam[i].count, a = seam[i].agreement;
-      const nGeo = rMed[i] != null ? Math.max(1, Math.round(rMed[i]! / kStar)) : null;
-
-      if (!nSeam && nGeo == null) return { value: b.value, count: 0, confidence: 0 };
-
-      // No usable geometry — seam vote only (DSP may still confirm below).
-      if (nGeo == null) {
-        if (dsp[i] && dsp[i]!.strength >= 0.45 && dsp[i]!.count === nSeam) return { value: b.value, count: nSeam, confidence: Math.max(a, 0.9) };
-        return { value: b.value, count: nSeam, confidence: a };
-      }
-      if (!nSeam) return { value: b.value, count: nGeo, confidence: 0.55 }; // geometry only
-
-      // DSP is consulted CONFIRM-ONLY: it must have strong periodicity and land exactly on
-      // a candidate, else it abstains (never introduces a new number).
-      const dspBacks = (n: number) => !!dsp[i] && dsp[i]!.strength >= 0.45 && dsp[i]!.count === n;
-
-      // Seam + geometry agree. Short stacks (≤4) are read reliably; TALL stacks are where
-      // both channels can make the SAME error (occlusion/foreshortening), so they only earn
-      // top confidence when the independent DSP channel also confirms — otherwise they flag,
-      // so we never show a tall count as certain-but-wrong.
-      if (nSeam === nGeo) {
-        const conf = dspBacks(nSeam) ? 0.95 : nSeam <= 4 ? 0.9 : 0.8;
-        return { value: b.value, count: nSeam, confidence: conf };
-      }
-
-      // Off by one and the seam vote is confident → keep seam, but flag for a glance.
-      // A DSP that confirms one side breaks it cleanly (no flag / switch to geometry).
-      if (Math.abs(nSeam - nGeo) === 1 && a >= 0.8) {
-        if (dspBacks(nSeam)) return { value: b.value, count: nSeam, confidence: 0.9 };
-        if (dspBacks(nGeo)) return { value: b.value, count: nGeo, confidence: 0.6 };
-        return { value: b.value, count: nSeam, confidence: 0.6 };
-      }
-
-      // Real disagreement → the independent DSP channel breaks it if it has a strong read.
-      if (dspBacks(nSeam)) return { value: b.value, count: nSeam, confidence: 0.75 };
-      if (dspBacks(nGeo)) return { value: b.value, count: nGeo, confidence: 0.75 };
-
-      // DSP abstained → prefer the confident channel, and flag the row for a glance.
-      return { value: b.value, count: a >= 0.8 ? nSeam : nGeo, confidence: 0.5 };
-    }));
+    const perStack = valid.map((b, i) => {
+      const geo = rMed[i] != null ? Math.max(1, Math.round(rMed[i]! / kStar)) : null;
+      const { count, confidence } = fuseStack({ seam: seam[i], geo, dsp: dsp[i] });
+      return { value: b.value, count, confidence };
+    });
 
     // Sum stacks that share a denomination; keep the worst confidence so the row flags.
     const byValue = new Map<number, { count: number; confidence: number }>();
