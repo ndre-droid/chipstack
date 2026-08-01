@@ -401,8 +401,14 @@ export async function countChipsWithVision(
       // a candidate, else it abstains (never introduces a new number).
       const dspBacks = (n: number) => !!dsp[i] && dsp[i]!.strength >= 0.45 && dsp[i]!.count === n;
 
-      // Two independent channels agree → trust it, don't flag.
-      if (nSeam === nGeo) return { value: b.value, count: nSeam, confidence: Math.max(a, 0.9) };
+      // Seam + geometry agree. Short stacks (≤4) are read reliably; TALL stacks are where
+      // both channels can make the SAME error (occlusion/foreshortening), so they only earn
+      // top confidence when the independent DSP channel also confirms — otherwise they flag,
+      // so we never show a tall count as certain-but-wrong.
+      if (nSeam === nGeo) {
+        const conf = dspBacks(nSeam) ? 0.95 : nSeam <= 4 ? 0.9 : 0.8;
+        return { value: b.value, count: nSeam, confidence: conf };
+      }
 
       // Off by one and the seam vote is confident → keep seam, but flag for a glance.
       // A DSP that confirms one side breaks it cleanly (no flag / switch to geometry).
