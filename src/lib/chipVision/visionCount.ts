@@ -90,6 +90,67 @@ function median(xs: number[]): number | null {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
+/**
+ * On-device DSP voter (model-free). On an already-cropped single stack, project the image
+ * to a 1-D edge-energy profile along the stack axis and find the chip pitch by
+ * autocorrelation; the seam lines are periodic, so a sharp peak = clean periodicity.
+ * Returns a chip count + a strength 0..1, or null when periodicity is too weak to trust.
+ * Runs synchronously in ~a few ms on a downscaled copy — adds no network time.
+ *
+ * Deliberately used ONLY to CONFIRM the seam/geometry candidates (see fusion): a
+ * miscalibrated read simply won't match either and abstains, so it can never inject a
+ * wrong number.
+ */
+function dspCount(src: HTMLCanvasElement): { count: number; strength: number } | null {
+  const LONG = 220; // downscale for speed; seams still resolvable at this size
+  const scale = Math.min(1, LONG / Math.max(src.width, src.height));
+  const w = Math.max(8, Math.round(src.width * scale)), h = Math.max(8, Math.round(src.height * scale));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d')!; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(src, 0, 0, w, h);
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const gray = (x: number, y: number) => { const i = (y * w + x) * 4; return 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; };
+
+  // Stack axis = the longer dimension; seams run across it.
+  const vertical = h >= w;
+  const axisLen = vertical ? h : w, crossLen = vertical ? w : h;
+  const c0 = Math.floor(crossLen * 0.25), c1 = Math.max(c0 + 1, Math.ceil(crossLen * 0.75));
+
+  // Edge-energy profile along the axis (gradient in the axis direction).
+  const prof = new Float64Array(axisLen);
+  for (let a = 1; a < axisLen; a++) {
+    let s = 0;
+    for (let cc = c0; cc < c1; cc++) s += Math.abs((vertical ? gray(cc, a) : gray(a, cc)) - (vertical ? gray(cc, a - 1) : gray(a - 1, cc)));
+    prof[a] = s / (c1 - c0);
+  }
+  // Smooth (window 3) and remove DC.
+  const sm = new Float64Array(axisLen);
+  for (let a = 0; a < axisLen; a++) { let s = 0, n = 0; for (let k = -1; k <= 1; k++) { const j = a + k; if (j >= 0 && j < axisLen) { s += prof[j]; n++; } } sm[a] = s / n; }
+  let mean = 0; for (let a = 0; a < axisLen; a++) mean += sm[a]; mean /= axisLen;
+  let varSum = 0; for (let a = 0; a < axisLen; a++) { sm[a] -= mean; varSum += sm[a] * sm[a]; }
+  if (varSum <= 1e-6) return null;
+  const std = Math.sqrt(varSum / axisLen);
+
+  // Autocorrelation over plausible chip pitches → dominant pitch L*.
+  const minL = Math.max(3, Math.round(axisLen * 0.03)), maxL = Math.floor(axisLen / 2);
+  if (maxL <= minL) return null;
+  let bestL = -1, bestC = -Infinity;
+  for (let L = minL; L <= maxL; L++) {
+    let s = 0; for (let a = L; a < axisLen; a++) s += sm[a] * sm[a - L];
+    const cor = s / varSum;
+    if (cor > bestC) { bestC = cor; bestL = L; }
+  }
+  if (bestL < 0 || bestC < 0.35) return null; // weak periodicity → abstain
+
+  // Energetic span (first→last strong seam edge) ÷ pitch = seams; chips = seams + 1.
+  const thr = 0.5 * std;
+  let first = -1, last = -1;
+  for (let a = 0; a < axisLen; a++) if (sm[a] > thr) { if (first < 0) first = a; last = a; }
+  if (first < 0 || last - first < bestL) return null;
+  const chips = Math.round((last - first) / bestL) + 1;
+  if (chips < 1 || chips > 40) return null;
+  return { count: chips, strength: Math.max(0, Math.min(1, bestC)) };
+}
+
 /** Run an async fn over items with bounded concurrency, preserving order. */
 async function mapPool<T, R>(items: T[], limit: number, fn: (t: T, i: number) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -291,7 +352,10 @@ export async function countChipsWithVision(
     totals = await countWholeVoted(apiKey, fullB64, list, denoms);
   } else {
     // Crop each detected stack so it fills the frame (thin seams get real pixels).
-    const crops = valid.map((b) => toJpegBase64(cropCanvas(canvas, b.box, CROP_PAD), 1024));
+    const cropCanvases = valid.map((b) => cropCanvas(canvas, b.box, CROP_PAD));
+    const crops = cropCanvases.map((cc) => toJpegBase64(cc, 1024));
+    // On-device DSP read per stack — synchronous, ~ms, runs before any network wait.
+    const dsp = cropCanvases.map((cc) => dspCount(cc));
 
     // Fire SAMPLES reads per stack, pooled for the free-tier rate limit. Each read gives a
     // seam count and a height:diameter ratio.
@@ -333,13 +397,26 @@ export async function countChipsWithVision(
       }
       if (!nSeam) return { value: b.value, count: nGeo, confidence: 0.55 }; // geometry only
 
+      // DSP is consulted CONFIRM-ONLY: it must have strong periodicity and land exactly on
+      // a candidate, else it abstains (never introduces a new number).
+      const dspBacks = (n: number) => !!dsp[i] && dsp[i]!.strength >= 0.45 && dsp[i]!.count === n;
+
       // Two independent channels agree → trust it, don't flag.
       if (nSeam === nGeo) return { value: b.value, count: nSeam, confidence: Math.max(a, 0.9) };
 
       // Off by one and the seam vote is confident → keep seam, but flag for a glance.
-      if (Math.abs(nSeam - nGeo) === 1 && a >= 0.8) return { value: b.value, count: nSeam, confidence: 0.6 };
+      // A DSP that confirms one side breaks it cleanly (no flag / switch to geometry).
+      if (Math.abs(nSeam - nGeo) === 1 && a >= 0.8) {
+        if (dspBacks(nSeam)) return { value: b.value, count: nSeam, confidence: 0.9 };
+        if (dspBacks(nGeo)) return { value: b.value, count: nGeo, confidence: 0.6 };
+        return { value: b.value, count: nSeam, confidence: 0.6 };
+      }
 
-      // Real disagreement → let pro decide; whichever channel it backs wins.
+      // Real disagreement → if DSP backs a channel, take it and SKIP the pro call (faster).
+      if (dspBacks(nSeam)) return { value: b.value, count: nSeam, confidence: 0.75 };
+      if (dspBacks(nGeo)) return { value: b.value, count: nGeo, confidence: 0.75 };
+
+      // DSP abstained → let pro decide; whichever channel it backs wins.
       const pro = await readStack(apiKey, crops[i], b.value, 0, 'pro').catch(() => null);
       if (pro) {
         const nPro = pro.count;
