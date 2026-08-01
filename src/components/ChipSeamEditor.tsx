@@ -18,6 +18,9 @@ export function ChipSeamEditor({ stack, onDone }: { stack: StackResult; onDone: 
     c.getContext('2d')!.drawImage(stack.crop, 0, 0);
   }, [stack.crop]);
 
+  // Reseed local edit state when a different stack is loaded into this instance.
+  useEffect(() => { setCount(Math.max(1, stack.count)); setSpan(stack.span); }, [stack.id]);
+
   const lines = seamLines(span, count);
 
   // Convert a pointer y within the image box to a 0..1 fraction.
@@ -48,15 +51,18 @@ export function ChipSeamEditor({ stack, onDone }: { stack: StackResult; onDone: 
 
   return (
     <div className="cc-editor">
+      <div className="cc-editor-title">{t('chipcount.editTitle')}</div>
       <div className="cc-editor-hint">{t('chipcount.editHint')}</div>
-      <div className="cc-editor-stage" ref={boxRef}
-        onPointerDown={onPointerDown} onPointerMove={onMove} onPointerUp={onUp}>
-        <canvas ref={canvasRef} className="cc-editor-img" />
-        <div className="cc-cap" style={{ top: `${span[0] * 100}%` }} onPointerDown={onCapDown('top')} />
-        <div className="cc-cap" style={{ top: `${span[1] * 100}%` }} onPointerDown={onCapDown('bottom')} />
-        {lines.map((ly, i) => (
-          <div key={i} className="cc-seam" style={{ top: `${ly * 100}%` }} />
-        ))}
+      <div className="cc-editor-stage">
+        <div className="cc-editor-imgwrap" ref={boxRef}
+          onPointerDown={onPointerDown} onPointerMove={onMove} onPointerUp={onUp}>
+          <canvas ref={canvasRef} className="cc-editor-img" />
+          <div className="cc-cap" style={{ top: `${span[0] * 100}%` }} onPointerDown={onCapDown('top')} />
+          <div className="cc-cap" style={{ top: `${span[1] * 100}%` }} onPointerDown={onCapDown('bottom')} />
+          {lines.map((ly, i) => (
+            <div key={i} className="cc-seam" style={{ top: `${ly * 100}%` }} />
+          ))}
+        </div>
       </div>
       <div className="cc-editor-bar">
         <span className="cc-editor-count">{t('chipcount.editCount')}: <b>{count}</b></span>
