@@ -27,8 +27,10 @@ function toJpegBase64(canvas: HTMLCanvasElement, maxDim: number): string {
   const scale = Math.min(1, maxDim / Math.max(canvas.width, canvas.height));
   const w = Math.round(canvas.width * scale), h = Math.round(canvas.height * scale);
   const c = document.createElement('canvas'); c.width = w; c.height = h;
-  c.getContext('2d')!.drawImage(canvas, 0, 0, w, h);
-  return c.toDataURL('image/jpeg', 0.85).split(',')[1];
+  const ctx = c.getContext('2d')!;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(canvas, 0, 0, w, h);
+  return c.toDataURL('image/jpeg', 0.92).split(',')[1];
 }
 
 // Google keeps retiring model ids and gating them "to new users only", so we don't
@@ -126,12 +128,22 @@ export async function countChipsWithVision(
   apiKey: string,
 ): Promise<CountResult> {
   const list = denoms.map((d) => `${d.value} = ${colorName(d.color)} (${d.color})`).join('; ');
-  const b64 = toJpegBase64(canvas, 1024);
+  const b64 = toJpegBase64(canvas, 1536);
   const prompt =
-    `Count the poker chips in this photo. They are SLOWPLAY ceramic chips; each denomination is a distinct colour:\n${list}\n` +
-    `Each separate stack is one colour = one denomination. Count how many chips are in each stack (count the individual chip layers). ` +
-    `If several stacks share a colour, sum them. Ignore anything that is not a poker chip. ` +
-    `Respond with ONLY JSON of this shape: {"stacks":[{"value":<denomination>,"count":<chips>}]}. No commentary.`;
+    `You are counting poker chips in a photo to split a poker bank. They are SLOWPLAY ceramic chips, ` +
+    `each ~3.3 mm thick and ~39 mm wide. Each denomination is one solid colour:\n${list}\n\n` +
+    `There are one or more STACKS, each stack a single colour = one denomination. Count how many ` +
+    `individual chips are in each stack.\n\n` +
+    `How to count precisely:\n` +
+    `- Look at the VERTICAL SIDE of each stack. Each chip is a thin disc; between two stacked chips ` +
+    `there is a visible seam line. Count the discs by counting these layers from bottom to top.\n` +
+    `- The flat top face of the stack IS the top chip — count it once, never as an extra layer.\n` +
+    `- Stacks are short; an off-by-one is a real error. Count the seams slowly, then recount to confirm ` +
+    `before answering.\n` +
+    `- If several separate stacks share a colour, sum their chips for that denomination.\n` +
+    `- Ignore anything that is not a poker chip (bags, cases, papers, background).\n\n` +
+    `Respond with ONLY JSON of this exact shape: ` +
+    `{"stacks":[{"value":<denomination>,"count":<chips>,"how":"<e.g. 3 seams so 4 chips>"}]}. No text outside the JSON.`;
 
   const body = JSON.stringify({
     contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }],
