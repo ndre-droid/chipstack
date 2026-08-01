@@ -50,6 +50,8 @@ export interface Settings {
   appearance: Appearance;   // system / light / dark — applies to the minimal skin
   chipArt: ChipArt;         // chip face art style
   chipCalibration?: import('./lib/chipVision/types').ChipCalibration; // per-device, NOT synced
+  chipCountMode?: 'device' | 'ai'; // photo chip-count engine; 'ai' = cloud vision. Per-device, NOT synced
+  aiVisionKey?: string;            // Google Gemini API key — on-device only, NEVER synced
   language: 'en' | 'de';
   /** Tournament: fixed prize pool, rising blinds, payout split + bust leaderboard.
    *  Cash: chips = money, blinds fixed (timer optional), players cash out anytime and

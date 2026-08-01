@@ -4,6 +4,7 @@ import { useT } from '../lib/i18n.ts';
 import { useCameraCapture } from '../lib/useCameraCapture.ts';
 import { useDeviceTilt, TILT_MIN_DEG, TILT_MAX_DEG } from '../lib/useDeviceTilt.ts';
 import { analyzeFrames, type Box } from '../lib/chipVision/index.ts';
+import { countChipsWithVision } from '../lib/chipVision/visionCount.ts';
 import type { CountResult } from '../lib/chipVision/types.ts';
 import { ChipCountReview } from './ChipCountReview.tsx';
 
@@ -63,15 +64,29 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
 
     setCaptured(frames[0]); // freeze the shot on screen
     cam.stop();             // close the live camera (battery + privacy)
+
+    const useAi = state.settings.chipCountMode === 'ai';
+    if (useAi && !state.settings.aiVisionKey) {
+      setAnalyzeErr(t('chipcount.aiNeedsKey'));
+      return;
+    }
+    if (useAi) engineWarmed = true; // no local engine to "prepare" for AI
+
     setAnalyzing(true);
     setAnalyzeErr(null);
     try {
-      const box = guideBox(frames[0]);
-      const res = await withTimeout(
-        analyzeFrames(frames, box, state.denominations, state.settings.chipCalibration, []),
-        45000,
-        t('chipcount.timedOut'),
-      );
+      const denoms = state.denominations.filter((d) => d.enabled).map((d) => ({ value: d.value, color: d.color }));
+      const res = useAi
+        ? await withTimeout(
+            countChipsWithVision(frames[0], denoms, state.settings.aiVisionKey!),
+            30000,
+            t('chipcount.timedOut'),
+          )
+        : await withTimeout(
+            analyzeFrames(frames, guideBox(frames[0]), state.denominations, state.settings.chipCalibration, []),
+            45000,
+            t('chipcount.timedOut'),
+          );
       if (res.totals.length === 0) {
         // Nothing counted — show the most useful reason (bad surface/light, etc.)
         // rather than an empty breakdown.

@@ -185,6 +185,34 @@ export default function SettingsScreen() {
         {calOpen && <ChipCalibrationWizard onClose={() => setCalOpen(false)} />}
       </div>
 
+      <div className="section-label">{t('chipcount.engineTitle')}</div>
+      <div className="card">
+        <p className="faint" style={{ fontSize: 12.5, marginTop: 0 }}>{t('chipcount.engineHint')}</p>
+        <div className="chip-toggle-row mt8">
+          <button
+            className={`chip-toggle ${(settings.chipCountMode ?? 'device') === 'device' ? '' : 'off'}`}
+            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { chipCountMode: 'device' } })}
+          >{t('chipcount.engineDevice')}</button>
+          <button
+            className={`chip-toggle ${settings.chipCountMode === 'ai' ? '' : 'off'}`}
+            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { chipCountMode: 'ai' } })}
+          >{t('chipcount.engineAi')}</button>
+        </div>
+        {settings.chipCountMode === 'ai' && (
+          <div className="mt12">
+            <input
+              type="password"
+              className="input"
+              autoComplete="off"
+              placeholder={t('chipcount.aiKeyLabel')}
+              value={settings.aiVisionKey ?? ''}
+              onChange={(e) => dispatch({ type: 'UPDATE_SETTINGS', patch: { aiVisionKey: e.target.value.trim() || undefined } })}
+            />
+            <p className="faint" style={{ fontSize: 12.5, marginTop: 8, marginBottom: 0 }}>{t('chipcount.aiKeyHint')}</p>
+          </div>
+        )}
+      </div>
+
       <div className="section-label">{t('settings.moneyMapping')}</div>
       <div className="card">
         <div className="field">
