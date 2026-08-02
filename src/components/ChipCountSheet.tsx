@@ -135,7 +135,7 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
       setResult(null);
       setShot(null);
     }
-    setPhase(phase === 'analyzing2' ? 'framing2' : 'framing');
+    setPhase(phase === 'analyzing2' || phase === 'framing2' ? 'framing2' : 'framing');
     cam.retry(); // re-acquire the camera stopped at capture time
   };
 
