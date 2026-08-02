@@ -351,6 +351,12 @@ const dict: Record<Lang, Record<string, string>> = {
     'chipcount.editHint': 'Tap a gap to add a chip, tap a line to remove one. Drag the ends to fit.',
     'chipcount.editDone': 'Done',
     'chipcount.editCount': 'Chips',
+    'chipcount.autoHold': 'Hold steady…',
+    'chipcount.secondAngleTitle': 'One more angle',
+    'chipcount.secondAngleBody': 'A couple of stacks were unclear. Tilt the phone about 15° more and hold to separate the chips.',
+    'chipcount.secondAngleSkip': 'Skip — I\'ll fix it by hand',
+    'chipcount.tiltMore': 'Tilt a bit more…',
+    'chipcount.barrelsTip': 'Tip: rough stacks of ~10 read cleanest.',
   },
   de: {
     'nav.plan': 'Plan',
@@ -694,6 +700,12 @@ const dict: Record<Lang, Record<string, string>> = {
     'chipcount.editHint': 'Tippe in eine Lücke für einen Chip mehr, auf eine Linie für einen weniger. Enden ziehen zum Anpassen.',
     'chipcount.editDone': 'Fertig',
     'chipcount.editCount': 'Chips',
+    'chipcount.autoHold': 'Ruhig halten…',
+    'chipcount.secondAngleTitle': 'Noch ein Winkel',
+    'chipcount.secondAngleBody': 'Ein paar Stapel waren unklar. Kipp das Handy ca. 15° mehr und halt still, um die Chips zu trennen.',
+    'chipcount.secondAngleSkip': 'Überspringen — von Hand korrigieren',
+    'chipcount.tiltMore': 'Etwas mehr kippen…',
+    'chipcount.barrelsTip': 'Tipp: grobe Stapel von ~10 Chips lesen sich am besten.',
   },
 };
 
