@@ -1616,6 +1616,7 @@ input[type='color'] { cursor: pointer; }
 .cc-spinner { width: 52px; height: 52px; border-radius: 50%; border: 4px solid rgba(255,255,255,.25); border-top-color: #fff; animation: cc-spin .8s linear infinite; }
 @keyframes cc-spin { to { transform: rotate(360deg); } }
 .cc-overlay-t { color: #fff; font-weight: 600; max-width: 290px; line-height: 1.35; }
+.cc-overlay-sub { color: rgba(255,255,255,.6); font-size: 12px; font-variant-numeric: tabular-nums; max-width: 290px; line-height: 1.3; }
 .cc-overlay-ic { width: 52px; height: 52px; border-radius: 50%; background: #c0392b; color: #fff; font-size: 30px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
 .cc-overlay-btns { display: flex; gap: 10px; margin-top: 4px; }
 .cc-editor { position: absolute; inset: 0; display: flex; flex-direction: column; background: #0b0d10; color: #fff; z-index: 5; }

@@ -5,6 +5,26 @@ interface VisionDenom { value: number; color: string }
 type StackBox = { value: number; box: [number, number, number, number] };
 type Prefer = 'flash' | 'pro';
 
+/** Progress ping so the UI can show WHICH stage is running (and where it stalls). */
+export type CountStage = { phase: 'detecting' | 'reading' | 'fallback'; stacks?: number };
+
+/**
+ * Per-request AbortSignal that fires when EITHER `ms` elapses OR the caller's `external`
+ * signal aborts (user cancel / outer timeout). `done()` clears the timer + detaches the
+ * listener. Every network fetch goes through this: nothing can hang unbounded, and a
+ * cancel/timeout tears down all in-flight work at once (so it stops billing immediately).
+ */
+function reqSignal(external: AbortSignal | undefined, ms: number): { signal: AbortSignal; done: () => void } {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), ms);
+  const onAbort = () => ctrl.abort();
+  if (external) {
+    if (external.aborted) ctrl.abort();
+    else external.addEventListener('abort', onAbort, { once: true });
+  }
+  return { signal: ctrl.signal, done: () => { clearTimeout(to); external?.removeEventListener('abort', onAbort); } };
+}
+
 // Tuning knobs for the vote-and-crop pipeline.
 const SAMPLES = 2;          // independent flash reads per stack (self-consistency vote)
 const POOL = 6;             // max concurrent API calls (keep the free-tier key happy)
@@ -243,10 +263,11 @@ function scoreModel(name: string, prefer: Prefer): number {
 }
 
 /** Discover a usable vision model for this key + preference (cached). */
-async function resolveModel(apiKey: string, prefer: Prefer, force = false): Promise<string> {
+async function resolveModel(apiKey: string, prefer: Prefer, force = false, signal?: AbortSignal): Promise<string> {
   if (cachedModel[prefer] && !force) return cachedModel[prefer]!;
+  const { signal: sig, done } = reqSignal(signal, REQ_TIMEOUT);
   try {
-    const r = await fetch(`${MODELS_URL}?key=${encodeURIComponent(apiKey)}`);
+    const r = await fetch(`${MODELS_URL}?key=${encodeURIComponent(apiKey)}`, { signal: sig });
     if (r.ok) {
       const j = await r.json();
       const models: any[] = j?.models ?? [];
@@ -261,6 +282,7 @@ async function resolveModel(apiKey: string, prefer: Prefer, force = false): Prom
       if (usable.length) { cachedModel[prefer] = usable[0]; return usable[0]; }
     }
   } catch { /* fall through to fallback */ }
+  finally { done(); }
   return FALLBACK_MODEL;
 }
 
@@ -268,23 +290,22 @@ async function resolveModel(apiKey: string, prefer: Prefer, force = false): Prom
  * POST to generateContent with the discovered model for `prefer`. If the model was
  * retired or gated, rediscover from the live list and retry once. OK response or throws.
  */
-async function generate(apiKey: string, body: string, prefer: Prefer): Promise<Response> {
-  let model = await resolveModel(apiKey, prefer);
+async function generate(apiKey: string, body: string, prefer: Prefer, signal?: AbortSignal): Promise<Response> {
+  let model = await resolveModel(apiKey, prefer, false, signal);
   for (let attempt = 0; attempt < 2; attempt++) {
     let res: Response;
-    const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), REQ_TIMEOUT);
+    const { signal: sig, done } = reqSignal(signal, REQ_TIMEOUT);
     try {
       res = await fetch(`${MODELS_URL}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
-        signal: ctrl.signal,
+        signal: sig,
       });
     } catch {
       throw new Error('Could not reach the AI. Check your internet connection.');
     } finally {
-      clearTimeout(to);
+      done();
     }
     if (res.ok) return res;
 
@@ -295,7 +316,7 @@ async function generate(apiKey: string, body: string, prefer: Prefer): Promise<R
       /no longer available|not available|is not found|not found|not supported|unknown name|call listmodels/i.test(msg);
 
     if (attempt === 0 && modelGone) {
-      const fresh = await resolveModel(apiKey, prefer, true); // force a fresh ListModels
+      const fresh = await resolveModel(apiKey, prefer, true, signal); // force a fresh ListModels
       if (fresh !== model) { model = fresh; continue; }
     }
     if ((res.status === 400 || res.status === 403) && !modelGone) msg = 'The AI key was rejected — check it in Settings.';
@@ -306,12 +327,12 @@ async function generate(apiKey: string, body: string, prefer: Prefer): Promise<R
 }
 
 /** Small helper: POST one image+prompt, parse the JSON body the model returns. */
-async function askJson(apiKey: string, prompt: string, b64: string, temperature: number, prefer: Prefer): Promise<any> {
+async function askJson(apiKey: string, prompt: string, b64: string, temperature: number, prefer: Prefer, signal?: AbortSignal): Promise<any> {
   const body = JSON.stringify({
     contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }],
     generationConfig: { temperature, responseMimeType: 'application/json' },
   });
-  const res = await generate(apiKey, body, prefer);
+  const res = await generate(apiKey, body, prefer, signal);
   const j = await res.json();
   const text = j?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) return null;
@@ -319,7 +340,7 @@ async function askJson(apiKey: string, prompt: string, b64: string, temperature:
 }
 
 /** PASS 1 — locate every stack in the full frame and box it. */
-async function detectStacks(apiKey: string, b64: string, list: string): Promise<StackBox[]> {
+async function detectStacks(apiKey: string, b64: string, list: string, signal?: AbortSignal): Promise<StackBox[]> {
   const prompt =
     `Photo of poker chips on a surface. Denominations by colour:\n${list}\n\n` +
     `Find every separate STACK of chips. Each stack is a single colour = one denomination. ` +
@@ -328,7 +349,7 @@ async function detectStacks(apiKey: string, b64: string, list: string): Promise<
     `right, y increasing downward. Two separate stacks of the same colour are TWO entries. ` +
     `Ignore bags, cases, papers, hands and background. ` +
     `Respond with ONLY JSON: {"stacks":[{"value":<denom>,"box":[x0,y0,x1,y1]}]}.`;
-  const p = await askJson(apiKey, prompt, b64, 0, 'flash');
+  const p = await askJson(apiKey, prompt, b64, 0, 'flash', signal);
   const arr: any[] = Array.isArray(p) ? p : p?.stacks ?? [];
   return arr
     .map((s) => ({ value: Number(s?.value), box: normBox(s?.box) }))
@@ -342,7 +363,7 @@ async function detectStacks(apiKey: string, b64: string, list: string): Promise<
  * stack per sample — the big cost + latency saver. Returns one StackRead|null per crop,
  * in the SAME order as `cropsB64`.
  */
-async function readAllStacks(apiKey: string, cropsB64: string[], values: number[], temperature: number): Promise<(StackRead | null)[]> {
+async function readAllStacks(apiKey: string, cropsB64: string[], values: number[], temperature: number, signal?: AbortSignal): Promise<(StackRead | null)[]> {
   const n = cropsB64.length;
   const prompt =
     `You are given ${n} separate close-up images, labelled Image 1..${n}. Each image shows ONE stack of ` +
@@ -361,7 +382,7 @@ async function readAllStacks(apiKey: string, cropsB64: string[], values: number[
     parts.push({ inline_data: { mime_type: 'image/jpeg', data: b64 } });
   });
   const body = JSON.stringify({ contents: [{ parts }], generationConfig: { temperature, responseMimeType: 'application/json' } });
-  const res = await generate(apiKey, body, 'flash');
+  const res = await generate(apiKey, body, 'flash', signal);
   const j = await res.json();
   const text = j?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) return values.map(() => null);
@@ -382,6 +403,7 @@ async function readBoxedStacks(
   items: { value: number; box: [number, number, number, number] }[],
   colorByValue: Map<number, string>,
   apiKey: string,
+  signal?: AbortSignal,
 ): Promise<{ cropCanvases: HTMLCanvasElement[]; dsp: ({ count: number; strength: number } | null)[]; samples: (StackRead | null)[][] }> {
   // Crop from full-res, tighten to the known chip colour to drop clutter, auto-expose so
   // backlit seams show. Both the model image (768px = one Gemini tile) and DSP use this crop.
@@ -396,13 +418,13 @@ async function readBoxedStacks(
   const values = items.map((it) => it.value);
   // ~1 detection + SAMPLES reads total (all stacks per call), not SAMPLES per stack.
   const samples = await mapPool(Array.from({ length: SAMPLES }, (_, i) => i), POOL, () =>
-    readAllStacks(apiKey, crops, values, 0.5).catch(() => items.map(() => null)),
+    readAllStacks(apiKey, crops, values, 0.5, signal).catch(() => items.map(() => null)),
   );
   return { cropCanvases, dsp, samples };
 }
 
 /** Fallback PASS — no boxes found: vote a whole-image count per denomination. */
-async function countWholeVoted(apiKey: string, b64: string, list: string, denoms: VisionDenom[]): Promise<DenomTotal[]> {
+async function countWholeVoted(apiKey: string, b64: string, list: string, denoms: VisionDenom[], signal?: AbortSignal): Promise<DenomTotal[]> {
   const prompt =
     `You are counting poker chips in a photo. Each denomination is one solid colour:\n${list}\n\n` +
     `There are one or more STACKS, each a single colour = one denomination. Count the individual chips ` +
@@ -410,7 +432,7 @@ async function countWholeVoted(apiKey: string, b64: string, list: string, denoms
     `is the top chip, counted once. Sum stacks that share a colour. Ignore non-chips. ` +
     `Respond with ONLY JSON: {"stacks":[{"value":<denom>,"count":<chips>}]}.`;
   const runs = await mapPool(Array.from({ length: SAMPLES }, (_, i) => i), POOL, async () => {
-    const p = await askJson(apiKey, prompt, b64, 0.5, 'flash').catch(() => null);
+    const p = await askJson(apiKey, prompt, b64, 0.5, 'flash', signal).catch(() => null);
     const arr: any[] = Array.isArray(p) ? p : p?.stacks ?? [];
     const m = new Map<number, number>();
     for (const s of arr) {
@@ -458,22 +480,27 @@ export async function countChipsWithVision(
   canvas: HTMLCanvasElement,
   denoms: VisionDenom[],
   apiKey: string,
+  signal?: AbortSignal,
+  onStage?: (s: CountStage) => void,
 ): Promise<CountResult> {
   const list = denoms.map((d) => `${d.value} = ${colorName(d.color)} (${d.color})`).join('; ');
   const fullB64 = toJpegBase64(canvas, 1024); // detection only needs rough boxes — keep it cheap
 
-  const boxes = await detectStacks(apiKey, fullB64, list).catch(() => [] as StackBox[]);
+  onStage?.({ phase: 'detecting' });
+  const boxes = await detectStacks(apiKey, fullB64, list, signal).catch(() => [] as StackBox[]);
   const valid = boxes.filter((b) => denoms.some((d) => d.value === b.value));
 
   let totals: DenomTotal[];
   let stacks: StackResult[] = [];
   if (!valid.length) {
     // Detection failed — degrade gracefully to a voted whole-image count.
-    totals = await countWholeVoted(apiKey, fullB64, list, denoms);
+    onStage?.({ phase: 'fallback' });
+    totals = await countWholeVoted(apiKey, fullB64, list, denoms, signal);
   } else {
     // Crop + clean each stack on-device and vote via SAMPLES batched reads (shared helper).
     const colorByValue = new Map(denoms.map((d) => [d.value, d.color]));
-    const { cropCanvases, dsp, samples } = await readBoxedStacks(canvas, valid, colorByValue, apiKey);
+    onStage?.({ phase: 'reading', stacks: valid.length });
+    const { cropCanvases, dsp, samples } = await readBoxedStacks(canvas, valid, colorByValue, apiKey, signal);
 
     const votes: number[][] = valid.map(() => []);
     const ratios: number[][] = valid.map(() => []);
@@ -534,6 +561,8 @@ export async function recountStacks(
   denoms: VisionDenom[],
   apiKey: string,
   prior: CountResult,
+  signal?: AbortSignal,
+  onStage?: (s: CountStage) => void,
 ): Promise<CountResult> {
   const flaggedIds = new Set(flaggedStackIds(prior.stacks));
   const flagged = prior.stacks.filter((s) => flaggedIds.has(s.id));
@@ -541,7 +570,8 @@ export async function recountStacks(
 
   const list = denoms.map((d) => `${d.value} = ${colorName(d.color)} (${d.color})`).join('; ');
   const fullB64 = toJpegBase64(canvas, 1024);
-  const fresh = await detectStacks(apiKey, fullB64, list).catch(() => [] as StackBox[]);
+  onStage?.({ phase: 'detecting' });
+  const fresh = await detectStacks(apiKey, fullB64, list, signal).catch(() => [] as StackBox[]);
   const match = matchStacks(
     flagged.map((s) => ({ id: s.id, value: s.value, box: s.box })),
     fresh.map((f) => ({ value: f.value, box: f.box })),
@@ -551,11 +581,13 @@ export async function recountStacks(
   const colorByValue = new Map(denoms.map((d) => [d.value, d.color]));
   const targets = flagged.filter((s) => match.has(s.id));
   if (!targets.length) return prior; // second angle found nothing to improve
+  onStage?.({ phase: 'reading', stacks: targets.length });
   const { dsp: dsp2, samples } = await readBoxedStacks(
     canvas,
     targets.map((s) => ({ value: s.value, box: match.get(s.id)! })),
     colorByValue,
     apiKey,
+    signal,
   );
 
   // Pool angle-2 votes/ratios with the prior per target, recompute k, re-fuse.

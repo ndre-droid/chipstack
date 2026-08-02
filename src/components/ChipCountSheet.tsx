@@ -3,22 +3,20 @@ import { useStore } from '../store.tsx';
 import { useT } from '../lib/i18n.ts';
 import { useCameraCapture } from '../lib/useCameraCapture.ts';
 import { useDeviceTilt, TILT_MIN_DEG, TILT_MAX_DEG } from '../lib/useDeviceTilt.ts';
-import { countChipsWithVision, recountStacks } from '../lib/chipVision/visionCount.ts';
+import { countChipsWithVision, recountStacks, type CountStage } from '../lib/chipVision/visionCount.ts';
 import { flaggedStackIds } from '../lib/chipVision/fuse.ts';
 import type { CountResult } from '../lib/chipVision/types.ts';
 import { ChipCountReview } from './ChipCountReview.tsx';
 
 export interface ChipCountSheetProps { playerId: string; playerName: string; onClose: () => void }
 
-type Phase = 'framing' | 'analyzing' | 'secondAngle' | 'framing2' | 'analyzing2' | 'review';
+type Phase = 'framing' | 'analyzing' | 'secondAngle' | 'framing2' | 'analyzing2' | 'review' | 'error';
 
 // Steeper band for the second-angle shot — a few more degrees separates merged chips.
 const BAND_1 = { min: TILT_MIN_DEG, max: TILT_MAX_DEG };
 const BAND_2 = { min: 30, max: 45 };
 
-function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
-  return Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(msg)), ms))]);
-}
+const ANALYZE_TIMEOUT = 60000; // hard cap on one analysis; abort() also stops the network calls
 
 export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
   const t = useT();
@@ -30,17 +28,25 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
   const [shot, setShot] = useState<HTMLCanvasElement | null>(null);
   const [captured, setCaptured] = useState<HTMLCanvasElement | null>(null); // frozen frame shown while analyzing / on error
   const [analyzeErr, setAnalyzeErr] = useState<string | null>(null);
+  const [errDetail, setErrDetail] = useState<string | null>(null); // stage · elapsed · raw error (diagnostics)
+  const [stage, setStage] = useState('');                          // live stage label under the spinner
   const [flash, setFlash] = useState(false);
   const [holding, setHolding] = useState(false); // true while the auto-capture hold-timer is counting
   const frozenRef = useRef<HTMLCanvasElement | null>(null);
   const holdRef = useRef<number | null>(null);
   const busyRef = useRef(false); // guards onCapture against re-entrant calls (auto-capture tick vs manual shutter)
   const priorRef = useRef<CountResult | null>(null); // shot-1 result, carried into the shot-2 recount
+  const analyzeCtrl = useRef<AbortController | null>(null); // aborts the in-flight vision call
+  const cancelledRef = useRef(false);                       // true = user cancelled (silent, no error)
+  const passRef = useRef<1 | 2>(1);                         // which pass is analyzing (for retake after an error)
 
   const analyzing = phase === 'analyzing' || phase === 'analyzing2';
 
   // Request tilt permission + arm auto-torch once the sheet mounts.
   useEffect(() => { tilt.request(); cam.setAutoTorch(true); }, []);
+
+  // Abort any in-flight analysis if the sheet unmounts (stops the network + billing).
+  useEffect(() => () => { analyzeCtrl.current?.abort(); }, []);
 
   // Paint the frozen frame while analyzing / on error, so the user sees exactly
   // what was shot (calorie-app style) instead of a black screen.
@@ -77,17 +83,46 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
 
       const denoms = state.denominations.filter((d) => d.enabled).map((d) => ({ value: d.value, color: d.color }));
       const secondPass = phase === 'framing2';
+      passRef.current = secondPass ? 2 : 1;
       setPhase(secondPass ? 'analyzing2' : 'analyzing');
       setAnalyzeErr(null);
+      setErrDetail(null);
+      setStage(t('chipcount.stage.detecting'));
+      cancelledRef.current = false;
+      const ctrl = new AbortController();
+      analyzeCtrl.current = ctrl;
+      const to = window.setTimeout(() => ctrl.abort(), ANALYZE_TIMEOUT); // hard cap → aborts the fetches
+
+      // Diagnostics: remember the last stage reached + elapsed, so a failure says WHERE it died.
+      const t0 = performance.now();
+      let lastStage = 'detecting';
+      const elapsed = () => ((performance.now() - t0) / 1000).toFixed(1) + 's';
+      const onStage = (s: CountStage) => {
+        lastStage = s.phase === 'reading' ? `reading ${s.stacks}` : s.phase;
+        setStage(
+          s.phase === 'detecting' ? t('chipcount.stage.detecting')
+          : s.phase === 'fallback' ? t('chipcount.stage.fallback')
+          : t('chipcount.stage.reading').replace('{n}', String(s.stacks ?? '')),
+        );
+      };
       try {
         const res = secondPass && priorRef.current
-          ? await withTimeout(recountStacks(frames[0], denoms, state.settings.aiVisionKey, priorRef.current), 60000, t('chipcount.timedOut'))
-          : await withTimeout(countChipsWithVision(frames[0], denoms, state.settings.aiVisionKey), 60000, t('chipcount.timedOut'));
+          ? await recountStacks(frames[0], denoms, state.settings.aiVisionKey, priorRef.current, ctrl.signal, onStage)
+          : await countChipsWithVision(frames[0], denoms, state.settings.aiVisionKey, ctrl.signal, onStage);
+        if (cancelledRef.current) return;                              // user cancelled — stay silent
+        if (ctrl.signal.aborted) {                                     // hit the hard cap
+          setAnalyzeErr(t('chipcount.timedOut'));
+          setErrDetail(`${lastStage} · ${elapsed()} · timeout`);
+          setPhase('error');
+          return;
+        }
         if (res.totals.length === 0) {
           // Nothing counted — show the most useful reason (bad surface/light, etc.)
           // rather than an empty breakdown.
           const blocking = res.anomalies.find((x) => x.severity === 'blocking');
           setAnalyzeErr(blocking ? t('chipcount.anom.' + blocking.code) : t('chipcount.noChips'));
+          setErrDetail(`${lastStage} · ${elapsed()} · 0 stacks`);
+          setPhase('error');
           return;
         }
         priorRef.current = res;
@@ -97,11 +132,30 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
         if (!secondPass && flagged.length > 0 && res.stacks.length > 0) setPhase('secondAngle');
         else setPhase('review');
       } catch (e: any) {
-        setAnalyzeErr(e?.message || t('chipcount.analyzeFailed'));
+        if (cancelledRef.current) return;                              // user cancelled — stay silent
+        const timedOut = ctrl.signal.aborted;
+        setAnalyzeErr(timedOut ? t('chipcount.timedOut') : (e?.message || t('chipcount.analyzeFailed')));
+        setErrDetail(`${lastStage} · ${elapsed()} · ${timedOut ? 'timeout' : (e?.message || e?.name || 'error')}`);
+        setPhase('error');
+      } finally {
+        window.clearTimeout(to);
+        analyzeCtrl.current = null;
+        setStage('');
       }
     } finally {
       busyRef.current = false;
     }
+  };
+
+  // Cancel a running analysis: abort the network call and return to the live camera.
+  const cancelAnalyze = () => {
+    cancelledRef.current = true;
+    analyzeCtrl.current?.abort();
+    setAnalyzeErr(null);
+    setErrDetail(null);
+    setCaptured(null);
+    setPhase(passRef.current === 2 ? 'framing2' : 'framing');
+    cam.retry();
   };
 
   // Auto-capture: while framing and the camera is ready, poll every 120ms; once
@@ -129,17 +183,20 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
   // review screen, discard everything (including the shot-1 prior) and start over.
   const retake = () => {
     setAnalyzeErr(null);
+    setErrDetail(null);
     setCaptured(null);
     if (phase === 'review') {
       priorRef.current = null;
       setResult(null);
       setShot(null);
     }
-    setPhase(phase === 'analyzing2' || phase === 'framing2' ? 'framing2' : 'framing');
+    // 'error' has no pass info of its own — use the pass that was analyzing.
+    const secondPass = phase === 'analyzing2' || phase === 'framing2' || (phase === 'error' && passRef.current === 2);
+    setPhase(secondPass ? 'framing2' : 'framing');
     cam.retry(); // re-acquire the camera stopped at capture time
   };
 
-  const close = () => { cam.stop(); onClose(); };
+  const close = () => { cancelledRef.current = true; analyzeCtrl.current?.abort(); cam.stop(); onClose(); };
 
   if (phase === 'review' && result && shot) {
     return (
@@ -209,6 +266,10 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
           <div className="cc-overlay">
             <div className="cc-spinner" />
             <div className="cc-overlay-t">{t('chipcount.analyzing')}</div>
+            {stage && <div className="cc-overlay-sub">{stage}</div>}
+            <div className="cc-overlay-btns">
+              <button className="btn btn-ghost" onClick={cancelAnalyze}>{t('chipcount.cancel')}</button>
+            </div>
           </div>
         )}
 
@@ -216,6 +277,7 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
           <div className="cc-overlay">
             <div className="cc-overlay-ic">!</div>
             <div className="cc-overlay-t">{analyzeErr}</div>
+            {errDetail && <div className="cc-overlay-sub">{errDetail}</div>}
             <div className="cc-overlay-btns">
               <button className="btn btn-primary" onClick={retake}>↺ {t('chipcount.retake')}</button>
               <button className="btn btn-ghost" onClick={close}>{t('chipcount.close')}</button>
