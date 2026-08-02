@@ -154,7 +154,7 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
   useEffect(() => {
     if (phase !== 'framing' || !cam.ready) { holdRef.current = null; setHolding(false); return; }
     const id = window.setInterval(() => {
-      const ok = tilt.inRange && tilt.steady && cam.frameHasContent();
+      const ok = tilt.inRange && tilt.steady && cam.frameHasContent() && cam.brightnessOk && !cam.backlit;
       if (ok) {
         if (holdRef.current == null) holdRef.current = Date.now();
         setHolding(true);
@@ -165,7 +165,7 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
       }
     }, 120);
     return () => { window.clearInterval(id); holdRef.current = null; setHolding(false); };
-  }, [phase, cam.ready, tilt.inRange, tilt.steady]);
+  }, [phase, cam.ready, tilt.inRange, tilt.steady, cam.brightnessOk, cam.backlit]);
 
   // Retake: from an error overlay, retry the shot; from the review screen, discard the
   // result and start over.
@@ -194,11 +194,14 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
     );
   }
 
+  // Exposure gates the shot before the angle even matters: a dark or backlit frame is what
+  // makes the model miscount hardest, so surface it first.
+  const exposureHint = !cam.brightnessOk ? t('chipcount.tooDark') : cam.backlit ? t('chipcount.backlit') : null;
   const tiltHint = tilt.pitchDeg == null ? t('chipcount.guide')
     : tilt.pitchDeg > TILT_MAX_DEG ? t('chipcount.tiltHigh')
     : tilt.pitchDeg < TILT_MIN_DEG ? t('chipcount.tiltLow')
     : t('chipcount.tiltOk');
-  const hint = holding ? t('chipcount.autoHold') : tiltHint;
+  const hint = holding ? t('chipcount.autoHold') : (exposureHint ?? tiltHint);
 
   // Bubble dot position: map pitch (0..50°) to 10%..90% of the track.
   const dotTop = tilt.pitchDeg == null ? 50

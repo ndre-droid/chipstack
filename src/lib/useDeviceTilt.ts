@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 
-export const TILT_MIN_DEG = 15;   // downward look, lower bound
-export const TILT_MAX_DEG = 35;   // upper bound (sweet spot ≈ 20–30°)
+export const TILT_MIN_DEG = 22;   // downward look, lower bound — below this the shot is too
+                                  // flat/across-the-table: stacks foreshorten and occlude each
+                                  // other, and the model badly miscounts. Reject it.
+export const TILT_MAX_DEG = 36;   // upper bound (sweet spot ≈ 26–32°); too steep loses the seams
 
 /**
  * Reads DeviceOrientation and reports the phone's downward pitch while framing.

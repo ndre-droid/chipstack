@@ -10,6 +10,7 @@ export function useCameraCapture() {
   const [torchOn, setTorchOn] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [brightnessOk, setBrightnessOk] = useState(true);
+  const [backlit, setBacklit] = useState(false);
 
   // Acquire (or re-acquire) the rear camera. Safe to call again as a retry —
   // e.g. after the Android runtime-permission prompt, which on the APK only
@@ -72,10 +73,19 @@ export function useCameraCapture() {
       const c = document.createElement('canvas'); c.width = 32; c.height = 18;
       const ctx = c.getContext('2d')!; ctx.drawImage(v, 0, 0, 32, 18);
       const d = ctx.getImageData(0, 0, 32, 18).data;
-      let sum = 0; for (let i = 0; i < d.length; i += 4) sum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-      const luma = sum / (32 * 18);
+      const n = 32 * 18;
+      let sum = 0, clipped = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        const y = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        sum += y;
+        if (y >= 250) clipped++; // fully blown highlight = a light source (window/sky) in frame
+      }
+      const luma = sum / n;
       const dark = luma < 70;
       setBrightnessOk(!dark);
+      // Backlight: a real clipped source in frame underexposes the chips. A merely bright white
+      // table sits well below 250, so this doesn't false-fire on a well-lit surface.
+      setBacklit(clipped / n > 0.12);
       if (autoTorch.current && torchAvailable && dark && !torchOn) applyTorch(true);
     }, 500);
     return () => clearInterval(id);
@@ -94,5 +104,5 @@ export function useCameraCapture() {
   }, []);
 
   const stop = useCallback(() => { streamRef.current?.getTracks().forEach((tk) => tk.stop()); }, []);
-  return { videoRef, ready, error, retry, torchOn, torchAvailable, toggleTorch, setAutoTorch, brightnessOk, captureBurst, frameHasContent, stop };
+  return { videoRef, ready, error, retry, torchOn, torchAvailable, toggleTorch, setAutoTorch, brightnessOk, backlit, captureBurst, frameHasContent, stop };
 }

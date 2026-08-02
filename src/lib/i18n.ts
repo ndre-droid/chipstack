@@ -303,6 +303,8 @@ const dict: Record<Lang, Record<string, string>> = {
     'chipcount.tiltHigh': 'View more from the side — lower your angle',
     'chipcount.tiltLow': 'Look down onto the chip tops a bit more',
     'chipcount.tiltOk': 'Angle looks good — hold steady',
+    'chipcount.tooDark': 'Too dark — add light or tap the torch',
+    'chipcount.backlit': 'Too much backlight — turn away from the window',
     'chipcount.torch': 'Light',
     'chipcount.capture': 'Capture',
     'chipcount.analyzing': 'Reading chips…',
@@ -360,7 +362,7 @@ const dict: Record<Lang, Record<string, string>> = {
     'chipcount.secondAngleBody': 'A couple of stacks were unclear. Tilt the phone about 15° more and hold to separate the chips.',
     'chipcount.secondAngleSkip': 'Skip — I\'ll fix it by hand',
     'chipcount.tiltMore': 'Tilt a bit more…',
-    'chipcount.barrelsTip': 'Tip: rough stacks of ~10 read cleanest.',
+    'chipcount.barrelsTip': 'Stacks upright & separated · avoid window backlight · stand a lone chip in a stack.',
   },
   de: {
     'nav.plan': 'Plan',
@@ -656,6 +658,8 @@ const dict: Record<Lang, Record<string, string>> = {
     'chipcount.tiltHigh': 'Flacher schauen — Winkel senken',
     'chipcount.tiltLow': 'Etwas mehr von oben auf die Chips schauen',
     'chipcount.tiltOk': 'Winkel passt — ruhig halten',
+    'chipcount.tooDark': 'Zu dunkel — mehr Licht oder Blitz antippen',
+    'chipcount.backlit': 'Zu viel Gegenlicht — vom Fenster wegdrehen',
     'chipcount.torch': 'Licht',
     'chipcount.capture': 'Aufnehmen',
     'chipcount.analyzing': 'Chips werden gelesen…',
@@ -713,7 +717,7 @@ const dict: Record<Lang, Record<string, string>> = {
     'chipcount.secondAngleBody': 'Ein paar Stapel waren unklar. Kipp das Handy ca. 15° mehr und halt still, um die Chips zu trennen.',
     'chipcount.secondAngleSkip': 'Überspringen — von Hand korrigieren',
     'chipcount.tiltMore': 'Etwas mehr kippen…',
-    'chipcount.barrelsTip': 'Tipp: grobe Stapel von ~10 Chips lesen sich am besten.',
+    'chipcount.barrelsTip': 'Stapel gerade & getrennt · Gegenlicht meiden · einzelnen Chip in einen Stapel stellen.',
   },
 };
 
