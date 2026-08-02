@@ -43,12 +43,13 @@ const fresh = matchStacks(
 );
 eq('matchStacks by denom+position', fresh.get('s1'), [0.12, 0.12, 0.22, 0.52]);
 
-// parseRead: count + geometry ratio + extent + seams
-eq('parseRead full', parseRead({ count: 5, stackHeight: 0.4, chipDiameter: 0.2, extent: [0.1, 0.5], seams: [0.2, 0.3] }),
-  { count: 5, r: 2, extent: [0.1, 0.5], seams: [0.2, 0.3] });
-eq('parseRead no geometry', parseRead({ count: 3 }), { count: 3, r: null, extent: null, seams: null });
+// parseRead: count + geometry ratio + extent
+eq('parseRead full', parseRead({ count: 5, stackHeight: 0.4, chipDiameter: 0.2, extent: [0.1, 0.5] }),
+  { count: 5, r: 2, extent: [0.1, 0.5] });
+eq('parseRead no geometry', parseRead({ count: 3 }), { count: 3, r: null, extent: null });
 eq('parseRead bad count', parseRead({ count: -1 }), null);
-eq('parseRead clamps insane ratio', parseRead({ count: 2, stackHeight: 5, chipDiameter: 0.01 }).r, null);
+// diameter clears the d>0.01 floor, so the ratio IS computed (10) and then rejected by the 0.03..4 clamp.
+eq('parseRead clamps insane ratio', parseRead({ count: 2, stackHeight: 5, chipDiameter: 0.5 }).r, null);
 
 console.log(failures ? `\n${failures} FAILED` : '\nALL PASS');
 if (failures) process.exit(1);

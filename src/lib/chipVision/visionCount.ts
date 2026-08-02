@@ -1,5 +1,5 @@
 import type { CountResult, DenomTotal, StackResult } from './types.ts';
-import { tally, median, fuseStack, parseRead, mergeAngles, matchStacks, flaggedStackIds, type SeamVote, type StackRead } from './fuse.ts';
+import { tally, median, fuseStack, parseRead, mergeAngles, matchStacks, flaggedStackIds, FLAG_THRESHOLD, type SeamVote, type StackRead } from './fuse.ts';
 
 interface VisionDenom { value: number; color: string }
 type StackBox = { value: number; box: [number, number, number, number] };
@@ -352,9 +352,9 @@ async function readAllStacks(apiKey: string, cropsB64: string[], values: number[
     `count it once, never as an extra layer. Count the seams slowly, then recount to confirm.\n` +
     `2) MEASURE, as fractions (0..1) of THAT image: "stackHeight" (bottom edge of the lowest chip ` +
     `to the top edge of the highest), "chipDiameter" (width of a single chip), and "extent":[yTop,yBottom] ` +
-    `= the top and bottom y of the stack in the image. Optionally include "seams":[y,...] = the y of each seam.\n` +
+    `= the top and bottom y of the stack in the image.\n` +
     `Respond with ONLY a JSON array with EXACTLY ${n} entries, in image order: ` +
-    `[{"count":<int>,"stackHeight":<0..1>,"chipDiameter":<0..1>,"extent":[<0..1>,<0..1>],"seams":[<0..1>,...]}, ...].`;
+    `[{"count":<int>,"stackHeight":<0..1>,"chipDiameter":<0..1>,"extent":[<0..1>,<0..1>]}, ...].`;
   const parts: any[] = [{ text: prompt }];
   cropsB64.forEach((b64, k) => {
     parts.push({ text: `Image ${k + 1} (denomination ${values[k]}):` });
@@ -369,6 +369,36 @@ async function readAllStacks(apiKey: string, cropsB64: string[], values: number[
   try { arr = JSON.parse(text); } catch { return values.map(() => null); }
   const list: any[] = Array.isArray(arr) ? arr : arr?.stacks ?? [];
   return values.map((_, k) => parseRead(list[k]));
+}
+
+/**
+ * Crop + on-device clean (tighten-by-colour + auto-expose) each boxed stack, then vote by
+ * repeating one batched multi-image read SAMPLES times. Shared by the first pass and the
+ * second-angle recount so the crop/clean/read orchestration lives in one place. Returns the
+ * cleaned crop canvases (for DSP + the editor), their DSP reads, and the per-sample reads.
+ */
+async function readBoxedStacks(
+  canvas: HTMLCanvasElement,
+  items: { value: number; box: [number, number, number, number] }[],
+  colorByValue: Map<number, string>,
+  apiKey: string,
+): Promise<{ cropCanvases: HTMLCanvasElement[]; dsp: ({ count: number; strength: number } | null)[]; samples: (StackRead | null)[][] }> {
+  // Crop from full-res, tighten to the known chip colour to drop clutter, auto-expose so
+  // backlit seams show. Both the model image (768px = one Gemini tile) and DSP use this crop.
+  const cropCanvases = items.map((it) => {
+    const base = resized(cropCanvas(canvas, it.box, CROP_PAD), 1024);
+    const hex = colorByValue.get(it.value);
+    const tight = hex ? tightenByColor(base, hex) : base;
+    return autoLevels(tight);
+  });
+  const crops = cropCanvases.map((cc) => toJpegBase64(cc, 768));
+  const dsp = cropCanvases.map((cc) => dspCount(cc)); // synchronous on-device, ~ms
+  const values = items.map((it) => it.value);
+  // ~1 detection + SAMPLES reads total (all stacks per call), not SAMPLES per stack.
+  const samples = await mapPool(Array.from({ length: SAMPLES }, (_, i) => i), POOL, () =>
+    readAllStacks(apiKey, crops, values, 0.5).catch(() => items.map(() => null)),
+  );
+  return { cropCanvases, dsp, samples };
 }
 
 /** Fallback PASS — no boxes found: vote a whole-image count per denomination. */
@@ -441,30 +471,10 @@ export async function countChipsWithVision(
     // Detection failed — degrade gracefully to a voted whole-image count.
     totals = await countWholeVoted(apiKey, fullB64, list, denoms);
   } else {
-    // Crop each stack, then clean it up on-device (no network time): tighten to the chip
-    // colour to drop clutter that leaked into the box, then auto-expose so backlit seams
-    // show. Both the model image and the DSP read use the cleaned crop.
+    // Crop + clean each stack on-device and vote via SAMPLES batched reads (shared helper).
     const colorByValue = new Map(denoms.map((d) => [d.value, d.color]));
-    const cropCanvases = valid.map((b) => {
-      const base = resized(cropCanvas(canvas, b.box, CROP_PAD), 1024);
-      const hex = colorByValue.get(b.value);
-      const tight = hex ? tightenByColor(base, hex) : base;
-      return autoLevels(tight);
-    });
-    // Send crops at 768px = a single Gemini image tile (half the tokens of 1024); the stack
-    // fills the frame so seams stay resolvable. DSP still uses the fuller local 1024 copy.
-    const crops = cropCanvases.map((cc) => toJpegBase64(cc, 768));
-    // On-device DSP read per stack — synchronous, ~ms, runs before any network wait.
-    const dsp = cropCanvases.map((cc) => dspCount(cc));
+    const { cropCanvases, dsp, samples } = await readBoxedStacks(canvas, valid, colorByValue, apiKey);
 
-    // Vote by repeating ONE batched multi-image read SAMPLES times (all stacks per call).
-    // This is ~1 detection + SAMPLES reads total, instead of SAMPLES per stack — far cheaper
-    // and far fewer requests (fewer rate-limit 429s / timeouts). Each read gives a seam count
-    // and a height:diameter ratio per stack.
-    const values = valid.map((v) => v.value);
-    const samples = await mapPool(Array.from({ length: SAMPLES }, (_, i) => i), POOL, () =>
-      readAllStacks(apiKey, crops, values, 0.5).catch(() => valid.map(() => null)),
-    );
     const votes: number[][] = valid.map(() => []);
     const ratios: number[][] = valid.map(() => []);
     const extents: [number, number][][] = valid.map(() => []);
@@ -498,7 +508,7 @@ export async function countChipsWithVision(
       const span: [number, number] = exT != null && exB != null && exB > exT ? [exT, exB] : [0.06, 0.94];
       return {
         id: `${b.value}-${i}`, value: b.value, count, confidence,
-        crop: cropCanvases[i], span, flagged: confidence < 0.85,
+        crop: cropCanvases[i], span, flagged: confidence < FLAG_THRESHOLD,
         box: b.box, votes: votes[i], ratios: ratios[i],
       };
     });
@@ -537,21 +547,15 @@ export async function recountStacks(
     fresh.map((f) => ({ value: f.value, box: f.box })),
   );
 
-  // Crop + clean each matched flagged stack from the new frame.
+  // Crop + clean each matched flagged stack from the new frame and re-read (shared helper).
   const colorByValue = new Map(denoms.map((d) => [d.value, d.color]));
   const targets = flagged.filter((s) => match.has(s.id));
   if (!targets.length) return prior; // second angle found nothing to improve
-  const cropCanvases = targets.map((s) => {
-    const base = resized(cropCanvas(canvas, match.get(s.id)!, CROP_PAD), 1024);
-    const hex = colorByValue.get(s.value);
-    const tight = hex ? tightenByColor(base, hex) : base;
-    return autoLevels(tight);
-  });
-  const crops = cropCanvases.map((cc) => toJpegBase64(cc, 768));
-  const dsp2 = cropCanvases.map((cc) => dspCount(cc));
-  const values = targets.map((s) => s.value);
-  const samples = await mapPool(Array.from({ length: SAMPLES }, (_, i) => i), POOL, () =>
-    readAllStacks(apiKey, crops, values, 0.5).catch(() => targets.map(() => null)),
+  const { dsp: dsp2, samples } = await readBoxedStacks(
+    canvas,
+    targets.map((s) => ({ value: s.value, box: match.get(s.id)! })),
+    colorByValue,
+    apiKey,
   );
 
   // Pool angle-2 votes/ratios with the prior per target, recompute k, re-fuse.
@@ -577,8 +581,8 @@ export async function recountStacks(
   const updated = new Map<string, StackResult>();
   targets.forEach((s, i) => {
     const geo = mergedR[i] != null ? Math.max(1, Math.round(mergedR[i]! / kStar)) : null;
-    const { count, confidence } = fuseStack({ seam: mergedSeam[i], geo, dsp: dsp2[i] ?? null });
-    updated.set(s.id, { ...s, count, confidence, flagged: confidence < 0.85, votes: merged[i].votes, ratios: merged[i].ratios });
+    const { count, confidence } = fuseStack({ seam: mergedSeam[i], geo, dsp: dsp2[i] });
+    updated.set(s.id, { ...s, count, confidence, flagged: confidence < FLAG_THRESHOLD, votes: merged[i].votes, ratios: merged[i].ratios });
   });
 
   const stacks = prior.stacks.map((s) => updated.get(s.id) ?? s);

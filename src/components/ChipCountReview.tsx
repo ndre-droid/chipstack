@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useStore } from '../store.tsx';
 import { useT, useFmt } from '../lib/i18n.ts';
 import { ChipSeamEditor } from './ChipSeamEditor.tsx';
+import { FLAG_THRESHOLD } from '../lib/chipVision/fuse.ts';
 import type { CountResult, StackResult } from '../lib/chipVision/types.ts';
 import type { Denomination } from '../types.ts';
 
@@ -78,11 +79,14 @@ export function ChipCountReview({ playerId, shot, result, denoms, onRetake, onCl
 
   const step = (value: number, delta: number) => {
     if (hasStacks) {
+      // A manual +/- is the user confirming that stack — clear its flag so the row stops
+      // reading as uncertain (prefer the flagged stack of this denom if there is one).
       setStacks((ss) => {
-        const idx = ss.findIndex((s) => s.value === value);
-        if (idx < 0) return ss;
+        const idx = ss.findIndex((s) => s.value === value && s.flagged);
+        const at = idx >= 0 ? idx : ss.findIndex((s) => s.value === value);
+        if (at < 0) return ss;
         const copy = [...ss];
-        copy[idx] = { ...copy[idx], count: Math.max(0, copy[idx].count + delta) };
+        copy[at] = { ...copy[at], count: Math.max(0, copy[at].count + delta), confidence: 1, flagged: false };
         return copy;
       });
       return;
@@ -116,7 +120,7 @@ export function ChipCountReview({ playerId, shot, result, denoms, onRetake, onCl
         )}
 
         {derivedRows.map((r) => {
-          const uncertain = r.confidence < 0.85;
+          const uncertain = r.confidence < FLAG_THRESHOLD;
           return (
             <div key={r.value} className={`cc-row${uncertain ? ' low' : ''}`}>
               <span className="cc-swatch" style={{ background: colorOf.get(r.value) ?? '#888' }} />

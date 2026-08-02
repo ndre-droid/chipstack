@@ -1,3 +1,6 @@
+/** A stack is "flagged" (shown as ⚠ needs-a-look) when its cross-channel confidence is below this. */
+export const FLAG_THRESHOLD = 0.85;
+
 export interface SeamVote { count: number; agreement: number }
 
 /** Majority vote over a list of counts. Ties break toward the smaller count. */
@@ -65,8 +68,8 @@ export function mergeAngles(
   return { votes: [...a.votes, ...b.votes], ratios: [...a.ratios, ...b.ratios] };
 }
 
-/** Ids of stacks whose confidence is below the flag threshold (default 0.85). */
-export function flaggedStackIds(stacks: { id: string; confidence: number }[], threshold = 0.85): string[] {
+/** Ids of stacks whose confidence is below the flag threshold. */
+export function flaggedStackIds(stacks: { id: string; confidence: number }[], threshold = FLAG_THRESHOLD): string[] {
   return stacks.filter((s) => s.confidence < threshold).map((s) => s.id);
 }
 
@@ -99,7 +102,6 @@ export interface StackRead {
   count: number;
   r: number | null;                    // height:diameter ratio, or null
   extent: [number, number] | null;     // [yTop, yBottom] 0..1 in the crop, or null
-  seams: number[] | null;              // optional model seam positions 0..1, or null
 }
 
 /** Parse one model stack object into a StackRead (or null when unusable). */
@@ -112,7 +114,5 @@ export function parseRead(obj: any): StackRead | null {
   const ex = Array.isArray(obj?.extent) && obj.extent.length >= 2
     ? [Number(obj.extent[0]), Number(obj.extent[1])] : null;
   const extent = ex && ex.every(Number.isFinite) && ex[1] > ex[0] ? [ex[0], ex[1]] as [number, number] : null;
-  const seams = Array.isArray(obj?.seams)
-    ? obj.seams.map(Number).filter((v: number) => Number.isFinite(v) && v >= 0 && v <= 1) : null;
-  return { count: n, r, extent, seams: seams && seams.length ? seams : null };
+  return { count: n, r, extent };
 }
