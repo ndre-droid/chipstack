@@ -32,7 +32,6 @@ export interface StackFuseInput {
  * Fuse the seam-vote, geometry, and DSP channels for one stack into a count +
  * a cross-channel confidence. DSP is CONFIRM-ONLY: it must have strong periodicity
  * (strength >= 0.45) and land exactly on a candidate, else it abstains.
- * (Verbatim port of the previous inline fusion in visionCount.ts.)
  */
 export function fuseStack(inp: StackFuseInput): { count: number; confidence: number } {
   const { seam, geo, dsp } = inp;
@@ -47,7 +46,11 @@ export function fuseStack(inp: StackFuseInput): { count: number; confidence: num
   if (!nSeam) return { count: nGeo, confidence: 0.55 };
 
   if (nSeam === nGeo) {
-    const conf = dspBacks(nSeam) ? 0.95 : nSeam <= 4 ? 0.9 : 0.8;
+    // Two independent channels landing on the SAME count is strong evidence: clear the flag
+    // regardless of stack height. A tall stack both channels agree on is not "uncertain" — and
+    // the old height penalty (0.8) sat below FLAG_THRESHOLD, so every 5+ stack flagged forever,
+    // and a second angle that re-agreed could never clear it. DSP confirmation nudges a touch higher.
+    const conf = dspBacks(nSeam) ? 0.95 : 0.9;
     return { count: nSeam, confidence: conf };
   }
   if (Math.abs(nSeam - nGeo) === 1 && a >= 0.8) {

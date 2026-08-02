@@ -16,7 +16,7 @@ eq('median empty', median([]), null);
 
 // fuseStack parity with the current inline rules
 eq('agree short -> 0.9', fuseStack({ seam: { count: 3, agreement: 1 }, geo: 3, dsp: null }), { count: 3, confidence: 0.9 });
-eq('agree tall no dsp -> 0.8', fuseStack({ seam: { count: 9, agreement: 1 }, geo: 9, dsp: null }), { count: 9, confidence: 0.8 });
+eq('agree tall no dsp -> 0.9', fuseStack({ seam: { count: 9, agreement: 1 }, geo: 9, dsp: null }), { count: 9, confidence: 0.9 });
 eq('agree tall dsp-backed -> 0.95', fuseStack({ seam: { count: 9, agreement: 1 }, geo: 9, dsp: { count: 9, strength: 0.5 } }), { count: 9, confidence: 0.95 });
 eq('off-by-one confident -> seam 0.6', fuseStack({ seam: { count: 5, agreement: 0.9 }, geo: 6, dsp: null }), { count: 5, confidence: 0.6 });
 eq('off-by-one dsp picks geo -> 0.6', fuseStack({ seam: { count: 5, agreement: 0.9 }, geo: 6, dsp: { count: 6, strength: 0.5 } }), { count: 6, confidence: 0.6 });
