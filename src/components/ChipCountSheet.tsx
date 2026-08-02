@@ -106,9 +106,11 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
           setPhase('error');
           return;
         }
-        if (res.totals.length === 0) {
-          // Nothing counted — show the most useful reason (bad surface/light, etc.)
-          // rather than an empty breakdown.
+        if (res.totals.length === 0 && res.stacks.length === 0) {
+          // Detection found NOTHING at all — show the most useful reason (bad surface/light).
+          // If stacks WERE detected but read as 0 (crooked/dark/flat), we fall through to the
+          // review instead: every row is flagged there so the user can correct or reshoot,
+          // rather than hitting a dead-end "no chips" screen.
           const blocking = res.anomalies.find((x) => x.severity === 'blocking');
           setAnalyzeErr(blocking ? t('chipcount.anom.' + blocking.code) : t('chipcount.noChips'));
           setErrDetail(`${lastStage} · ${elapsed()} · 0 stacks`);

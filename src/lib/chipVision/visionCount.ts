@@ -449,9 +449,13 @@ export async function countChipsWithVision(
       const seam = votes[i].length ? tally(votes[i]) : { count: 0, agreement: 0 };
       const exT = median(extents[i].map((e) => e[0])), exB = median(extents[i].map((e) => e[1]));
       const span: [number, number] = exT != null && exB != null && exB > exT ? [exT, exB] : [0.06, 0.94];
+      // A DETECTED stack that reads 0 is a failed read (flat top-only chip, dark/backlit, merged
+      // seams) — NOT "zero chips". Never report it as a confident zero: force the flag so it shows
+      // ⚠ and can't be silently saved as 0.
+      const confidence = seam.count > 0 ? seam.agreement : 0;
       return {
-        id: `${b.value}-${i}`, value: b.value, count: seam.count, confidence: seam.agreement,
-        crop: cropCanvases[i], span, flagged: seam.agreement < FLAG_THRESHOLD,
+        id: `${b.value}-${i}`, value: b.value, count: seam.count, confidence,
+        crop: cropCanvases[i], span, flagged: seam.count === 0 || confidence < FLAG_THRESHOLD,
       };
     });
 
