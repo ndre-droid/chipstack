@@ -3,18 +3,15 @@ import { useStore } from '../store.tsx';
 import { useT } from '../lib/i18n.ts';
 import { useCameraCapture } from '../lib/useCameraCapture.ts';
 import { useDeviceTilt, TILT_MIN_DEG, TILT_MAX_DEG } from '../lib/useDeviceTilt.ts';
-import { countChipsWithVision, recountStacks, type CountStage } from '../lib/chipVision/visionCount.ts';
-import { flaggedStackIds } from '../lib/chipVision/fuse.ts';
+import { countChipsWithVision, type CountStage } from '../lib/chipVision/visionCount.ts';
 import type { CountResult } from '../lib/chipVision/types.ts';
 import { ChipCountReview } from './ChipCountReview.tsx';
 
 export interface ChipCountSheetProps { playerId: string; playerName: string; onClose: () => void }
 
-type Phase = 'framing' | 'analyzing' | 'secondAngle' | 'framing2' | 'analyzing2' | 'review' | 'error';
+type Phase = 'framing' | 'analyzing' | 'review' | 'error';
 
-// Steeper band for the second-angle shot — a few more degrees separates merged chips.
-const BAND_1 = { min: TILT_MIN_DEG, max: TILT_MAX_DEG };
-const BAND_2 = { min: 30, max: 45 };
+const TILT_BAND = { min: TILT_MIN_DEG, max: TILT_MAX_DEG };
 
 const ANALYZE_TIMEOUT = 60000; // hard cap on one analysis; abort() also stops the network calls
 
@@ -23,7 +20,7 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
   const { state } = useStore();
   const [phase, setPhase] = useState<Phase>('framing');
   const cam = useCameraCapture();
-  const tilt = useDeviceTilt(phase === 'framing2' ? BAND_2 : BAND_1);
+  const tilt = useDeviceTilt(TILT_BAND);
   const [result, setResult] = useState<CountResult | null>(null);
   const [shot, setShot] = useState<HTMLCanvasElement | null>(null);
   const [captured, setCaptured] = useState<HTMLCanvasElement | null>(null); // frozen frame shown while analyzing / on error
@@ -35,12 +32,10 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
   const frozenRef = useRef<HTMLCanvasElement | null>(null);
   const holdRef = useRef<number | null>(null);
   const busyRef = useRef(false); // guards onCapture against re-entrant calls (auto-capture tick vs manual shutter)
-  const priorRef = useRef<CountResult | null>(null); // shot-1 result, carried into the shot-2 recount
   const analyzeCtrl = useRef<AbortController | null>(null); // aborts the in-flight vision call
   const cancelledRef = useRef(false);                       // true = user cancelled (silent, no error)
-  const passRef = useRef<1 | 2>(1);                         // which pass is analyzing (for retake after an error)
 
-  const analyzing = phase === 'analyzing' || phase === 'analyzing2';
+  const analyzing = phase === 'analyzing';
 
   // Request tilt permission + arm auto-torch once the sheet mounts.
   useEffect(() => { tilt.request(); cam.setAutoTorch(true); }, []);
@@ -59,9 +54,8 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
     }
   }, [captured]);
 
-  // Shot 1 (framing) -> countChipsWithVision; flagged stacks route to the second-angle
-  // prompt, else straight to review. Shot 2 (framing2) -> recountStacks merges into the
-  // prior result, then always goes to review (flags that survive open the seam editor there).
+  // Capture -> countChipsWithVision -> review. Flagged stacks are a soft hint in the review
+  // editor where the user confirms/corrects; there is no forced second shot.
   const onCapture = async () => {
     if (!cam.ready || busyRef.current) return;
     busyRef.current = true;
@@ -82,9 +76,7 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
       }
 
       const denoms = state.denominations.filter((d) => d.enabled).map((d) => ({ value: d.value, color: d.color }));
-      const secondPass = phase === 'framing2';
-      passRef.current = secondPass ? 2 : 1;
-      setPhase(secondPass ? 'analyzing2' : 'analyzing');
+      setPhase('analyzing');
       setAnalyzeErr(null);
       setErrDetail(null);
       setStage(t('chipcount.stage.detecting'));
@@ -106,9 +98,7 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
         );
       };
       try {
-        const res = secondPass && priorRef.current
-          ? await recountStacks(frames[0], denoms, state.settings.aiVisionKey, priorRef.current, ctrl.signal, onStage)
-          : await countChipsWithVision(frames[0], denoms, state.settings.aiVisionKey, ctrl.signal, onStage);
+        const res = await countChipsWithVision(frames[0], denoms, state.settings.aiVisionKey, ctrl.signal, onStage);
         if (cancelledRef.current) return;                              // user cancelled — stay silent
         if (ctrl.signal.aborted) {                                     // hit the hard cap
           setAnalyzeErr(t('chipcount.timedOut'));
@@ -125,12 +115,9 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
           setPhase('error');
           return;
         }
-        priorRef.current = res;
         setShot(frames[0]);
         setResult(res);
-        const flagged = flaggedStackIds(res.stacks);
-        if (!secondPass && flagged.length > 0 && res.stacks.length > 0) setPhase('secondAngle');
-        else setPhase('review');
+        setPhase('review');
       } catch (e: any) {
         if (cancelledRef.current) return;                              // user cancelled — stay silent
         const timedOut = ctrl.signal.aborted;
@@ -154,7 +141,7 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
     setAnalyzeErr(null);
     setErrDetail(null);
     setCaptured(null);
-    setPhase(passRef.current === 2 ? 'framing2' : 'framing');
+    setPhase('framing');
     cam.retry();
   };
 
@@ -163,8 +150,7 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
   // the hold clock the instant any condition breaks, and tears the interval down
   // on phase change / camera-not-ready / unmount so it never fires into a stale phase.
   useEffect(() => {
-    const framing = phase === 'framing' || phase === 'framing2';
-    if (!framing || !cam.ready) { holdRef.current = null; setHolding(false); return; }
+    if (phase !== 'framing' || !cam.ready) { holdRef.current = null; setHolding(false); return; }
     const id = window.setInterval(() => {
       const ok = tilt.inRange && tilt.steady && cam.frameHasContent();
       if (ok) {
@@ -179,20 +165,17 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
     return () => { window.clearInterval(id); holdRef.current = null; setHolding(false); };
   }, [phase, cam.ready, tilt.inRange, tilt.steady]);
 
-  // Retake: from an error overlay, retry the SAME shot (framing or framing2); from the
-  // review screen, discard everything (including the shot-1 prior) and start over.
+  // Retake: from an error overlay, retry the shot; from the review screen, discard the
+  // result and start over.
   const retake = () => {
     setAnalyzeErr(null);
     setErrDetail(null);
     setCaptured(null);
     if (phase === 'review') {
-      priorRef.current = null;
       setResult(null);
       setShot(null);
     }
-    // 'error' has no pass info of its own — use the pass that was analyzing.
-    const secondPass = phase === 'analyzing2' || phase === 'framing2' || (phase === 'error' && passRef.current === 2);
-    setPhase(secondPass ? 'framing2' : 'framing');
+    setPhase('framing');
     cam.retry(); // re-acquire the camera stopped at capture time
   };
 
@@ -209,25 +192,10 @@ export function ChipCountSheet({ playerId, onClose }: ChipCountSheetProps) {
     );
   }
 
-  if (phase === 'secondAngle') {
-    return (
-      <div className="cc-sheet"><div className="cc-stage"><div className="cc-overlay">
-        <div className="cc-overlay-t"><b>{t('chipcount.secondAngleTitle')}</b></div>
-        <div className="cc-overlay-t">{t('chipcount.secondAngleBody')}</div>
-        <div className="cc-overlay-btns">
-          <button className="btn btn-primary" onClick={() => { setCaptured(null); setPhase('framing2'); cam.retry(); }}>📷</button>
-          <button className="btn btn-ghost" onClick={() => setPhase('review')}>{t('chipcount.secondAngleSkip')}</button>
-        </div>
-      </div></div></div>
-    );
-  }
-
   const tiltHint = tilt.pitchDeg == null ? t('chipcount.guide')
-    : phase === 'framing2'
-      ? (tilt.inRange ? t('chipcount.tiltOk') : t('chipcount.tiltMore'))
-      : tilt.pitchDeg > TILT_MAX_DEG ? t('chipcount.tiltHigh')
-      : tilt.pitchDeg < TILT_MIN_DEG ? t('chipcount.tiltLow')
-      : t('chipcount.tiltOk');
+    : tilt.pitchDeg > TILT_MAX_DEG ? t('chipcount.tiltHigh')
+    : tilt.pitchDeg < TILT_MIN_DEG ? t('chipcount.tiltLow')
+    : t('chipcount.tiltOk');
   const hint = holding ? t('chipcount.autoHold') : tiltHint;
 
   // Bubble dot position: map pitch (0..50°) to 10%..90% of the track.

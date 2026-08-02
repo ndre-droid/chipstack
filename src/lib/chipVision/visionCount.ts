@@ -1,5 +1,5 @@
 import type { CountResult, DenomTotal, StackResult } from './types.ts';
-import { tally, median, fuseStack, parseRead, mergeAngles, matchStacks, flaggedStackIds, FLAG_THRESHOLD, type SeamVote, type StackRead } from './fuse.ts';
+import { tally, median, parseRead, FLAG_THRESHOLD, type StackRead } from './fuse.ts';
 
 interface VisionDenom { value: number; color: string }
 type StackBox = { value: number; box: [number, number, number, number] };
@@ -26,12 +26,10 @@ function reqSignal(external: AbortSignal | undefined, ms: number): { signal: Abo
 }
 
 // Tuning knobs for the vote-and-crop pipeline.
-const SAMPLES = 2;          // independent flash reads per stack (self-consistency vote)
+const SAMPLES = 3;          // independent reads per stack (self-consistency vote → honest confidence)
 const POOL = 6;             // max concurrent API calls (keep the free-tier key happy)
 const REQ_TIMEOUT = 18000;  // per-request abort (ms) so one slow call can't stall the batch
 const CROP_PAD = 0.12;      // fraction of the box to pad when cropping a stack
-const NOMINAL_K = 0.085;    // chip thickness / diameter (3.3 mm / 39 mm) — geometry prior
-const K_MIN = 0.05, K_MAX = 0.13; // plausible band for the calibrated ratio
 
 /** Rough colour name from a hex, to help the model match stacks to denominations. */
 function colorName(hex: string): string {
@@ -169,67 +167,6 @@ function normBox(raw: any): [number, number, number, number] | null {
   return [x0, y0, x1, y1];
 }
 
-/**
- * On-device DSP voter (model-free). On an already-cropped single stack, project the image
- * to a 1-D edge-energy profile along the stack axis and find the chip pitch by
- * autocorrelation; the seam lines are periodic, so a sharp peak = clean periodicity.
- * Returns a chip count + a strength 0..1, or null when periodicity is too weak to trust.
- * Runs synchronously in ~a few ms on a downscaled copy — adds no network time.
- *
- * Deliberately used ONLY to CONFIRM the seam/geometry candidates (see fusion): a
- * miscalibrated read simply won't match either and abstains, so it can never inject a
- * wrong number.
- */
-function dspCount(src: HTMLCanvasElement): { count: number; strength: number } | null {
-  const LONG = 220; // downscale for speed; seams still resolvable at this size
-  const scale = Math.min(1, LONG / Math.max(src.width, src.height));
-  const w = Math.max(8, Math.round(src.width * scale)), h = Math.max(8, Math.round(src.height * scale));
-  const c = document.createElement('canvas'); c.width = w; c.height = h;
-  const ctx = c.getContext('2d')!; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(src, 0, 0, w, h);
-  const d = ctx.getImageData(0, 0, w, h).data;
-  const gray = (x: number, y: number) => { const i = (y * w + x) * 4; return 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; };
-
-  // Stack axis = the longer dimension; seams run across it.
-  const vertical = h >= w;
-  const axisLen = vertical ? h : w, crossLen = vertical ? w : h;
-  const c0 = Math.floor(crossLen * 0.25), c1 = Math.max(c0 + 1, Math.ceil(crossLen * 0.75));
-
-  // Edge-energy profile along the axis (gradient in the axis direction).
-  const prof = new Float64Array(axisLen);
-  for (let a = 1; a < axisLen; a++) {
-    let s = 0;
-    for (let cc = c0; cc < c1; cc++) s += Math.abs((vertical ? gray(cc, a) : gray(a, cc)) - (vertical ? gray(cc, a - 1) : gray(a - 1, cc)));
-    prof[a] = s / (c1 - c0);
-  }
-  // Smooth (window 3) and remove DC.
-  const sm = new Float64Array(axisLen);
-  for (let a = 0; a < axisLen; a++) { let s = 0, n = 0; for (let k = -1; k <= 1; k++) { const j = a + k; if (j >= 0 && j < axisLen) { s += prof[j]; n++; } } sm[a] = s / n; }
-  let mean = 0; for (let a = 0; a < axisLen; a++) mean += sm[a]; mean /= axisLen;
-  let varSum = 0; for (let a = 0; a < axisLen; a++) { sm[a] -= mean; varSum += sm[a] * sm[a]; }
-  if (varSum <= 1e-6) return null;
-  const std = Math.sqrt(varSum / axisLen);
-
-  // Autocorrelation over plausible chip pitches → dominant pitch L*.
-  const minL = Math.max(3, Math.round(axisLen * 0.03)), maxL = Math.floor(axisLen / 2);
-  if (maxL <= minL) return null;
-  let bestL = -1, bestC = -Infinity;
-  for (let L = minL; L <= maxL; L++) {
-    let s = 0; for (let a = L; a < axisLen; a++) s += sm[a] * sm[a - L];
-    const cor = s / varSum;
-    if (cor > bestC) { bestC = cor; bestL = L; }
-  }
-  if (bestL < 0 || bestC < 0.35) return null; // weak periodicity → abstain
-
-  // Energetic span (first→last strong seam edge) ÷ pitch = seams; chips = seams + 1.
-  const thr = 0.5 * std;
-  let first = -1, last = -1;
-  for (let a = 0; a < axisLen; a++) if (sm[a] > thr) { if (first < 0) first = a; last = a; }
-  if (first < 0 || last - first < bestL) return null;
-  const chips = Math.round((last - first) / bestL) + 1;
-  if (chips < 1 || chips > 40) return null;
-  return { count: chips, strength: Math.max(0, Math.min(1, bestC)) };
-}
-
 /** Run an async fn over items with bounded concurrency, preserving order. */
 async function mapPool<T, R>(items: T[], limit: number, fn: (t: T, i: number) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -358,7 +295,7 @@ async function detectStacks(apiKey: string, b64: string, list: string, signal?: 
 
 /**
  * Read ALL stacks in ONE request (Gemini accepts many images per call). Each crop is a
- * single isolated stack; for each we get a seam count AND a measured height:diameter ratio.
+ * single isolated stack; for each we get a chip count and the stack's vertical extent.
  * Batching keeps the whole photo to ~1 detection + SAMPLES reads instead of one call per
  * stack per sample — the big cost + latency saver. Returns one StackRead|null per crop,
  * in the SAME order as `cropsB64`.
@@ -367,15 +304,13 @@ async function readAllStacks(apiKey: string, cropsB64: string[], values: number[
   const n = cropsB64.length;
   const prompt =
     `You are given ${n} separate close-up images, labelled Image 1..${n}. Each image shows ONE stack of ` +
-    `poker chips of a single colour. For EACH image do BOTH tasks:\n` +
+    `poker chips of a single colour. For EACH image:\n` +
     `1) COUNT the chips. Look at the VERTICAL SIDE: each chip is a thin ~3.3 mm disc; between two stacked ` +
     `chips there is a seam line. Number of chips = number of seams + 1. The flat top face is the TOP chip — ` +
     `count it once, never as an extra layer. Count the seams slowly, then recount to confirm.\n` +
-    `2) MEASURE, as fractions (0..1) of THAT image: "stackHeight" (bottom edge of the lowest chip ` +
-    `to the top edge of the highest), "chipDiameter" (width of a single chip), and "extent":[yTop,yBottom] ` +
-    `= the top and bottom y of the stack in the image.\n` +
+    `2) Give "extent":[yTop,yBottom] = the top and bottom y (fractions 0..1 of THAT image) of the stack.\n` +
     `Respond with ONLY a JSON array with EXACTLY ${n} entries, in image order: ` +
-    `[{"count":<int>,"stackHeight":<0..1>,"chipDiameter":<0..1>,"extent":[<0..1>,<0..1>]}, ...].`;
+    `[{"count":<int>,"extent":[<0..1>,<0..1>]}, ...].`;
   const parts: any[] = [{ text: prompt }];
   cropsB64.forEach((b64, k) => {
     parts.push({ text: `Image ${k + 1} (denomination ${values[k]}):` });
@@ -394,9 +329,8 @@ async function readAllStacks(apiKey: string, cropsB64: string[], values: number[
 
 /**
  * Crop + on-device clean (tighten-by-colour + auto-expose) each boxed stack, then vote by
- * repeating one batched multi-image read SAMPLES times. Shared by the first pass and the
- * second-angle recount so the crop/clean/read orchestration lives in one place. Returns the
- * cleaned crop canvases (for DSP + the editor), their DSP reads, and the per-sample reads.
+ * repeating one batched multi-image read SAMPLES times. Returns the cleaned crop canvases
+ * (for the manual editor) and the per-sample reads.
  */
 async function readBoxedStacks(
   canvas: HTMLCanvasElement,
@@ -404,9 +338,9 @@ async function readBoxedStacks(
   colorByValue: Map<number, string>,
   apiKey: string,
   signal?: AbortSignal,
-): Promise<{ cropCanvases: HTMLCanvasElement[]; dsp: ({ count: number; strength: number } | null)[]; samples: (StackRead | null)[][] }> {
+): Promise<{ cropCanvases: HTMLCanvasElement[]; samples: (StackRead | null)[][] }> {
   // Crop from full-res, tighten to the known chip colour to drop clutter, auto-expose so
-  // backlit seams show. Both the model image (768px = one Gemini tile) and DSP use this crop.
+  // backlit seams show. The model image is 768px = one Gemini tile.
   const cropCanvases = items.map((it) => {
     const base = resized(cropCanvas(canvas, it.box, CROP_PAD), 1024);
     const hex = colorByValue.get(it.value);
@@ -414,13 +348,12 @@ async function readBoxedStacks(
     return autoLevels(tight);
   });
   const crops = cropCanvases.map((cc) => toJpegBase64(cc, 768));
-  const dsp = cropCanvases.map((cc) => dspCount(cc)); // synchronous on-device, ~ms
   const values = items.map((it) => it.value);
   // ~1 detection + SAMPLES reads total (all stacks per call), not SAMPLES per stack.
   const samples = await mapPool(Array.from({ length: SAMPLES }, (_, i) => i), POOL, () =>
     readAllStacks(apiKey, crops, values, 0.5, signal).catch(() => items.map(() => null)),
   );
-  return { cropCanvases, dsp, samples };
+  return { cropCanvases, samples };
 }
 
 /** Fallback PASS — no boxes found: vote a whole-image count per denomination. */
@@ -463,18 +396,16 @@ function sumStacksToDenoms(stacks: StackResult[]): DenomTotal[] {
 }
 
 /**
- * Count chips from a photo using Google's Gemini vision model, DIRECT from the browser
- * with the user's own key (no backend). Pipeline:
+ * Count chips from a photo using Google's Gemini vision model, DIRECT from the browser with
+ * the user's own key (no backend). This is an ASSIST, not an oracle: counting the seams of
+ * same-colour stacked chips is genuinely hard, so we give a fast best-estimate the user
+ * confirms/corrects in the review editor — no forced re-shoots, no false-confidence math.
+ * Pipeline:
  *   1. detect + box each stack;
- *   2. crop each stack, then read ALL crops together in one batched call, repeated SAMPLES
- *      times to vote — every read returns a seam count AND a measured height:diameter ratio
- *      (two independent physical channels). Batching = ~1 detection + SAMPLES calls per photo;
- *   3. calibrate the chip thickness ratio k from the stacks the seam-vote is unanimous on
- *      (all chips are the same SLOWPLAY chip, so one confident stack rulers the rest);
- *   4. fuse per stack: geometry count = round(ratio / k). If the seam vote and geometry
- *      agree, lock it (high confidence). If they disagree, that is the real uncertainty —
- *      let the pro model break it, and flag the row.
- * Confidence is cross-channel agreement, not the model's self-report.
+ *   2. crop + clean each stack, then read ALL crops together in one batched call, repeated
+ *      SAMPLES times to vote. Batching = ~1 detection + SAMPLES calls per photo.
+ * Confidence is self-consistency: the fraction of samples that agreed on the count. A stack
+ * whose samples split is flagged as "worth a glance" — a soft hint, not an error.
  */
 export async function countChipsWithVision(
   canvas: HTMLCanvasElement,
@@ -497,46 +428,30 @@ export async function countChipsWithVision(
     onStage?.({ phase: 'fallback' });
     totals = await countWholeVoted(apiKey, fullB64, list, denoms, signal);
   } else {
-    // Crop + clean each stack on-device and vote via SAMPLES batched reads (shared helper).
+    // Crop + clean each stack on-device and vote via SAMPLES batched reads.
     const colorByValue = new Map(denoms.map((d) => [d.value, d.color]));
     onStage?.({ phase: 'reading', stacks: valid.length });
-    const { cropCanvases, dsp, samples } = await readBoxedStacks(canvas, valid, colorByValue, apiKey, signal);
+    const { cropCanvases, samples } = await readBoxedStacks(canvas, valid, colorByValue, apiKey, signal);
 
     const votes: number[][] = valid.map(() => []);
-    const ratios: number[][] = valid.map(() => []);
     const extents: [number, number][][] = valid.map(() => []);
     for (const reads of samples) {
       reads.forEach((res, i) => {
         if (res) {
           votes[i].push(res.count);
-          if (res.r != null) ratios[i].push(res.r);
           if (res.extent) extents[i].push(res.extent);
         }
       });
     }
 
-    // Seam vote + robust ratio per stack.
-    const seam: SeamVote[] = valid.map((_, i) => (votes[i].length ? tally(votes[i]) : { count: 0, agreement: 0 }));
-    const rMed = valid.map((_, i) => median(ratios[i]));
-
-    // Cross-stack calibration: k = ratio / count on stacks the vote is unanimous about
-    // (≥2 chips, so the ratio is meaningful). Median across them; clamp to a sane band.
-    const ks: number[] = [];
-    valid.forEach((_, i) => {
-      if (seam[i].agreement >= 0.999 && seam[i].count >= 2 && rMed[i] != null) ks.push(rMed[i]! / seam[i].count);
-    });
-    const kStar = Math.max(K_MIN, Math.min(K_MAX, median(ks) ?? NOMINAL_K));
-
-    // Fuse the two channels per stack, plus the measured extent for the editor's end-caps.
+    // Per stack: majority vote = count, agreement = confidence, measured extent = editor end-caps.
     stacks = valid.map((b, i) => {
-      const geo = rMed[i] != null ? Math.max(1, Math.round(rMed[i]! / kStar)) : null;
-      const { count, confidence } = fuseStack({ seam: seam[i], geo, dsp: dsp[i] });
+      const seam = votes[i].length ? tally(votes[i]) : { count: 0, agreement: 0 };
       const exT = median(extents[i].map((e) => e[0])), exB = median(extents[i].map((e) => e[1]));
       const span: [number, number] = exT != null && exB != null && exB > exT ? [exT, exB] : [0.06, 0.94];
       return {
-        id: `${b.value}-${i}`, value: b.value, count, confidence,
-        crop: cropCanvases[i], span, flagged: confidence < FLAG_THRESHOLD,
-        box: b.box, votes: votes[i], ratios: ratios[i],
+        id: `${b.value}-${i}`, value: b.value, count: seam.count, confidence: seam.agreement,
+        crop: cropCanvases[i], span, flagged: seam.agreement < FLAG_THRESHOLD,
       };
     });
 
@@ -547,79 +462,4 @@ export async function countChipsWithVision(
   const totalValue = totals.reduce((s, t) => s + t.value * t.count, 0);
   const overall = totals.length ? Math.min(...totals.map((t) => t.confidence)) : 0;
   return { totals, totalValue, anomalies: [], frames: 1, confidence: overall, stacks };
-}
-
-/**
- * Second-angle recount. Detect stacks in the new (steeper-angle) frame, match the
- * flagged prior stacks to same-denomination boxes, re-read just those, pool the new
- * votes/ratios with the prior via mergeAngles, recompute the calibration k across
- * ALL stacks, and re-fuse the flagged ones. Confident stacks are returned unchanged.
- * ~1 detection + SAMPLES reads on the flagged subset only.
- */
-export async function recountStacks(
-  canvas: HTMLCanvasElement,
-  denoms: VisionDenom[],
-  apiKey: string,
-  prior: CountResult,
-  signal?: AbortSignal,
-  onStage?: (s: CountStage) => void,
-): Promise<CountResult> {
-  const flaggedIds = new Set(flaggedStackIds(prior.stacks));
-  const flagged = prior.stacks.filter((s) => flaggedIds.has(s.id));
-  if (!flagged.length) return prior;
-
-  const list = denoms.map((d) => `${d.value} = ${colorName(d.color)} (${d.color})`).join('; ');
-  const fullB64 = toJpegBase64(canvas, 1024);
-  onStage?.({ phase: 'detecting' });
-  const fresh = await detectStacks(apiKey, fullB64, list, signal).catch(() => [] as StackBox[]);
-  const match = matchStacks(
-    flagged.map((s) => ({ id: s.id, value: s.value, box: s.box })),
-    fresh.map((f) => ({ value: f.value, box: f.box })),
-  );
-
-  // Crop + clean each matched flagged stack from the new frame and re-read (shared helper).
-  const colorByValue = new Map(denoms.map((d) => [d.value, d.color]));
-  const targets = flagged.filter((s) => match.has(s.id));
-  if (!targets.length) return prior; // second angle found nothing to improve
-  onStage?.({ phase: 'reading', stacks: targets.length });
-  const { dsp: dsp2, samples } = await readBoxedStacks(
-    canvas,
-    targets.map((s) => ({ value: s.value, box: match.get(s.id)! })),
-    colorByValue,
-    apiKey,
-    signal,
-  );
-
-  // Pool angle-2 votes/ratios with the prior per target, recompute k, re-fuse.
-  const a2votes: number[][] = targets.map(() => []);
-  const a2ratios: number[][] = targets.map(() => []);
-  for (const reads of samples) reads.forEach((res, i) => { if (res) { a2votes[i].push(res.count); if (res.r != null) a2ratios[i].push(res.r); } });
-
-  const merged = targets.map((s, i) => mergeAngles({ votes: s.votes, ratios: s.ratios }, { votes: a2votes[i], ratios: a2ratios[i] }));
-  const mergedSeam = merged.map((m) => tally(m.votes));
-  const mergedR = merged.map((m) => median(m.ratios));
-
-  // Recalibrate k across ALL stacks: confident prior stacks + newly-unanimous flagged.
-  const ks: number[] = [];
-  for (const s of prior.stacks) {
-    if (!flaggedIds.has(s.id)) {
-      const r = median(s.ratios), v = tally(s.votes);
-      if (v.agreement >= 0.999 && v.count >= 2 && r != null) ks.push(r / v.count);
-    }
-  }
-  targets.forEach((_, i) => { if (mergedSeam[i].agreement >= 0.999 && mergedSeam[i].count >= 2 && mergedR[i] != null) ks.push(mergedR[i]! / mergedSeam[i].count); });
-  const kStar = Math.max(K_MIN, Math.min(K_MAX, median(ks) ?? NOMINAL_K));
-
-  const updated = new Map<string, StackResult>();
-  targets.forEach((s, i) => {
-    const geo = mergedR[i] != null ? Math.max(1, Math.round(mergedR[i]! / kStar)) : null;
-    const { count, confidence } = fuseStack({ seam: mergedSeam[i], geo, dsp: dsp2[i] });
-    updated.set(s.id, { ...s, count, confidence, flagged: confidence < FLAG_THRESHOLD, votes: merged[i].votes, ratios: merged[i].ratios });
-  });
-
-  const stacks = prior.stacks.map((s) => updated.get(s.id) ?? s);
-  const totals = sumStacksToDenoms(stacks);
-  const totalValue = totals.reduce((sum, t) => sum + t.value * t.count, 0);
-  const confidence = totals.length ? Math.min(...totals.map((t) => t.confidence)) : 0;
-  return { totals, stacks, totalValue, anomalies: [], frames: (prior.frames ?? 1) + 1, confidence };
 }

@@ -19,14 +19,10 @@ export interface StackResult {
   id: string;                          // stable id, e.g. `${value}-${index}`
   value: number;
   count: number;
-  confidence: number;
-  crop: HTMLCanvasElement;             // cleaned crop for the editor (on-device only)
+  confidence: number;                  // self-consistency across samples (agreement), 0..1
+  crop: HTMLCanvasElement;             // cleaned crop for the manual seam editor
   span: [number, number];             // [yTop, yBottom] 0..1 of the crop, for end-caps
-  flagged: boolean;
-  // internal, on-device only — used to merge a second angle:
-  box: [number, number, number, number];
-  votes: number[];
-  ratios: number[];
+  flagged: boolean;                    // soft hint: the samples disagreed — worth a glance
 }
 
 export interface CountResult {
