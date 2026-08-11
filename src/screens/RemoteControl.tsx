@@ -12,7 +12,16 @@ import { ChipCountSheet } from '../components/ChipCountSheet.tsx';
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 // small avatar set for players (tap to set, tap the active one to clear)
-const EMOJIS = ['😎', '🤠', '🦈', '🐷', '🦁', '🐺', '🦊', '🐸', '👑', '🃏', '💀', '🔥', '🍀', '🎩', '🚀', '🐟'];
+// grouped: attitude · animals · poker & luck · drinks & snacks · swagger
+const EMOJIS = [
+  '😎', '🤠', '🤑', '🥸', '😈', '🤖', '👽', '🤡', '🥶', '🤯', '🫡', '🧊',
+  '🦈', '🐷', '🦁', '🐺', '🦊', '🐸', '🐟', '🐙', '🦖', '🐉', '🦉', '🦝',
+  '🐨', '🐯', '🦄', '🦡', '🐢', '🦅', '🐜', '🦂',
+  '👑', '🃏', '♠️', '♥️', '♦️', '♣️', '🎲', '💰', '💎', '🏆', '🎯', '🧲',
+  '🍀', '🧿', '🔮', '💣', '💀', '☠️', '🔥', '⚡', '🌪️', '🧨',
+  '🍺', '🍷', '🥃', '🍸', '☕', '🍕', '🌮', '🍩', '🥜', '🚬',
+  '🎩', '🕶️', '🧢', '🚀', '🛸', '🏴‍☠️', '⚓', '🥊', '🎸', '🦾',
+];
 
 /**
  * The phone's remote, shown on the Table tab only while this phone is hosting a

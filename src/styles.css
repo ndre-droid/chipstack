@@ -1445,9 +1445,14 @@ input[type='color'] { cursor: pointer; }
   width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; font-size: 22px;
   background: var(--surface-2); border: 1px solid var(--line); display: grid; place-items: center;
 }
-.emoji-grid { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+/* many emojis now — auto-fill grid that scrolls instead of pushing the card open */
+.emoji-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 6px;
+  margin: 8px 0 4px; max-height: 208px; overflow-y: auto; padding-right: 2px;
+  overscroll-behavior: contain;
+}
 .emoji-opt {
-  width: 38px; height: 38px; border-radius: 9px; font-size: 20px; background: var(--surface-2);
+  width: 100%; aspect-ratio: 1; border-radius: 9px; font-size: 20px; background: var(--surface-2);
   border: 1px solid var(--line); display: grid; place-items: center;
 }
 .emoji-opt.active { border-color: var(--acc); background: var(--acc-wash); }
