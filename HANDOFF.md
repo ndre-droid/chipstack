@@ -18,11 +18,16 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT** — rebuilt 2026-08-01 from `main` @ `5ab7653`; AI chip count = **3-channel fuse**
-  (seam vote + measured geometry + on-device DSP) with per-stack crop + cross-stack calibration +
-  on-device de-clutter/auto-exposure, now **batched into ~4 API calls/photo** for cost. Stable key
-  unchanged → installs over the top, data kept. Work on branch `feat/chip-photo-count`,
-  fast-forwarded to `main` each push.)
+  (**CURRENT — rebuilt 2026-08-11 from `main` @ `5a4f2ae`**, 4.37 MB; AI chip count is a deliberate **ASSIST**:
+  single detect+crop+vote(×3) pass, confidence = sample self-consistency, soft ⚠ flag, manual correction —
+  the old 3-channel fusion + forced second-angle were REMOVED. Plus capture-mode gating (angle 22–36°,
+  backlight/dark guard), the euro stack-editing feature and the NEW chip-stack app icon. Stable key unchanged →
+  installs over the top, data kept. ✅ **APK, `main` and Pages are all IN SYNC** — the branch was fast-forwarded
+  to `main` on 2026-08-11 and both the web app + APK rebuilt from it.
+  ⚠️ **Download gotcha:** an Android **in-app browser** (Custom Tab) stalls the `.apk` at 100% ("Downloading…"
+  forever) because it can't hand off to the package installer — the bytes ARE complete. Open the link in **real
+  Chrome**, or install the finished file from Files → Downloads. Asset is served correctly
+  (`200`, `application/vnd.android.package-archive`) — verified, nothing to fix server-side.)
 - **App Links host repo:** https://github.com/ndre-droid/ndre-droid.github.io — root Pages site
   serving `/.well-known/assetlinks.json` so Android verifies `com.chipstack.app` owns the
   `/chipstack` URLs (TV QR → opens the app). Validated by Google's Digital Asset Links API.
@@ -175,7 +180,9 @@ android/             Capacitor project. app/build.gradle has signingConfigs.chip
                      ../keystore/chipstack.jks (committed), applied to debug+release buildTypes.
 keystore/chipstack.jks   committed stable signing key (generated once in CI).
 .github/workflows/   deploy-pages.yml, build-apk.yml
-scripts/gen-icons.mjs    regenerates icons (redesigned to the smooth-ceramic chip look)
+scripts/gen-icons.mjs    THE icon source (SVG drawn in JS) — regenerates all 19 PWA + Android
+                     launcher icons. Current mark: "chip stack" (graded lime bars on #1A1A1E).
+                     Must stay in scripts/ — it resolves the repo root as '..'.
 ```
 
 ### Design system (skins + accents)
@@ -251,6 +258,47 @@ RemoteControl (host, Table tab) still covers: clock, level length (±1/±10 + Tu
 break length + auto-break every N, blinds (edit/add/remove), players & pool (rename, buy-in, Rebuy,
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
+
+### Recent work (2026-08-11 — NEW APP ICON "chip stack")
+Icon redesigned by the user in a separate Claude Code session; the design file arrived as a standalone
+`gen-icons.mjs` (in `~/Downloads`, plus a stray copy at the repo root — both since removed/merged).
+**Ported verbatim into the canonical `scripts/gen-icons.mjs`** — that location matters: line 6 does
+`join(dirname(import.meta.url), '..')`, which only resolves to the project root when the script lives in
+`scripts/`. Run from the repo root it would write `public/` + `android/` one level too high.
+- **Design:** three stacked chip bars, each with its own top→bottom 3-stop gradient (olive `#5F7A29` →
+  bright lime `#C7EA5A`), a white highlight strip (40% bar height) and a per-bar drop shadow, on a
+  charcoal `#1A1A1E` tile. Brightest bar on top. Replaces the amber "token ring" mark.
+- **`@color/ic_launcher_background` `#0E1116` → `#1A1A1E`** so the adaptive icon's background matches the
+  new tile behind the transparent foreground (easy to miss — the adaptive icon composites fg over that colour).
+- Regenerate any time with `node scripts/gen-icons.mjs` → 19 files (4 PWA + 5 densities ×
+  legacy/round/adaptive-foreground). Commit `5a4f2ae`, pushed, Pages + APK rebuilt.
+- **Gotcha:** Android **caches launcher icons** — after installing, the old icon can linger until a reboot
+  or launcher restart. Not a build problem.
+- Leftover template file `res/drawable/ic_launcher_background.xml` (teal `#26A69A` grid) is UNUSED — the
+  adaptive icon references `@color/…`, not the drawable. Harmless; could be deleted.
+- **⚠️ MISMATCH, not yet fixed:** the in-app header logo `LogoMark()` in `App.tsx` (~line 27) is still the
+  OLD "token ring" (rounded rect + ring + centre dot, drawn in `var(--acc)` so it follows the skin accent).
+  The launcher/PWA icon is now the lime chip stack — they no longer match. Deliberately left alone (the
+  header mark is accent-themed per skin, so porting the fixed lime palette needs a design call). Pitch it
+  to the user if the inconsistency bothers them.
+
+### Recent work (2026-08-11 — manual live stack editing, in euros)
+Small feature. `npx tsc -b` clean, `npm run build` clean, verified in the dev preview (no console
+errors), **committed `8d67811`, pushed to `main`, Pages + APK rebuilt** (see Open item #1). New:
+- **Edit each player's live stack as a euro value.** `LedgerPlayer.chips` (chip-units, drives the TV
+  👑 crown + the balance readout) is now user-editable as **money**. The Table-tab **Count-chips card**
+  (`components/ChipCountCard.tsx`) balance line became an editable `€` input (was read-only, photo-only);
+  the host **RemoteControl** (`screens/RemoteControl.tsx`) per-player box switched from raw chip-units to
+  euros. Both convert with the existing `moneyToUnits(euros, unitValue)` on write / `chips * unitValue` on
+  display, so the photo count, crown and roster stay **one source of truth** (`chips`). 📷 photo path
+  unchanged; typing just overwrites.
+- **One-tap "Set all to buy-in €X"** button in the Count-chips card header — fills every player's stack
+  from `session.buyIn` at once via a new **atomic `LEDGER_SET_ALL_CHIPS`** reducer action (`store.tsx`),
+  so it's a single dispatch + single TV push, not N. Shown only when players exist and buy-in > 0.
+- **Live/sync is free** — `chips` already rides `LiveData`/`dataOf` + `liveSignature`, so host edits
+  auto-push to the TV. **No new synced field, no new type.** i18n EN/DE added (`chipcount.setAll`,
+  reworded `table.chipsPlaceholder` + `chipcount.cardHint`). Note: euro→chips rounds to the nearest
+  chip-unit — sub-cent drift only if `unitValue` isn't a clean divisor (fine for a home game).
 
 ### Recent work (2026-07-31 — TV sync/font fixes + big feature pack)
 Two-part session. All built, `npx tsc -b` clean, `npm run build` clean, verified live in the
@@ -430,13 +478,16 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
   **[SUPERSEDED — no on-TV keypad now; the TV shows a code, the phone types it via `ConnectToTv`.]**
 - Players leaving/joining mid-game: **Bust** keeps a leaver for settlement (struck through on TV,
   players-left drops) via `LedgerPlayer.out`; **Add player** brings a joiner in at the buy-in.
-  Design decision: we track **buy-ins only**, never per-player live chip stacks.
+  Design decision: settlement tracks **buy-ins only**, never per-player live chip stacks.
+  **[UPDATED 2026-08-11 — an OPTIONAL live per-player stack now exists (`LedgerPlayer.chips`), edited as a
+  euro value (see the 2026-08-11 entry). It drives the TV crown + the on-screen balance; it does NOT feed
+  the buy-in/settlement math, which is still buy-ins only.]**
 
 ---
 
 ## ⚠️ Open items / next steps
 
-### Photo → chip count — AI (Gemini) ONLY; on-device OpenCV removed (2026-08-01)
+### Photo → chip count — Gemini AI ONLY, now a deliberate ASSIST (reframed 2026-08-02)
 📷 count a player's chips from a photo → fills `LedgerPlayer.chips`. Entry points: a **"Count chips"
 card on the Table tab** (`components/ChipCountCard.tsx`, BOTH game modes, no TV session needed;
 shows buy-in + balance per player) AND the per-player 📷 in the host RemoteControl. Spec/plan:
@@ -460,31 +511,34 @@ version, prefer flash, avoid lite/preview/thinking), cache it, and **self-heal**
 error mid-call we re-list (force) and retry once. `FALLBACK_MODEL='gemini-flash-latest'` only if the list call
 itself fails. Do NOT reintroduce a hardcoded model id.
 
-**Accuracy = 3-channel fuse, BATCHED (2026-08-01 session, commits 31380e2 → 5ab7653).** Single-pass
-was too noisy (±1–2, false flags). `visionCount.ts` now:
-1. **Detect + box** every stack (1 flash call, image sent at 1024px → per-stack box + denom).
-2. **Crop + clean** each stack: crop from full-res (pad 12%), then ON-DEVICE (no network time)
-   `tightenByColor()` re-crops tight using the stack's KNOWN denom colour (drops clutter that leaked
-   into the box; bails if it can't lock the colour) + `autoLevels()` per-crop auto-exposure (percentile
-   stretch + shadow gamma → backlit seams show). Crop sent at **768px = 1 Gemini image tile**.
-3. **Vote via a BATCHED multi-image read** (`readAllStacks`): count EVERY cropped stack in ONE call,
-   repeated `SAMPLES=3`× (flash, temp 0.5, pooled `POOL=6`). So a photo is **~1 detection + 3 reads =
-   ~4 API calls total** (was 1 + stacks×samples ≈ 16–20 → see COST below). Each read returns a seam
-   count AND measured `stackHeight`+`chipDiameter` per stack.
-4. Channels: **(A) seam vote** = majority of counts; **(B) geometry** = `round((height/diameter)/k)`,
-   where `k` (chip thickness:diameter, nominal 0.085) is **cross-stack calibrated** from stacks the seam
-   vote is UNANIMOUS on (all chips are the same SLOWPLAY chip → one confident stack rulers the shaky ones;
-   k clamped [0.05,0.13]); **(C) on-device DSP** `dspCount()` — 1-D edge-energy profile along the stack
-   axis + autocorrelation for chip pitch, synchronous (~ms, 220px downscale, uses the local 1024 crop).
-5. **Fuse** (`countChipsWithVision`): A+B agree AND short (≤4) → lock 0.9; A+B agree but TALL (>4) →
-   only 0.95 if DSP also confirms, else **0.8 → flags** (tall stacks can share the same error, so don't
-   show them as certain-but-wrong). Off-by-1 + confident vote → 0.6 (DSP can lift to 0.9). Real
-   disagreement → **DSP confirms** a channel (0.75) else prefer the confident channel and flag (0.5).
-   **NO `pro` network calls anymore** (removed — see COST/timeouts). **DSP is CONFIRM-ONLY** — must have
-   strong periodicity (bestC≥0.45) AND equal a candidate, else abstains → can never inject a wrong number.
-6. **Confidence = cross-channel agreement** (not model self-report). `ChipCountReview` flags rows
-   **< 0.85** with an amber outline + "⚠ check" badge. Model still **AUTO-DISCOVERED** (`resolveModel`,
-   flash) — do NOT hardcode an id.
+**⚠️ 2026-08-02 — the 3-channel fusion was RIPPED OUT; it's now a deliberate ASSIST.** The geometry
+channel, on-device DSP, cross-channel fusion, k-calibration, `pro` tiebreak AND the forced second-angle
+recount all made it WORSE: they produced confident-wrong counts (over by 2–3) and flagged the one correct
+stack (two channels agreeing on the same wrong number → high confidence). All removed (commit 36c72cf,
+−289 lines net). Reliable ±0 auto-count of same-colour stacked chips is NOT realistically solvable by
+general vision models (low-contrast seams between identical chips) — so the feature is now a fast estimate
+the user confirms/corrects, NOT an oracle. **Do NOT re-add the fusion / geometry / DSP / second-angle
+machinery — it was tried and it regressed.** Memory: `memory/chip-count-ai-only.md`.
+
+Current `visionCount.ts` — single honest pass:
+1. **Detect + box** every stack (1 flash call, 1024px).
+2. **Crop + clean** each: crop full-res (pad 12%), on-device `tightenByColor()` (drops clutter via the
+   known denom colour) + `autoLevels()` (auto-exposure), sent at 768px = 1 Gemini tile. These image
+   cleanups STAYED — they help the model see; they don't produce a competing count.
+3. **Vote** via a BATCHED multi-image read (`readAllStacks`, returns `count` + `extent` only now): every
+   crop in ONE call, repeated `SAMPLES=3`× (flash, temp 0.5, pooled `POOL=6`) → **~1 detection + 3 reads
+   ≈ 4 calls/photo**.
+4. Per stack: **majority vote = count; confidence = self-consistency** (fraction of the 3 samples that
+   agreed) — NOT any cross-channel or model self-report. `FLAG_THRESHOLD=0.6` (`fuse.ts`): only a genuine
+   split flags. The flag is a **soft ⚠** that opens the manual `ChipSeamEditor`; it NEVER forces a
+   re-shoot (the whole forced-second-photo flow + `secondAngle`/`framing2`/`analyzing2` phases are gone,
+   as are `fuseStack`/`mergeAngles`/`matchStacks`/`dspCount` and the `box`/`votes`/`ratios` StackResult
+   internals). `fuse.ts` is now just `tally`/`median`/`parseRead`/`flaggedStackIds`.
+5. **Safety (commit c66b3e0): never confident-zero a DETECTED stack.** A detected stack that reads 0
+   (flat top-only chip, dark/backlit, merged seams) is a read FAILURE, not "zero chips" → it always flags,
+   so it can't be silently saved as 0 (this was a real data-loss risk — a dark stack vanished from the
+   total with no warning). And if detection found stacks but they ALL read 0/empty, the sheet now routes
+   to the review (every row flagged, correct-or-reshoot) instead of the dead-end "no chips found" error.
 
 **COST — READ THIS (user hit ~2€ testing).** The self-consistency voting fanned out to ~16–20 calls/photo,
 plus the old `pro` tiebreak (slow + pricey), and **every timeout + "Neu aufnehmen" retry was billed in full**.
@@ -503,11 +557,17 @@ a 90°-rotated (sideways) photo degrades geometry/DSP axis assumptions. **Recipe
 all in frame, phone held normally (not rotated), no backlight.** APK camera needs the **`CAMERA`** manifest
 permission (present).
 
-**NEXT LEVER (offered, NOT built):** if a *clean* shot is still noisy → **multi-angle capture** (2 shots at
-a different angle; seams merged in one separate in the other; `cam.captureBurst(3)` already grabs frames but
-they're same-angle so low value — needs a real capture-UX change: "tilt ~15°, second shot"). **PWA SW caches
-hard** — after a deploy, Settings/behaviour may not update until SW cleared / app force-reopened / APK
-reinstalled (bit us twice; the "model 2.5-flash" error once looked like stale cache but was Google gating the id).
+**CAPTURE-MODE GATING — DONE 2026-08-02 (commit 71fcc62), the one remaining real lever.** Since the analysis
+is maxed out, the app now PREVENTS bad frames instead of patching them. `useDeviceTilt`: `TILT_MIN_DEG`
+raised 15→**22** (below = too flat/across-the-table → foreshorten + occlude → reject), `TILT_MAX_DEG` **36**
+(sweet spot ≈26–32°). `useCameraCapture`: exposes **`backlit`** (>12% of sampled pixels clipped ≥250 = a
+window/light source in frame) alongside existing **`brightnessOk`** (mean luma < 70 = dark). **Auto-capture is
+gated on tilt-in-range + steady + content + `brightnessOk` + `!backlit`** (manual shutter still overrides so
+the user can force it). Framing hint shows `chipcount.tooDark` / `chipcount.backlit` with EXPOSURE priority
+over angle; `barrelsTip` now coaches straight+separated stacks, no backlight, stand a lone flat chip in a
+stack (EN+DE i18n). Tune knobs if too strict/loose: the two tilt constants + the `0.12` backlit fraction.
+**PWA SW caches hard** — after a Pages deploy, behaviour may not update until SW cleared / app force-reopened /
+APK reinstalled.
 
 0. **3D chips: built then REVERTED (2026-07-24 session).** A react-three-fiber prototype (true-3D
    ceramic chip stacks on the Plan hero + a rotatable chip showcase in Settings) was built, shipped,
@@ -520,15 +580,18 @@ reinstalled (bit us twice; the "model 2.5-flash" error once looked like stale ca
    **Kept from that work:** the denom palette was matched to the real photos — `10` → `#31B6C9` (cyan),
    `100` → `#0C0C10` (black) in `store.tsx` `defaultDenoms()`. Existing users' saved colours are
    preserved by `migrate()` (only defaults change).
-1. **APK + Pages are CURRENT** (2026-08-01, `main` @ `5ab7653`). Ship flow used all session:
-   commit on `feat/chip-photo-count` → `git push origin feat/chip-photo-count:main` (fast-forward,
-   triggers Pages deploy) → `gh workflow run "Build Android APK" -R ndre-droid/chipstack --ref main`
-   (builds from remote `main`, so push FIRST). Stable signing key unchanged (APK cert == assetlinks
-   fingerprint `E5:A4:…:2A`), installs OVER the existing APK, data preserved. Branch `feat/chip-photo-count`
-   still exists on origin (can delete; `main` has everything). **Still pending on-device:** App Links
-   verification (reinstall APK → scan TV QR → app opens). The **web app is the primary path**.
-   NOTE: CI warns those GitHub Actions target deprecated **Node 20** (auto-run on Node 24 for now) — bump
-   `actions/*` + `android-actions/setup-android` versions in `.github/workflows` when convenient.
+1. **✅ MERGED + DEPLOYED (2026-08-11) — `main`, Pages and the APK are all IN SYNC.** `feat/chip-photo-count`
+   was fast-forwarded onto **`main` @ `5a4f2ae`** (`git push origin feat/chip-photo-count:main`; `main` was
+   `99a2836` at session start). Landed in two pushes: `8d67811` (the 4 chip-count assist commits + euro
+   stack-editing) then `5a4f2ae` (new app icon). Both CI rounds ran green from `main`: **Pages**
+   `31476590629` + `31482985653`, **APK** `31476599454` + `31482985815` → `ChipStack-debug.apk` republished
+   to `android-latest` (4.37 MB, 2026-08-11 10:38 UTC). Stable signing key unchanged (cert == assetlinks
+   `E5:A4:…:2A`), installs OVER the existing APK, data preserved. **The local branch `feat/chip-photo-count`
+   still exists and == `main`** — safe to keep working on it or delete. **Ship flow (unchanged):** commit on
+   the branch → `git push origin feat/chip-photo-count:main` (fast-forward → Pages auto-deploys) →
+   `gh workflow run "Build Android APK" -R ndre-droid/chipstack --ref main` (builds from REMOTE main, so
+   push FIRST). **Still pending on-device:** App Links verification. CI still warns on deprecated **Node 20**
+   / `setup-java@v4` actions — bump `actions/*` when convenient.
 2. **i18n is partial.** Nav/header/Settings/TV/Plan/Chips/Table/Cash MAIN labels are translated
    (`src/lib/i18n.ts`, `useT()`); **number formatting now fully language-driven** via `useFmt()`
    (2026-07-26). NOT translated: engine-generated sentences (distribution.ts / planning.ts
