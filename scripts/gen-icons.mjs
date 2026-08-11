@@ -8,25 +8,58 @@ const pub = join(root, 'public');
 mkdirSync(pub, { recursive: true });
 
 /**
- * App icon — "token ring": a single amber ring + centre dot on a dark tile. Minimal,
- * modern, and legible down to 48px. Amber #F0B429 is the brand accent; the tile is a
- * near-black #0E1116 (matches @color/ic_launcher_background for the adaptive icon).
+ * App icon — "chip stack": three graded lime-green chip bars on a near-black tile.
+ * Charcoal #1A1A1E tile; bars graded from olive (bottom) to bright lime #C7EA5A (top),
+ * each with a soft drop shadow for depth.
  */
 
-const AMBER = '#F0B429';
-const TILE = '#0E1116';
+const TILE = '#1A1A1E';
+// each bar: [highlight, mid, shadow] for its top->bottom gradient, brightest bar on top
+const BARS = [
+  { grad: ['#96B84A', '#7F9D3A', '#5F7A29'], shadowOpacity: 0.6, highlightOpacity: 0.25 },
+  { grad: ['#B7D75C', '#A3C249', '#7F9D3A'], shadowOpacity: 0.55, highlightOpacity: 0.3 },
+  { grad: ['#DAF383', '#C7EA5A', '#A3C249'], shadowOpacity: 0.5, highlightOpacity: 0.35 },
+];
 
 function svg(size, { bleed, transparent }) {
-  const cx = size / 2;
   // full-bleed (PWA / legacy launcher) fills more; the adaptive foreground stays
-  // smaller so the ring sits well inside the safe zone once the OS masks it.
-  const ringR = (bleed ? 0.3 : 0.25) * size;
-  const sw = ringR * 0.19; // ring thickness
-  const dot = ringR * 0.2; // centre dot radius
+  // smaller so the stack sits well inside the safe zone once the OS masks it.
+  const scale = bleed ? 1 : 0.75;
+  const boxW = size * 0.7182 * scale;
+  const boxH = size * 0.5545 * scale;
+  const boxX = (size - boxW) / 2;
+  const boxY = (size - boxH) / 2;
+  const barH = boxH * 0.2459;
+  const gap = boxH * 0.0738;
+  const radius = barH / 2;
+  const dy = barH * 0.53;
+  const blur = barH * 0.24;
+
+  const defs = BARS.map((b, i) => `
+      <linearGradient id="bar${i}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${b.grad[0]}"/>
+        <stop offset="55%" stop-color="${b.grad[1]}"/>
+        <stop offset="100%" stop-color="${b.grad[2]}"/>
+      </linearGradient>
+      <filter id="shadow${i}" x="-50%" y="-50%" width="200%" height="200%">
+        <feDropShadow dx="0" dy="${dy}" stdDeviation="${blur}" flood-color="#000000" flood-opacity="${b.shadowOpacity}"/>
+      </filter>`).join('');
+
+  const bars = BARS.map((b, i) => {
+    // i=0 bottom (drawn last conceptually), reverse so brightest sits on top row
+    const rowFromTop = BARS.length - 1 - i;
+    const y = boxY + rowFromTop * (barH + gap);
+    const hlH = barH * 0.4;
+    return `
+    <rect x="${boxX}" y="${y}" width="${boxW}" height="${barH}" rx="${radius}" fill="url(#bar${i})" filter="url(#shadow${i})"/>
+    <rect x="${boxX}" y="${y}" width="${boxW}" height="${hlH}" rx="${radius}" fill="#ffffff" opacity="${b.highlightOpacity * 0.35}"/>`;
+  });
+
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <defs>${defs}
+    </defs>
     ${transparent ? '' : `<rect width="${size}" height="${size}" fill="${TILE}"/>`}
-    <circle cx="${cx}" cy="${cx}" r="${ringR}" fill="none" stroke="${AMBER}" stroke-width="${sw}"/>
-    <circle cx="${cx}" cy="${cx}" r="${dot}" fill="${AMBER}"/>
+    ${bars.join('\n    ')}
   </svg>`;
 }
 
