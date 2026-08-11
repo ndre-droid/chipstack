@@ -8,17 +8,17 @@ const pub = join(root, 'public');
 mkdirSync(pub, { recursive: true });
 
 /**
- * App icon — "chip stack": three graded lime-green chip bars on a near-black tile.
- * Charcoal #1A1A1E tile; bars graded from olive (bottom) to bright lime #C7EA5A (top),
- * each with a soft drop shadow for depth.
+ * App icon — "chip stack": three graded chip bars on a near-black tile.
+ * Charcoal #1A1A1E tile; bars are violet (bottom), amber (middle) and red (top),
+ * each with a 4-stop top→bottom gradient, a soft highlight pill and a drop shadow.
  */
 
 const TILE = '#1A1A1E';
-// each bar: [highlight, mid, shadow] for its top->bottom gradient, brightest bar on top
+// bottom -> top; each bar has a 4-stop top->bottom gradient plus its own shadow/highlight strength
 const BARS = [
-  { grad: ['#96B84A', '#7F9D3A', '#5F7A29'], shadowOpacity: 0.6, highlightOpacity: 0.25 },
-  { grad: ['#B7D75C', '#A3C249', '#7F9D3A'], shadowOpacity: 0.55, highlightOpacity: 0.3 },
-  { grad: ['#DAF383', '#C7EA5A', '#A3C249'], shadowOpacity: 0.5, highlightOpacity: 0.35 },
+  { grad: ['#A679E6', '#5C2FAE', '#452486', '#371C6B'], shadowOpacity: 0.6, highlightOpacity: 0.45 },
+  { grad: ['#F5A04D', '#E0791F', '#B25F17', '#914C12'], shadowOpacity: 0.55, highlightOpacity: 0.5 },
+  { grad: ['#E07C72', '#C0392B', '#96301F', '#7A2718'], shadowOpacity: 0.45, highlightOpacity: 0.55 },
 ];
 
 function svg(size, { bleed, transparent }) {
@@ -38,21 +38,25 @@ function svg(size, { bleed, transparent }) {
   const defs = BARS.map((b, i) => `
       <linearGradient id="bar${i}" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="${b.grad[0]}"/>
-        <stop offset="55%" stop-color="${b.grad[1]}"/>
-        <stop offset="100%" stop-color="${b.grad[2]}"/>
+        <stop offset="42%" stop-color="${b.grad[1]}"/>
+        <stop offset="82%" stop-color="${b.grad[2]}"/>
+        <stop offset="100%" stop-color="${b.grad[3]}"/>
       </linearGradient>
       <filter id="shadow${i}" x="-50%" y="-50%" width="200%" height="200%">
         <feDropShadow dx="0" dy="${dy}" stdDeviation="${blur}" flood-color="#000000" flood-opacity="${b.shadowOpacity}"/>
       </filter>`).join('');
 
   const bars = BARS.map((b, i) => {
-    // i=0 bottom (drawn last conceptually), reverse so brightest sits on top row
+    // i=0 bottom, reverse so top of stack (i=last) sits highest on screen
     const rowFromTop = BARS.length - 1 - i;
     const y = boxY + rowFromTop * (barH + gap);
-    const hlH = barH * 0.4;
+    const hlW = boxW * 0.25;
+    const hlH = barH * 0.2;
+    const hlX = boxX + boxW * 0.09;
+    const hlY = y + barH * 0.12;
     return `
     <rect x="${boxX}" y="${y}" width="${boxW}" height="${barH}" rx="${radius}" fill="url(#bar${i})" filter="url(#shadow${i})"/>
-    <rect x="${boxX}" y="${y}" width="${boxW}" height="${hlH}" rx="${radius}" fill="#ffffff" opacity="${b.highlightOpacity * 0.35}"/>`;
+    <rect x="${hlX}" y="${hlY}" width="${hlW}" height="${hlH}" rx="${hlH / 2}" fill="#ffffff" opacity="${b.highlightOpacity}" filter="blur(${barH * 0.05}px)"/>`;
   });
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
