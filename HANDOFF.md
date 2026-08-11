@@ -259,6 +259,18 @@ break length + auto-break every N, blinds (edit/add/remove), players & pool (ren
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
 
+### Recent work (2026-08-11 — 74 player emojis)
+`EMOJIS` in `screens/RemoteControl.tsx` went 16 → **74**, grouped attitude / animals / poker & luck /
+drinks & snacks / swagger. `.emoji-grid` (styles.css) switched from flex-wrap to an **auto-fill grid**
+(`minmax(38px,1fr)`) capped at `max-height:208px` with its own scroll + `overscroll-behavior:contain`,
+so the long list can't push the player card open (7 cols @375px, 9 @1280px, no horizontal overflow).
+`.emoji-opt` is now `width:100%; aspect-ratio:1` instead of a fixed 38px box. Verified in the dev
+preview: picking writes `LedgerPlayer.emoji` + closes the sheet, and a ZWJ emoji (🏴‍☠️) survives the
+localStorage round-trip. Commit `56dd8b5`, on `main`, Pages + APK green (4.39 MB, 17:42 UTC).
+**Note:** the picker only exists in the host **RemoteControl**, so emojis are unreachable without a live
+TV session — the Table players list and `ChipCountCard` only DISPLAY them. Pitched adding the picker to
+the Table list; not built.
+
 ### Recent work (2026-08-11 — ICON v1.1: violet/amber/red bars)
 Second icon pass, same "chip stack" mark, new palette. User handed over `gen-icons1.1.mjs`; ported into
 `scripts/gen-icons.mjs` (that path matters — see the v1.0 entry below), regenerated all 19 icons.
