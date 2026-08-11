@@ -4,6 +4,7 @@ import { useT, useFmt } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 import type { Unsubscribe } from 'firebase/firestore';
 import { togglePlayPause, goLevel, startBreak, cancelBreak, secondsLeft, initialClock, setMinutesPerLevel } from '../lib/clockLogic';
+import { moneyToUnits } from '../lib/distribution';
 import type { ClockState } from '../lib/clockLogic';
 import { IconPlay, IconPause, IconChevron, IconPlus, IconTrash } from '../components/Icons';
 import { ChipCountSheet } from '../components/ChipCountSheet.tsx';
@@ -25,7 +26,7 @@ export default function RemoteControl() {
   const { state, dispatch } = useStore();
   const t = useT();
   const { money } = useFmt();
-  const { liveSessionCode, liveSessionRole, minutesPerLevel, currency, breakMinutes, breakEvery, gameMode, cashUseTimer } = state.settings;
+  const { liveSessionCode, liveSessionRole, minutesPerLevel, currency, unitValue, breakMinutes, breakEvery, gameMode, cashUseTimer } = state.settings;
   const { ledger, session } = state;
   const isCash = gameMode === 'cash';
   const showTimer = !isCash || cashUseTimer; // cash + no timer = no clock/break/blinds
@@ -282,14 +283,15 @@ export default function RemoteControl() {
                 )}
                 {!isCash && (
                   <div className="remote-chips input-affix">
-                    <span className="affix">👑</span>
+                    <span className="affix">{currency}</span>
                     <input
                       className="input"
                       type="number"
-                      inputMode="numeric"
+                      inputMode="decimal"
+                      step="any"
                       placeholder={t('table.chipsPlaceholder')}
-                      value={p.chips || ''}
-                      onChange={(e) => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { chips: Math.max(0, Math.round(+e.target.value)) || undefined } })}
+                      value={p.chips ? Math.round(p.chips * unitValue * 100) / 100 : ''}
+                      onChange={(e) => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { chips: +e.target.value > 0 ? moneyToUnits(+e.target.value, unitValue) : undefined } })}
                     />
                     <button
                       type="button"

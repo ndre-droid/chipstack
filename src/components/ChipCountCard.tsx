@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../store';
 import { useT, useFmt } from '../lib/i18n';
+import { moneyToUnits } from '../lib/distribution';
 import { ChipCountSheet } from './ChipCountSheet';
 
 /**
@@ -16,6 +17,7 @@ export default function ChipCountCard() {
   const { money } = useFmt();
   const ledger = state.ledger;
   const playerCount = state.session.playerCount;
+  const buyIn = state.session.buyIn;
   const unitValue = state.settings.unitValue;
   const cur = state.settings.currency;
   const [countFor, setCountFor] = useState<{ id: string; name: string } | null>(null);
@@ -27,6 +29,17 @@ export default function ChipCountCard() {
           <div style={{ fontWeight: 600 }}>📷 {t('chipcount.title')}</div>
           <div className="faint" style={{ fontSize: 12.5 }}>{t('chipcount.cardHint')}</div>
         </div>
+        {ledger.length > 0 && buyIn > 0 && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm cc-setall"
+            onClick={() =>
+              dispatch({ type: 'LEDGER_SET_ALL_CHIPS', chips: moneyToUnits(buyIn, unitValue) })
+            }
+          >
+            {t('chipcount.setAll')} {money(buyIn, cur)}
+          </button>
+        )}
       </div>
 
       {ledger.length === 0 ? (
@@ -46,9 +59,27 @@ export default function ChipCountCard() {
               </span>
               <div className="cc-player-stats">
                 <div><span className="cc-stat-k">{t('chipcount.boughtIn')} </span>{money(p.buyIn || 0, cur)}</div>
-                <div>
-                  <span className="cc-stat-k">{t('chipcount.balance')} </span>
-                  {p.chips ? money(p.chips * unitValue, cur) : '—'}
+                <div className="cc-balance-row">
+                  <span className="cc-stat-k">{t('chipcount.balance')}</span>
+                  <label className="cc-balance-edit input-affix">
+                    <span className="affix">{cur}</span>
+                    <input
+                      className="input"
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      placeholder="0"
+                      aria-label={t('chipcount.balance')}
+                      value={p.chips ? Math.round(p.chips * unitValue * 100) / 100 : ''}
+                      onChange={(e) =>
+                        dispatch({
+                          type: 'LEDGER_UPDATE',
+                          id: p.id,
+                          patch: { chips: +e.target.value > 0 ? moneyToUnits(+e.target.value, unitValue) : undefined },
+                        })
+                      }
+                    />
+                  </label>
                 </div>
               </div>
               <button

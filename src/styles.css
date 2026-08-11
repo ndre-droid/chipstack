@@ -1605,8 +1605,13 @@ input[type='color'] { cursor: pointer; }
 .cc-player-name { flex: 1; font-weight: 500; }
 .cc-player-chips { font-variant-numeric: tabular-nums; opacity: .8; min-width: 56px; text-align: right; }
 .cc-enable { position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); z-index: 2; }
-.cc-player-stats { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; text-align: right; opacity: .92; font-variant-numeric: tabular-nums; }
+.cc-player-stats { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; text-align: right; opacity: .92; font-variant-numeric: tabular-nums; }
 .cc-stat-k { opacity: .5; }
+.cc-setall { margin-left: auto; flex: none; white-space: nowrap; align-self: flex-start; }
+.cc-balance-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.cc-balance-edit { max-width: 108px; }
+.cc-balance-edit .affix { padding: 0 2px 0 8px; font-size: 13px; }
+.cc-balance-edit .input { width: 62px; text-align: right; padding: 5px 8px 5px 2px; font-size: 13px; font-variant-numeric: tabular-nums; }
 /* Shutter flash — confirms a photo was taken. */
 .cc-flash { position: absolute; inset: 0; background: #fff; opacity: .9; animation: cc-flash .28s ease-out forwards; pointer-events: none; z-index: 5; }
 @keyframes cc-flash { to { opacity: 0; } }

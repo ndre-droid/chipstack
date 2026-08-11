@@ -147,6 +147,7 @@ type Action =
   | { type: 'LEDGER_ADD'; name?: string }
   | { type: 'LEDGER_ADD_MANY'; n: number }
   | { type: 'LEDGER_UPDATE'; id: string; patch: Partial<LedgerPlayer> }
+  | { type: 'LEDGER_SET_ALL_CHIPS'; chips?: number }
   | { type: 'LEDGER_REMOVE'; id: string }
   | { type: 'LEDGER_CLEAR' }
   | { type: 'LEAGUE_SAVE_GAME' }
@@ -302,6 +303,9 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'LEDGER_UPDATE':
       return { ...state, ledger: state.ledger.map((p) => (p.id === action.id ? { ...p, ...action.patch } : p)) };
+    case 'LEDGER_SET_ALL_CHIPS':
+      // one-tap "everyone starts with X" — fill every player's live stack at once
+      return { ...state, ledger: state.ledger.map((p) => ({ ...p, chips: action.chips })) };
     case 'LEDGER_REMOVE':
       return { ...state, ledger: state.ledger.filter((p) => p.id !== action.id) };
     case 'LEDGER_CLEAR':
