@@ -259,7 +259,21 @@ break length + auto-break every N, blinds (edit/add/remove), players & pool (ren
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
 
-### Recent work (2026-08-11 — NEW APP ICON "chip stack")
+### Recent work (2026-08-11 — ICON v1.1: violet/amber/red bars)
+Second icon pass, same "chip stack" mark, new palette. User handed over `gen-icons1.1.mjs`; ported into
+`scripts/gen-icons.mjs` (that path matters — see the v1.0 entry below), regenerated all 19 icons.
+Commit `94b2e8c`, pushed to `main`, Pages `31517400340` + APK `31517405485` both green, APK republished
+(4.39 MB, 2026-08-11 17:26 UTC).
+- **Palette:** three DISTINCT hues instead of one graded lime — violet `#A679E6→#371C6B` (bottom),
+  amber `#F5A04D→#914C12` (middle), red `#E07C72→#7A2718` (top). Each bar now a **4-stop** gradient
+  (0/42/82/100%) + its own drop shadow.
+- **Highlight changed shape:** was a full-width strip at 40% bar height; now a small rounded pill
+  (25% bar width, 20% height, inset 9%/12%) with a CSS `blur()` filter. librsvg/sharp **does** render
+  that shorthand filter — verified in the output PNGs, no fallback needed.
+- **Tile colour unchanged (`#1A1A1E`)** → `@color/ic_launcher_background` needed NO edit this time.
+- Android launcher-icon caching gotcha still applies (old icon lingers until reboot/launcher restart).
+
+### Recent work (2026-08-11 — NEW APP ICON "chip stack" v1.0)
 Icon redesigned by the user in a separate Claude Code session; the design file arrived as a standalone
 `gen-icons.mjs` (in `~/Downloads`, plus a stray copy at the repo root — both since removed/merged).
 **Ported verbatim into the canonical `scripts/gen-icons.mjs`** — that location matters: line 6 does
