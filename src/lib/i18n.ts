@@ -391,6 +391,20 @@ const dict: Record<Lang, Record<string, string>> = {
     'sheet.removeConfirm': 'Remove {name} from the night?',
     'sheet.done': 'Done',
 
+
+    'roster.handOver': 'Hand over {amount} in chips',
+    'roster.gotIt': 'Got it',
+    'roster.resetPlayer': 'Reset player',
+    'roster.tableActions': 'Table actions',
+    'roster.allToBuyIn': 'All stacks = {amount}',
+    'roster.clearStacks': 'Clear all stacks',
+    'roster.resetTable': 'Reset the table',
+    'roster.resetTableConfirm': 'Reset everyone to one buy-in and a fresh stack? Names stay.',
+    'roster.newNight': 'New night — remove everyone',
+    'roster.newNightConfirm': 'Remove all players and start a new night?',
+
+    'sheet.resetConfirm': 'Reset {name} to one buy-in and a fresh stack?',
+
   },
   de: {
     'nav.plan': 'Plan',
@@ -773,6 +787,20 @@ const dict: Record<Lang, Record<string, string>> = {
     'sheet.inPlayHint': 'Aus = raus oder ausgezahlt. Wieder an lassen die Beträge unverändert stehen.',
     'sheet.removeConfirm': '{name} vom Abend entfernen?',
     'sheet.done': 'Fertig',
+
+
+    'roster.handOver': '{amount} in Chips rausgeben',
+    'roster.gotIt': 'Passt',
+    'roster.resetPlayer': 'Spieler zurücksetzen',
+    'roster.tableActions': 'Tisch-Aktionen',
+    'roster.allToBuyIn': 'Alle Stacks = {amount}',
+    'roster.clearStacks': 'Alle Stacks leeren',
+    'roster.resetTable': 'Tisch zurücksetzen',
+    'roster.resetTableConfirm': 'Alle auf ein Buy-in und frischen Stack zurücksetzen? Namen bleiben.',
+    'roster.newNight': 'Neuer Abend — alle entfernen',
+    'roster.newNightConfirm': 'Alle Spieler entfernen und neuen Abend starten?',
+
+    'sheet.resetConfirm': '{name} auf ein Buy-in und frischen Stack zurücksetzen?',
 
   },
 };

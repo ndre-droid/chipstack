@@ -1749,3 +1749,26 @@ input[type='color'] { cursor: pointer; }
 .ps-delete { color: var(--bad); }
 .pr-ko { flex: none; font-size: 12.5px; font-weight: 600; color: var(--acc); }
 .pr-menu { flex-wrap: wrap; }
+
+/* --- One-tap money amounts (buy-in prompts, stack editing) --- */
+.quick-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.quick-chip { padding: 5px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  background: var(--surface-2); border: 1px solid var(--line); color: inherit;
+  font-variant-numeric: tabular-nums; }
+.quick-chip:active { background: var(--surface-3); }
+
+/* --- What to physically hand over after a buy-in --- */
+.pr-handout { margin-top: 8px; padding: 9px 10px; border-radius: var(--r-sm);
+  background: var(--acc-wash); border: 1px solid var(--acc-line); }
+.pr-handout-h { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 12.5px; font-weight: 600; }
+.pr-handout-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px;
+  font-size: 13px; font-variant-numeric: tabular-nums; }
+.pr-handout-chip { display: inline-flex; align-items: center; gap: 5px; }
+.pr-handout-chip .cr-swatch { width: 16px; height: 16px; border-width: 1.5px; }
+
+/* --- Table-wide reset menu --- */
+.pr-table-menu { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding: 10px;
+  border-radius: var(--r-sm); background: var(--surface-2); border: 1px solid var(--line); }
+.pr-table-menu .btn { justify-content: flex-start; }
+.danger-text { color: var(--bad); }

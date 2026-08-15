@@ -47,6 +47,32 @@ export function autoStartingStack(
 }
 
 /**
+ * The chips to hand over for ANY amount of money, built with the same rules as the
+ * starting stack. A €5 late buy-in gets €5 worth of chips — not a full stack.
+ *
+ * A full buy-in returns exactly the starting stack (manual fine-tuning included), so
+ * a new player is dealt what the Plan tab promises. A smaller top-up instead gets
+ * the FEWEST chips (`smallBias` 0): mid-game nobody wants 25 pieces for €5, and the
+ * small chips they need for blinds are already in front of them.
+ */
+export function handoutStack(
+  denominations: Denomination[],
+  session: SessionConfig,
+  unitValue: number,
+  amount: number,
+): StackResult {
+  if (Math.abs(amount - session.buyIn) < 0.005) return startingStackOf(denominations, session, unitValue);
+  return computeStack(moneyToUnits(amount, unitValue), denominations, {
+    smallBias: amount > session.buyIn ? session.smallBias : 0,
+    excluded: excludedSetOf(session),
+    blind: startBlindOf(session),
+    stacksNeeded: stacksNeededOf(session),
+    maxDenoms: session.maxDenoms,
+    useAllChips: session.useAllChips,
+  });
+}
+
+/**
  * Signature of every input the auto stack depends on. A saved manual override is
  * only honoured while this matches — change the buy-in or the slider and the
  * hand-tuned counts are quietly dropped instead of silently misapplied.

@@ -267,6 +267,27 @@ break length + auto-break every N, blinds (edit/add/remove), players & pool (ren
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
 
+### Recent work (2026-08-15, part 4 — buy-ins hand out real chips, resets, one-tap amounts)
+- **`handoutStack()` in `lib/startingStack.ts`** — the chips for ANY amount. A full buy-in returns
+  exactly `startingStackOf()` (fine-tuning included); anything else is computed for that amount, and
+  a top-up **smaller** than a buy-in uses `smallBias: 0` (fewest chips — nobody wants 25 pieces for
+  €5 mid-game). Used by BOTH the buy-in handout and the counting-round pre-fill, so they always agree.
+- **Buying in credits the stack + shows what to push across** — `chips += amount` and a `.pr-handout`
+  panel ("€5 in Chips rausgeben · 5× 10 · 2× 25 · 4× 100"), dismissed with one tap.
+- **New players start with their buy-in in chips** (`freshChips()` in the reducer) — sane figures
+  before anyone counts.
+- **Counting round pre-fills from the player's OWN stack** — the €5 buy-in opens at €5, not €20.
+  That was the actual complaint.
+- **Resets (new actions `LEDGER_RESET_PLAYER` / `LEDGER_RESET_ALL` / `LEDGER_CLEAR_CHIPS`):** per
+  player (⋯ menu + player sheet), whole table (↺ menu next to the count button, names kept), new
+  night (remove everyone), plus "alle Stacks = Buy-in" and "alle Stacks leeren".
+- **One-tap amounts** (`.quick-chip`): buy-in + 5/10/20/50 on every money entry, and they ADD up, so
+  €35 is three taps. Also on the stack field in the player sheet.
+- Verified in the preview: €5 top-up → correct breakdown + €5 stack; €25 → €25 breakdown; count round
+  opened the €5 player at €5 and the €20 player at the full stack; table reset kept names. `tsc -b` +
+  build clean. (Dev console showed stale `stackForMoney` HMR errors from renaming the export
+  mid-session — transient, gone on a clean build.)
+
 ### Recent work (2026-08-15, part 3 — ONE player list + money you can correct)
 User: "es gibt immer noch zwei Spieler-Tabs" and the money was too rigid to fix. Both addressed.
 - **The second list is gone.** The host `RemoteControl` had its OWN full players-and-pool card, so

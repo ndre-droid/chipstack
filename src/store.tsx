@@ -94,6 +94,16 @@ const defaultSession: SessionConfig = {
 /** how many counting rounds a player's stack trail keeps (sparkline length) */
 const HISTORY_MAX = 12;
 
+/**
+ * A player who just bought in is physically holding chips worth what they paid, so
+ * that's where their live stack starts — no counting round needed to see a sane
+ * number. Undefined when the buy-in is 0 (nothing to hold).
+ */
+const freshChips = (state: AppState): number | undefined => {
+  const units = Math.round(state.session.buyIn / (state.settings.unitValue || 0.01));
+  return units > 0 ? units : undefined;
+};
+
 const initialState: AppState = {
   denominations: defaultDenoms(),
   settings: defaultSettings,
@@ -160,6 +170,9 @@ type Action =
   | { type: 'LEDGER_SET_CHIPS_MANY'; entries: { id: string; chips?: number }[] }
   | { type: 'LEDGER_RESTORE_CHIPS'; players: { id: string; chips?: number; chipHistory?: { at: number; chips: number }[] }[] }
   | { type: 'COUNTING_SET'; progress: CountingProgress | null }
+  | { type: 'LEDGER_RESET_PLAYER'; id: string }
+  | { type: 'LEDGER_RESET_ALL' }
+  | { type: 'LEDGER_CLEAR_CHIPS' }
   | { type: 'LEDGER_REMOVE'; id: string }
   | { type: 'LEDGER_CLEAR' }
   | { type: 'LEAGUE_SAVE_GAME' }
@@ -305,13 +318,13 @@ function reducer(state: AppState, action: Action): AppState {
         ...state,
         ledger: [
           ...state.ledger,
-          { id: uid(), name: action.name || `Player ${state.ledger.length + 1}`, buyIn: state.session.buyIn, cashOut: 0 },
+          { id: uid(), name: action.name || `Player ${state.ledger.length + 1}`, buyIn: state.session.buyIn, cashOut: 0, chips: freshChips(state) },
         ],
       };
     case 'LEDGER_ADD_MANY': {
       const add: LedgerPlayer[] = [];
       for (let i = 0; i < action.n; i++)
-        add.push({ id: uid(), name: `Player ${state.ledger.length + add.length + 1}`, buyIn: state.session.buyIn, cashOut: 0 });
+        add.push({ id: uid(), name: `Player ${state.ledger.length + add.length + 1}`, buyIn: state.session.buyIn, cashOut: 0, chips: freshChips(state) });
       return { ...state, ledger: [...state.ledger, ...add] };
     }
     case 'LEDGER_UPDATE':
@@ -350,6 +363,35 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'COUNTING_SET':
       return { ...state, counting: action.progress };
+    case 'LEDGER_RESET_PLAYER':
+      // back to "just sat down": one buy-in, nothing cashed out, a fresh stack.
+      return {
+        ...state,
+        ledger: state.ledger.map((p) =>
+          p.id === action.id
+            ? { ...p, buyIn: state.session.buyIn, cashOut: 0, out: false, outAt: undefined, chips: freshChips(state), chipHistory: undefined, knockouts: 0 }
+            : p,
+        ),
+      };
+    case 'LEDGER_RESET_ALL':
+      // same, for everyone — keeps the people (names, emojis), drops the night's numbers
+      return {
+        ...state,
+        counting: null,
+        ledger: state.ledger.map((p) => ({
+          ...p,
+          buyIn: state.session.buyIn,
+          cashOut: 0,
+          out: false,
+          outAt: undefined,
+          chips: freshChips(state),
+          chipHistory: undefined,
+          knockouts: 0,
+        })),
+      };
+    case 'LEDGER_CLEAR_CHIPS':
+      // only the stack figures — buy-ins and cash-outs stay untouched
+      return { ...state, ledger: state.ledger.map((p) => ({ ...p, chips: undefined, chipHistory: undefined })) };
     case 'LEDGER_REMOVE':
       return { ...state, ledger: state.ledger.filter((p) => p.id !== action.id) };
     case 'LEDGER_CLEAR':

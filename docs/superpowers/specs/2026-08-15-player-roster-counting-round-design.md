@@ -109,6 +109,26 @@ A number typed wrong is fixed by typing it right — no need to un-cash-out some
 a cash game) and, when a cash-out has already removed money, also spells out what is actually still
 on the table — that is the figure the counted total is compared against.
 
+## Round 4 (same day) — buy-ins hand out real chips, resets, one-tap amounts
+
+- **A buy-in now gives chips worth that buy-in.** `lib/startingStack.ts` gains `handoutStack()`:
+  a FULL buy-in returns exactly the starting stack (manual fine-tuning included), any other amount
+  is computed for that amount — and a top-up smaller than a buy-in uses `smallBias` 0, because
+  mid-game nobody wants 25 pieces for €5 and the small chips for blinds are already in front of
+  them. Buying in adds the money to the player's live stack and shows the breakdown to physically
+  push across ("hand over €5: 5×10, 2×25, 4×100"), dismissed with one tap.
+- **New players start with their buy-in in chips** (`freshChips()` in the reducer), so a table has
+  sane stack figures before anyone counts anything.
+- **The counting round pre-fills from the player's OWN stack**, not the standard buy-in — the €5
+  buy-in opens with €5 of chips to correct, which is what round 4 was really about.
+- **Resets, three levels:** per player (⋯ → reset, also in the sheet) → one buy-in, no cash-outs,
+  fresh stack, trail cleared; whole table (↺ menu → reset) → same for everyone, names and emojis
+  kept; new night → remove everyone. Plus "all stacks = buy-in" and "clear all stacks" for the
+  stack figures alone. Actions: `LEDGER_RESET_PLAYER`, `LEDGER_RESET_ALL`, `LEDGER_CLEAR_CHIPS`.
+- **One-tap amounts** (`.quick-chip`) on every money entry: the buy-in plus 5/10/20/50, and they
+  ADD up, so €35 is three taps and no keyboard. Also on the stack field in the player sheet, which
+  is the "+€5 onto the chips" button that was asked for.
+
 ## Verified
 
 `npx tsc -b` and `npm run build` clean. Driven end-to-end in the dev preview (de): counting
@@ -130,3 +150,9 @@ Round 3, same preview: a player cashed out at €55 bought back in for €30 →
 stayed on record, back in play; a second cash-out of €12 made it €67 (not €12), net +€17; the edit
 sheet corrected €67 → €60 and the in-play toggle put her back in, giving pool €90 / on the table €30
 / counted €38 / +€8. `npx tsc -b` and `npm run build` clean, no console errors.
+
+Round 4, same preview: a €5 top-up produced "hand over €5: 5×10 + 2×25 + 4×100" (= 500 units) and
+moved the stack to €5; a €25 buy-in produced a €25 breakdown; the counting round opened the €5
+player pre-filled at €5 and the €20 player at the full starting stack; "reset the table" put both
+players back to one buy-in, no cash-out and a fresh stack with names kept; the quick-amount chips
+add up as expected. `npx tsc -b` and `npm run build` clean.

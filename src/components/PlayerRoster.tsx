@@ -6,6 +6,8 @@ import { EmojiPicker } from './EmojiPicker';
 import CountRound, { type ChipSnapshot } from './CountRound';
 import PlayerSheet from './PlayerSheet';
 import Sparkline from './Sparkline';
+import { handoutStack } from '../lib/startingStack';
+import { moneyToUnits } from '../lib/distribution';
 
 /** how old the newest count may get before the roster nudges you to count again */
 const STALE_MINUTES = 25;
@@ -13,6 +15,8 @@ const STALE_MINUTES = 25;
 const UNDO_MS = 8000;
 
 type Prompt = { id: string; kind: 'cashout' | 'rebuy' };
+/** the chips to physically hand over after a buy-in, shown until dismissed */
+type Handout = { id: string; amount: number; denoms: { value: number; color: string; accent: string; n: number }[] };
 
 /**
  * THE player list for the night — the ONLY one. Everything that happens to a player
@@ -40,6 +44,8 @@ export default function PlayerRoster() {
   const [koPickId, setKoPickId] = useState<string | null>(null); // busted player awaiting bounty attribution
   const [editId, setEditId] = useState<string | null>(null);
   const [round, setRound] = useState<{ only?: string } | null>(null);
+  const [handout, setHandout] = useState<Handout | null>(null);
+  const [tableMenu, setTableMenu] = useState(false);
   const [undo, setUndo] = useState<ChipSnapshot[] | null>(null);
   const undoTimer = useRef<number | null>(null);
   // re-render on a slow tick so "counted 20 min ago" doesn't go stale on screen
@@ -72,6 +78,11 @@ export default function PlayerRoster() {
   const anyCounted = ledger.some((p) => !p.out && (p.chips || 0) > 0);
   const diff = counted - onTable;
 
+  /** One-tap amounts: the buy-in first, then the usual small notes people throw in. */
+  const quickAmounts = [session.buyIn, 5, 10, 20, 50]
+    .filter((v, i, a) => v > 0 && a.indexOf(v) === i)
+    .slice(0, 4);
+
   /** Keep the planning player count in step with who's actually here. */
   const syncCount = (n: number) => dispatch({ type: 'SET_PLAYER_COUNT', n: Math.max(1, n) });
 
@@ -100,14 +111,29 @@ export default function PlayerRoster() {
     closeRow();
   };
 
-  /** Buying (back) in ADDS to the total put on the table and puts them in play. */
+  /**
+   * Buying (back) in ADDS to the total put on the table and puts them in play — and
+   * hands over chips worth exactly that amount, so a €5 late buy-in is €5 of chips,
+   * not a fresh full stack. The breakdown is shown so you know what to push across.
+   */
   const buyIn = (id: string, amount: number) => {
     const p = ledger.find((x) => x.id === id);
-    if (!p) return;
+    if (!p || amount <= 0) return;
+    const stack = handoutStack(state.denominations, session, unitValue, amount);
     dispatch({
       type: 'LEDGER_UPDATE',
       id,
-      patch: { buyIn: (p.buyIn || 0) + amount, out: false, outAt: undefined },
+      patch: {
+        buyIn: (p.buyIn || 0) + amount,
+        out: false,
+        outAt: undefined,
+        chips: (p.chips || 0) + moneyToUnits(amount, unitValue),
+      },
+    });
+    setHandout({
+      id,
+      amount,
+      denoms: stack.denomsUsed.map((d) => ({ value: d.value, color: d.color, accent: d.accent, n: stack.counts[d.id] || 0 })),
     });
     closeRow();
   };
@@ -248,6 +274,15 @@ export default function PlayerRoster() {
                             {t('roster.markOut')}
                           </button>
                         )}
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => {
+                            dispatch({ type: 'LEDGER_RESET_PLAYER', id: p.id });
+                            closeRow();
+                          }}
+                        >
+                          ↺ {t('roster.resetPlayer')}
+                        </button>
                         <div className="spacer" />
                         <button
                           className="icon-btn danger"
@@ -276,9 +311,27 @@ export default function PlayerRoster() {
                             : session.buyIn
                         }
                         confirmLabel={t('roster.confirm')}
+                        quick={quickAmounts}
                         onCancel={() => setPrompt(null)}
                         onConfirm={(v) => (prompt.kind === 'cashout' ? cashOut(p.id, v) : buyIn(p.id, v))}
                       />
+                    )}
+
+                    {handout?.id === p.id && (
+                      <div className="pr-handout">
+                        <div className="pr-handout-h">
+                          {t('roster.handOver', { amount: money(handout.amount, currency) })}
+                          <button className="btn btn-ghost btn-sm" onClick={() => setHandout(null)}>{t('roster.gotIt')}</button>
+                        </div>
+                        <div className="pr-handout-chips">
+                          {handout.denoms.map((d) => (
+                            <span className="pr-handout-chip" key={d.value}>
+                              <span className="cr-swatch" style={{ background: d.color, borderColor: d.accent }} />
+                              {d.n}× {d.value}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
                     )}
 
                     {koPickId === p.id && (
@@ -313,7 +366,56 @@ export default function PlayerRoster() {
               <button className={`btn btn-sm ${stale ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setRound({})}>
                 🧮 {t('roster.countRound')}
               </button>
+              <button
+                className={`icon-btn ${tableMenu ? 'active' : ''}`}
+                style={{ flex: 'none', width: 36 }}
+                onClick={() => setTableMenu((v) => !v)}
+                aria-label={t('roster.tableActions')}
+              >
+                ↺
+              </button>
             </div>
+
+            {tableMenu && (
+              <div className="pr-table-menu">
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    dispatch({ type: 'LEDGER_SET_ALL_CHIPS', chips: moneyToUnits(session.buyIn, unitValue) });
+                    setTableMenu(false);
+                  }}
+                >
+                  {t('roster.allToBuyIn', { amount: money(session.buyIn, currency) })}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    dispatch({ type: 'LEDGER_CLEAR_CHIPS' });
+                    setTableMenu(false);
+                  }}
+                >
+                  {t('roster.clearStacks')}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    if (confirm(t('roster.resetTableConfirm'))) dispatch({ type: 'LEDGER_RESET_ALL' });
+                    setTableMenu(false);
+                  }}
+                >
+                  ↺ {t('roster.resetTable')}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm danger-text"
+                  onClick={() => {
+                    if (confirm(t('roster.newNightConfirm'))) dispatch({ type: 'LEDGER_CLEAR' });
+                    setTableMenu(false);
+                  }}
+                >
+                  {t('roster.newNight')}
+                </button>
+              </div>
+            )}
 
             <div className={`pr-age ${stale ? 'is-stale' : ''}`}>
               {countedMinsAgo === null
@@ -370,6 +472,7 @@ function AmountPrompt({
   currency,
   defaultValue,
   confirmLabel,
+  quick,
   onConfirm,
   onCancel,
 }: {
@@ -377,15 +480,26 @@ function AmountPrompt({
   currency: string;
   defaultValue: number;
   confirmLabel: string;
+  quick: number[];
   onConfirm: (amount: number) => void;
   onCancel: () => void;
 }) {
   const [value, setValue] = useState(defaultValue ? String(defaultValue) : '');
   const submit = () => onConfirm(Math.max(0, +value || 0));
+  /** taps ADD up, so 5 + 5 + 10 is three taps and no typing */
+  const add = (n: number) => setValue(String(Math.round(((+value || 0) + n) * 100) / 100));
 
   return (
     <div className="pr-cashout">
       <div className="faint" style={{ fontSize: 12 }}>{label}</div>
+      <div className="quick-row">
+        {quick.map((n) => (
+          <button key={n} type="button" className="quick-chip" onClick={() => add(n)}>
+            +{currency}{n}
+          </button>
+        ))}
+        <button type="button" className="quick-chip" onClick={() => setValue('')}>C</button>
+      </div>
       <div className="input-affix" style={{ marginTop: 6 }}>
         <span className="affix">{currency}</span>
         <input

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { useT, useFmt } from '../lib/i18n';
 import { moneyToUnits } from '../lib/distribution';
-import { startingStackOf } from '../lib/startingStack';
+import { startingStackOf, handoutStack } from '../lib/startingStack';
 import type { Denomination, LedgerPlayer } from '../types';
 
 export type ChipSnapshot = { id: string; chips?: number; chipHistory?: { at: number; chips: number }[] };
@@ -54,9 +54,6 @@ export default function CountRound({
       ? denominations.filter((d) => d.count > 0).slice().sort((a, b) => a.value - b.value)
       : startStack.denomsUsed;
 
-  /** the fresh-stack pattern (denomId → chips), used to pre-fill a never-counted player */
-  const startCounts = useMemo(() => ({ ...startStack.counts }), [startStack]);
-
   const [idx, setIdx] = useState(0);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [prefilled, setPrefilled] = useState(false);
@@ -71,21 +68,24 @@ export default function CountRound({
   const currentUnits = denoms.reduce((s, d) => s + (counts[d.id] || 0) * d.value, 0);
   const isLast = idx >= players.length - 1;
 
-  // A player nobody has counted yet is almost always still holding the stack they
-  // were dealt — start from that pattern so only the difference has to be fixed.
+  // A player nobody has counted yet is still holding what they were handed — so
+  // pre-fill with a chip pattern worth exactly THEIR stack, not the standard
+  // buy-in. Someone who bought in for €5 starts from €5 of chips.
   const seeded = useRef<string | null>(null);
   useEffect(() => {
     if (!player || done || seeded.current === player.id) return;
     seeded.current = player.id;
-    const fresh = !player.chips && !(player.chipHistory?.length);
-    if (fresh && startStack.denomsUsed.length > 0) {
-      setCounts({ ...startCounts });
+    const counted = (player.chipHistory?.length ?? 0) > 0;
+    const held = (player.chips || 0) * unitValue || session.buyIn;
+    if (!counted && held > 0) {
+      const pattern = handoutStack(denominations, session, unitValue, held).counts;
+      setCounts({ ...pattern });
       setPrefilled(true);
     } else {
       setCounts({});
       setPrefilled(false);
     }
-  }, [player, done, startCounts, startStack.denomsUsed.length]);
+  }, [player, done, denominations, session, unitValue]);
 
   // Tell the big screen how far around the table we are.
   useEffect(() => {

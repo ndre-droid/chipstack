@@ -29,6 +29,10 @@ export default function PlayerSheet({ playerId, onClose }: { playerId: string; o
   const patch = (p: Partial<typeof player>) => dispatch({ type: 'LEDGER_UPDATE', id: player.id, patch: p });
   const net = (player.cashOut || 0) - (player.buyIn || 0);
   const inPlay = !player.out;
+  /** one-tap money onto the live stack — the buy-in first, then the usual notes */
+  const quick = [state.session.buyIn, 5, 10, 20, 50].filter((v, i, a) => v > 0 && a.indexOf(v) === i).slice(0, 4);
+  const addChips = (euros: number) =>
+    patch({ chips: (player.chips || 0) + moneyToUnits(euros, unitValue) });
 
   return (
     <div className="cr-sheet" role="dialog" aria-modal="true">
@@ -101,6 +105,14 @@ export default function PlayerSheet({ playerId, onClose }: { playerId: string; o
               }
             />
           </div>
+          <div className="quick-row">
+            {quick.map((n) => (
+              <button key={n} type="button" className="quick-chip" onClick={() => addChips(n)}>
+                +{currency}{n}
+              </button>
+            ))}
+            <button type="button" className="quick-chip" onClick={() => patch({ chips: undefined })}>C</button>
+          </div>
           <p className="faint ps-hint">{t('sheet.stackHint')}</p>
         </div>
 
@@ -122,6 +134,16 @@ export default function PlayerSheet({ playerId, onClose }: { playerId: string; o
           <span>{t('cash.net')}</span>
           <b className={net >= 0 ? 'pos' : 'neg'}>{net >= 0 ? '+' : ''}{money(net, currency)}</b>
         </div>
+
+        <button
+          className="btn btn-ghost btn-block btn-sm"
+          onClick={() => {
+            if (confirm(t('sheet.resetConfirm', { name: player.name || 'Player' })))
+              dispatch({ type: 'LEDGER_RESET_PLAYER', id: player.id });
+          }}
+        >
+          ↺ {t('roster.resetPlayer')}
+        </button>
 
         <button
           className="btn btn-ghost btn-block btn-sm ps-delete"
