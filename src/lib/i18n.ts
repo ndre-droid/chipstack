@@ -370,6 +370,26 @@ const dict: Record<Lang, Record<string, string>> = {
     'tv.countAgo': 'Last stack count was {n} min ago — good moment to recount',
     'tv.countNever': 'Stacks have not been counted yet — good moment to start',
 
+
+    'roster.edit': 'Edit',
+    'roster.out': 'Cashed',
+    'roster.addBuyIn': 'Add buy-in',
+    'roster.buyBackIn': 'Buy back in',
+    'roster.buyInPrompt': 'How much is {name} putting on the table?',
+
+    'cash.perPlayer': 'Net per player',
+    'sheet.title': 'Edit player',
+    'sheet.boughtIn': 'Bought in, total',
+    'sheet.boughtInHint': 'Every euro that went on the table for this player — buy-in plus every rebuy.',
+    'sheet.cashedOut': 'Cashed out, total',
+    'sheet.cashedOutHint': 'Every euro taken off the table. Correct it here if it was typed wrong.',
+    'sheet.stack': 'Stack right now',
+    'sheet.stackHint': 'Overview only — it never changes the settle-up maths.',
+    'sheet.inPlay': 'In play',
+    'sheet.inPlayHint': 'Off = out or cashed out. Turning it back on keeps the money on record.',
+    'sheet.removeConfirm': 'Remove {name} from the night?',
+    'sheet.done': 'Done',
+
   },
   de: {
     'nav.plan': 'Plan',
@@ -731,6 +751,26 @@ const dict: Record<Lang, Record<string, string>> = {
     'tv.counting': 'Stacks zählen',
     'tv.countAgo': 'Letzte Zählung vor {n} Min — guter Moment zum Nachzählen',
     'tv.countNever': 'Stacks noch nicht gezählt — guter Moment dafür',
+
+
+    'roster.edit': 'Bearbeiten',
+    'roster.out': 'Ausgezahlt',
+    'roster.addBuyIn': 'Nachkaufen',
+    'roster.buyBackIn': 'Neu einkaufen',
+    'roster.buyInPrompt': 'Wie viel legt {name} auf den Tisch?',
+
+    'cash.perPlayer': 'Netto je Spieler',
+    'sheet.title': 'Spieler bearbeiten',
+    'sheet.boughtIn': 'Eingekauft, gesamt',
+    'sheet.boughtInHint': 'Jeder Euro, der für diesen Spieler auf den Tisch ging — Buy-in plus alle Rebuys.',
+    'sheet.cashedOut': 'Ausgezahlt, gesamt',
+    'sheet.cashedOutHint': 'Jeder Euro, der vom Tisch runter ging. Hier korrigieren, wenn du dich vertippt hast.',
+    'sheet.stack': 'Stack gerade',
+    'sheet.stackHint': 'Nur Überblick — ändert die Abrechnung nie.',
+    'sheet.inPlay': 'Im Spiel',
+    'sheet.inPlayHint': 'Aus = raus oder ausgezahlt. Wieder an lassen die Beträge unverändert stehen.',
+    'sheet.removeConfirm': '{name} vom Abend entfernen?',
+    'sheet.done': 'Fertig',
 
   },
 };

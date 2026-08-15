@@ -81,6 +81,34 @@ background picker uses a plain file input, which does not need them).
 
 Not built (offered, not picked): counting in seat order, stacks shown in big blinds.
 
+## Round 3 (same day) — one list, and money you can actually correct
+
+Two complaints: there were still two player lists, and the money was too rigid to fix.
+
+**One list.** The host `RemoteControl` had its own full players-and-pool card, so while hosting a
+live session the Table tab showed two of them. That card is deleted; its unique pieces moved into
+the roster (bounty knockout attribution, the pool total, the 🎯 count). RemoteControl is now clock,
+level length, blinds and moments only. The Cash tab's read-only list is retitled "net per player"
+so it reads as reporting, not a second editor.
+
+**Cumulative money.** `buyIn` is every euro that went ON the table for a player, `cashOut` every
+euro that came OFF. So:
+
+- Cashing out **adds** to `cashOut` (it used to replace it), which makes a second cash-out later in
+  the night add up instead of overwriting.
+- Buying (back) in **adds** to `buyIn` and puts the player in play, leaving any earlier cash-out on
+  the record — the answer to "she cashed out, then bought in again for a different amount".
+- Both go through one inline `AmountPrompt`, so any amount works, not just the fixed buy-in. The
+  one-tap `+ buy-in` button stays for the common case.
+
+**Corrections.** `components/PlayerSheet.tsx` (⋯ → Edit) exposes the raw fields: name, emoji,
+bought-in total, cashed-out total, current stack, an in-play toggle, the resulting net, and delete.
+A number typed wrong is fixed by typing it right — no need to un-cash-out someone to repair it.
+
+**Footer basis.** The totals line shows the pool (all buy-ins in a tournament, money on the table in
+a cash game) and, when a cash-out has already removed money, also spells out what is actually still
+on the table — that is the figure the counted total is compared against.
+
 ## Verified
 
 `npx tsc -b` and `npm run build` clean. Driven end-to-end in the dev preview (de): counting
@@ -97,3 +125,8 @@ rendered `🧮 Stacks zählen · 🐻 Marc · 1/3`, cleared to `null` on close; 
 history entry per player and undo restored both `chips` and the trail; three sparkline paths drew in
 the roster and three on the TV roster; the age line read "Vor 15 Min gezählt". `npx tsc -b` and
 `npm run build` clean, no console errors.
+
+Round 3, same preview: a player cashed out at €55 bought back in for €30 → bought-in €50, the €55
+stayed on record, back in play; a second cash-out of €12 made it €67 (not €12), net +€17; the edit
+sheet corrected €67 → €60 and the in-play toggle put her back in, giving pool €90 / on the table €30
+/ counted €38 / +€8. `npx tsc -b` and `npm run build` clean, no console errors.

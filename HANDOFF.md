@@ -267,6 +267,30 @@ break length + auto-break every N, blinds (edit/add/remove), players & pool (ren
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
 
+### Recent work (2026-08-15, part 3 — ONE player list + money you can correct)
+User: "es gibt immer noch zwei Spieler-Tabs" and the money was too rigid to fix. Both addressed.
+- **The second list is gone.** The host `RemoteControl` had its OWN full players-and-pool card, so
+  while hosting, the Table tab showed the roster AND that card. Deleted (−177 lines); its unique bits
+  moved into `PlayerRoster`: the **bounty knockout picker**, the 🎯 count per row, and the pool total.
+  RemoteControl is now clock / level length / blinds / moments only. The Cash tab's read-only list was
+  retitled `cash.perPlayer` ("Netto je Spieler") so it can't read as a second editor.
+- **MONEY MODEL — cumulative, this is the important bit.** `buyIn` = every euro that went ON the table
+  for that player, `cashOut` = every euro that came OFF.
+  - Cash-out now **ADDS** to `cashOut` (it used to REPLACE it) → a second cash-out later adds up.
+  - Buy (back) in **ADDS** to `buyIn` and clears `out`, leaving the earlier `cashOut` on the record →
+    "sie hat sich ausgekauft und kauft später für einen anderen Betrag neu ein" just works.
+  - Both go through one inline `AmountPrompt` → any amount, not just `session.buyIn`. The one-tap
+    `+ €buy-in` button stays for the common case.
+- **`components/PlayerSheet.tsx`** (⋯ → ✏️ Bearbeiten): raw editing of name, emoji, bought-in TOTAL,
+  cashed-out TOTAL, current stack, in-play toggle, net readout, delete. A mistyped number is fixed by
+  typing it right — no more "back in" hack that wiped the cash-out.
+- **Footer basis:** shows the pool (tournament = all buy-ins, cash = on the table) plus, when a
+  cash-out has already removed money, what is STILL on the table — that's what the counted total is
+  compared against (was confusing: pool €60 vs a diff computed against €5).
+- Verified in the preview: cash-out €55 → re-buy €30 → bought-in €50 with the €55 kept → second
+  cash-out €12 → €67, net +€17 → sheet corrected to €60 + toggled back in → pool €90 / am Tisch €30 /
+  gezählt €38 / +€8. `npx tsc -b` + `npm run build` clean, no console errors.
+
 ### Recent work (2026-08-15, part 2 — counting on the TV, stack trail, counting extras)
 Same spec file, "Round 2" section. **One new synced field** — `AppState.counting` — done properly at
 all three spots (`dataOf` in `liveData.ts`, `LIVE_APPLY_REMOTE` in `store.tsx`, the `TvMode` subscribe

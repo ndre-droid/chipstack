@@ -1,31 +1,27 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store';
-import { useT, useFmt } from '../lib/i18n';
+import { useT } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 import type { Unsubscribe } from 'firebase/firestore';
 import { togglePlayPause, goLevel, startBreak, cancelBreak, secondsLeft, initialClock, setMinutesPerLevel } from '../lib/clockLogic';
-import { moneyToUnits } from '../lib/distribution';
 import type { ClockState } from '../lib/clockLogic';
 import { IconPlay, IconPause, IconChevron, IconPlus, IconTrash } from '../components/Icons';
-import { EmojiPicker } from '../components/EmojiPicker';
-import CountRound from '../components/CountRound';
 
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 /**
  * The phone's remote, shown on the Table tab only while this phone is hosting a
- * Live Session. It drives the live game: the clock, level length, blinds and the
- * players & pool (rebuys, bust / cash-out) — everything writes to the shared session
- * so the TV mirrors it instantly. The TV's look (design, extras, quips) lives in the
+ * Live Session. It drives the live game: the clock, level length and the blinds —
+ * everything writes to the shared session so the TV mirrors it instantly. Players
+ * live in the single roster on the Table tab, not here. The TV's look (design, extras, quips) lives in the
  * separate TV broadcast card. This panel never runs its own countdown; it derives
  * from the shared deadline and sends commands.
  */
 export default function RemoteControl() {
   const { state, dispatch } = useStore();
   const t = useT();
-  const { money } = useFmt();
-  const { liveSessionCode, liveSessionRole, minutesPerLevel, currency, unitValue, breakMinutes, breakEvery, gameMode, cashUseTimer } = state.settings;
-  const { ledger, session } = state;
+  const { liveSessionCode, liveSessionRole, minutesPerLevel, breakMinutes, breakEvery, gameMode, cashUseTimer } = state.settings;
+  const { session } = state;
   const isCash = gameMode === 'cash';
   const showTimer = !isCash || cashUseTimer; // cash + no timer = no clock/break/blinds
   const maxIdx = session.blindLevels.length - 1;
@@ -33,12 +29,7 @@ export default function RemoteControl() {
   const [clock, setClock] = useState<ClockState>(() => initialClock(minutesPerLevel));
   const [now, setNow] = useState(Date.now());
   const [showBlinds, setShowBlinds] = useState(false);
-  const [cashOutId, setCashOutId] = useState<string | null>(null);
-  const [koPickId, setKoPickId] = useState<string | null>(null); // busted player awaiting knockout attribution
-  const [emojiOpenId, setEmojiOpenId] = useState<string | null>(null);
   const [momentText, setMomentText] = useState('');
-  const [countId, setCountId] = useState<string | null>(null);
-  const { bountyMode } = state.settings;
 
   const active = firebaseConfigured && liveSessionRole === 'host' && !!liveSessionCode;
 
@@ -86,10 +77,6 @@ export default function RemoteControl() {
 
   void now; // triggers the re-render each second so secondsLeft() below is fresh
 
-  // Cash game: money on the table = buy-ins − cash-outs. Tournament: the fixed pool.
-  const totalIn = ledger.reduce((s, p) => s + (p.buyIn || 0), 0);
-  const totalOut = ledger.reduce((s, p) => s + (p.cashOut || 0), 0);
-  const pool = isCash ? Math.max(0, totalIn - totalOut) : totalIn;
 
   return (
     <>
@@ -225,183 +212,7 @@ export default function RemoteControl() {
         </div>
       )}
 
-      {/* --- Players & prize pool --- */}
-      <div className="section-label" style={{ marginTop: 18 }}>
-        {t('table.remotePlayers')}
-        <span className="hint">{t('table.remotePlayersHint')}</span>
-      </div>
-      <div className="card">
-        <div className="faint" style={{ fontSize: 12, margin: '0 0 10px' }}>{t('table.buyInNote')}</div>
-        {ledger.length === 0 ? (
-          <div className="empty" style={{ paddingBottom: 12 }}>{t('table.remotePlayersHint')}</div>
-        ) : (
-          <div className="remote-players">
-            {ledger.map((p) => (
-              <div className={`remote-player ${p.out ? 'out' : ''}`} key={p.id}>
-                <div className="remote-player-top">
-                  <button
-                    className="emoji-btn"
-                    onClick={() => setEmojiOpenId(emojiOpenId === p.id ? null : p.id)}
-                    aria-label={t('table.emojiPick')}
-                  >
-                    {p.emoji || '🙂'}
-                  </button>
-                  <input
-                    className="ledger-name"
-                    value={p.name}
-                    placeholder="Player"
-                    onChange={(e) => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { name: e.target.value } })}
-                  />
-                  <div className="input-affix remote-buyin">
-                    <span className="affix">{currency}</span>
-                    <input
-                      className="input"
-                      type="number"
-                      inputMode="decimal"
-                      value={p.buyIn || ''}
-                      onChange={(e) => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { buyIn: Math.max(0, +e.target.value) } })}
-                    />
-                  </div>
-                </div>
-                {emojiOpenId === p.id && (
-                  <EmojiPicker
-                    value={p.emoji}
-                    onPick={(emoji) => {
-                      dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { emoji } });
-                      setEmojiOpenId(null);
-                    }}
-                  />
-                )}
-                {!isCash && (
-                  <div className="remote-chips input-affix">
-                    <span className="affix">{currency}</span>
-                    <input
-                      className="input"
-                      type="number"
-                      inputMode="decimal"
-                      step="any"
-                      placeholder={t('table.chipsPlaceholder')}
-                      value={p.chips ? Math.round(p.chips * unitValue * 100) / 100 : ''}
-                      onChange={(e) => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { chips: +e.target.value > 0 ? moneyToUnits(+e.target.value, unitValue) : undefined } })}
-                    />
-                    <button
-                      type="button"
-                      className="icon-btn cc-open"
-                      aria-label={t('count.title')}
-                      onClick={() => setCountId(p.id)}
-                    >🧮</button>
-                  </div>
-                )}
-                <div className="remote-player-actions">
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { buyIn: (p.buyIn || 0) + session.buyIn } })}
-                  >
-                    <IconPlus size={14} /> {t('table.rebuy')} {money(session.buyIn, currency)}
-                  </button>
-                  {isCash ? (
-                    (p.cashOut || 0) > 0 ? (
-                      <button
-                        className="btn btn-sm btn-primary"
-                        onClick={() => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { cashOut: 0, out: false, outAt: undefined } })}
-                      >
-                        {t('table.backIn')}
-                      </button>
-                    ) : (
-                      <button
-                        className={`btn btn-sm ${cashOutId === p.id ? 'btn-primary' : 'btn-ghost'}`}
-                        onClick={() => setCashOutId(cashOutId === p.id ? null : p.id)}
-                      >
-                        {t('table.cashOut')}
-                      </button>
-                    )
-                  ) : (
-                    <button
-                      className={`btn btn-sm ${p.out ? 'btn-primary' : 'btn-ghost'}`}
-                      onClick={() => {
-                        const goingOut = !p.out;
-                        dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { out: goingOut, outAt: goingOut ? Date.now() : undefined } });
-                        // bounty on: ask who knocked them out (skippable)
-                        setKoPickId(goingOut && bountyMode ? p.id : null);
-                      }}
-                    >
-                      {p.out ? t('table.backIn') : t('table.markOut')}
-                    </button>
-                  )}
-                  <div className="spacer" />
-                  <button className="icon-btn danger" style={{ width: 34, height: 34 }} onClick={() => dispatch({ type: 'LEDGER_REMOVE', id: p.id })} aria-label="Remove player">
-                    <IconTrash size={15} />
-                  </button>
-                </div>
-                {isCash && cashOutId === p.id && (
-                  <div className="remote-cashout">
-                    <div className="faint" style={{ fontSize: 12 }}>{t('table.cashOutPrompt', { name: p.name || 'Player' })}</div>
-                    <div className="input-affix" style={{ marginTop: 6 }}>
-                      <span className="affix">{currency}</span>
-                      <input
-                        className="input"
-                        type="number"
-                        inputMode="decimal"
-                        autoFocus
-                        defaultValue={p.buyIn || ''}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            const v = Math.max(0, +(e.target as HTMLInputElement).value);
-                            dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { cashOut: v, out: true, outAt: Date.now() } });
-                            setCashOutId(null);
-                          }
-                        }}
-                        id={`cashout-${p.id}`}
-                      />
-                      <button
-                        className="btn btn-primary btn-sm"
-                        style={{ margin: 4 }}
-                        onClick={() => {
-                          const el = document.getElementById(`cashout-${p.id}`) as HTMLInputElement | null;
-                          const v = Math.max(0, +(el?.value ?? 0));
-                          dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { cashOut: v, out: true, outAt: Date.now() } });
-                          setCashOutId(null);
-                        }}
-                      >
-                        {t('table.cashOut')}
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {!isCash && bountyMode && koPickId === p.id && (
-                  <div className="ko-pick">
-                    <div className="faint" style={{ fontSize: 12 }}>{t('table.koPrompt', { name: p.name || 'Player' })}</div>
-                    <div className="ko-pick-grid">
-                      {ledger.filter((o) => o.id !== p.id && !o.out).map((o) => (
-                        <button
-                          key={o.id}
-                          className="btn btn-ghost btn-sm"
-                          onClick={() => {
-                            dispatch({ type: 'LEDGER_UPDATE', id: o.id, patch: { knockouts: (o.knockouts || 0) + 1 } });
-                            setKoPickId(null);
-                          }}
-                        >
-                          {o.emoji ? `${o.emoji} ` : ''}{o.name || 'Player'}
-                        </button>
-                      ))}
-                      <button className="btn btn-ghost btn-sm ko-skip" onClick={() => setKoPickId(null)}>{t('table.koSkip')}</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="flex-between mt12">
-          <button className="btn btn-ghost btn-sm" onClick={() => dispatch({ type: 'LEDGER_ADD' })}>
-            <IconPlus size={16} /> {t('table.addPlayer')}
-          </button>
-          <div style={{ textAlign: 'right' }}>
-            <div className="faint" style={{ fontSize: 11.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{isCash ? t('table.onTablePool') : t('table.poolTotal')}</div>
-            <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--acc)' }}>{money(pool, currency)}</div>
-          </div>
-        </div>
-      </div>
+      {/* Players live in the single roster on the Table tab — not duplicated here. */}
 
       {/* --- Hand of the night — log a moment, it rotates on the TV --- */}
       <div className="section-label" style={{ marginTop: 18 }}>
@@ -449,7 +260,6 @@ export default function RemoteControl() {
         )}
       </div>
 
-      {countId && <CountRound only={countId} onClose={() => setCountId(null)} />}
     </>
   );
 }

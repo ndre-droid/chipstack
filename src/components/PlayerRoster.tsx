@@ -4,6 +4,7 @@ import { useT, useFmt } from '../lib/i18n';
 import { IconPlus, IconTrash } from './Icons';
 import { EmojiPicker } from './EmojiPicker';
 import CountRound, { type ChipSnapshot } from './CountRound';
+import PlayerSheet from './PlayerSheet';
 import Sparkline from './Sparkline';
 
 /** how old the newest count may get before the roster nudges you to count again */
@@ -11,14 +12,18 @@ const STALE_MINUTES = 25;
 /** how long the undo offer stays up after a counting round */
 const UNDO_MS = 8000;
 
+type Prompt = { id: string; kind: 'cashout' | 'rebuy' };
+
 /**
- * THE player list for the night, on the Table tab — one place for everything that
- * happens to a player mid-game: joining, rebuying, having their stack counted,
- * cashing out, busting, leaving. Replaces the old "players at the table" stepper
- * (which only counted a number, not people) and the photo chip-count card.
+ * THE player list for the night — the ONLY one. Everything that happens to a player
+ * mid-game lives here: joining, rebuying (fixed or any amount), having their stack
+ * counted, cashing out, busting, coming back for another buy-in, and correcting any
+ * of it after the fact via the per-player sheet.
  *
- * Stacks are stored in chip-units (`LedgerPlayer.chips`) and shown as money; they
- * are an overview figure and never feed the buy-in / settlement maths.
+ * Money is cumulative: `buyIn` is every euro that went on the table for that player
+ * and `cashOut` every euro that came off, so cashing out ADDS to `cashOut` and a
+ * later re-entry ADDS to `buyIn` — the earlier cash-out stays on the record and the
+ * net stays right. Stacks (`chips`) are an overview figure and never feed settlement.
  */
 export default function PlayerRoster() {
   const { state, dispatch } = useStore();
@@ -27,10 +32,13 @@ export default function PlayerRoster() {
   const { ledger, session, settings } = state;
   const { currency, unitValue } = settings;
   const isCash = settings.gameMode === 'cash';
+  const bountyMode = !!settings.bountyMode && !isCash;
 
   const [menuId, setMenuId] = useState<string | null>(null);
   const [emojiId, setEmojiId] = useState<string | null>(null);
-  const [cashOutId, setCashOutId] = useState<string | null>(null);
+  const [prompt, setPrompt] = useState<Prompt | null>(null);
+  const [koPickId, setKoPickId] = useState<string | null>(null); // busted player awaiting bounty attribution
+  const [editId, setEditId] = useState<string | null>(null);
   const [round, setRound] = useState<{ only?: string } | null>(null);
   const [undo, setUndo] = useState<ChipSnapshot[] | null>(null);
   const undoTimer = useRef<number | null>(null);
@@ -56,7 +64,10 @@ export default function PlayerRoster() {
   const countedMinsAgo = lastCountAt === null ? null : Math.floor((Date.now() - lastCountAt) / 60000);
   const stale = ledger.length > 0 && (countedMinsAgo === null || countedMinsAgo >= STALE_MINUTES);
 
-  const onTable = ledger.reduce((s, p) => s + (p.buyIn || 0) - (p.cashOut || 0), 0);
+  const totalIn = ledger.reduce((s, p) => s + (p.buyIn || 0), 0);
+  const totalOut = ledger.reduce((s, p) => s + (p.cashOut || 0), 0);
+  const onTable = totalIn - totalOut;
+  const pool = isCash ? Math.max(0, onTable) : totalIn;
   const counted = ledger.filter((p) => !p.out).reduce((s, p) => s + (p.chips || 0), 0) * unitValue;
   const anyCounted = ledger.some((p) => !p.out && (p.chips || 0) > 0);
   const diff = counted - onTable;
@@ -73,6 +84,32 @@ export default function PlayerRoster() {
     dispatch({ type: 'LEDGER_REMOVE', id });
     syncCount(ledger.length - 1);
     setMenuId(null);
+  };
+
+  const closeRow = () => { setMenuId(null); setPrompt(null); };
+
+  /** Cash-out ADDS to the total taken off the table, so a second one later still adds up. */
+  const cashOut = (id: string, amount: number) => {
+    const p = ledger.find((x) => x.id === id);
+    if (!p) return;
+    dispatch({
+      type: 'LEDGER_UPDATE',
+      id,
+      patch: { cashOut: (p.cashOut || 0) + amount, out: true, outAt: Date.now(), chips: undefined },
+    });
+    closeRow();
+  };
+
+  /** Buying (back) in ADDS to the total put on the table and puts them in play. */
+  const buyIn = (id: string, amount: number) => {
+    const p = ledger.find((x) => x.id === id);
+    if (!p) return;
+    dispatch({
+      type: 'LEDGER_UPDATE',
+      id,
+      patch: { buyIn: (p.buyIn || 0) + amount, out: false, outAt: undefined },
+    });
+    closeRow();
   };
 
   return (
@@ -100,7 +137,8 @@ export default function PlayerRoster() {
           <>
             <div className="pr-list">
               {ledger.map((p) => {
-                const gone = p.out || (p.cashOut || 0) > 0;
+                const gone = !!p.out;
+                const cashedOut = (p.cashOut || 0) > 0;
                 const net = (p.cashOut || 0) - (p.buyIn || 0);
                 return (
                   <div className={`pr-row ${gone ? 'is-out' : ''}`} key={p.id}>
@@ -119,10 +157,11 @@ export default function PlayerRoster() {
                         placeholder={t('roster.name')}
                         onChange={(e) => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { name: e.target.value } })}
                       />
+                      {bountyMode && (p.knockouts || 0) > 0 && <span className="pr-ko">🎯{p.knockouts}</span>}
                       <button
                         type="button"
                         className={`icon-btn pr-more ${menuId === p.id ? 'active' : ''}`}
-                        onClick={() => { setMenuId(menuId === p.id ? null : p.id); setCashOutId(null); }}
+                        onClick={() => { setMenuId(menuId === p.id ? null : p.id); setPrompt(null); }}
                         aria-label={t('roster.more')}
                       >
                         ⋯
@@ -140,22 +179,28 @@ export default function PlayerRoster() {
                     )}
 
                     <div className="pr-stats">
+                      <span className="pr-k">{t('roster.boughtIn')}</span>
+                      <span className="pr-v">{money(p.buyIn || 0, currency)}</span>
+                      {cashedOut && (
+                        <>
+                          <span className="pr-k">{t('roster.out')}</span>
+                          <span className="pr-v">{money(p.cashOut, currency)}</span>
+                        </>
+                      )}
                       {gone ? (
                         <>
-                          <span className="pr-k">
-                            {(p.cashOut || 0) > 0 ? t('roster.cashedOut') : t('roster.busted')}
-                          </span>
+                          <div className="spacer" />
+                          {!cashedOut && <span className="pr-k">{t('roster.busted')}</span>}
                           <span className={net >= 0 ? 'pos' : 'neg'}>
                             {net >= 0 ? '+' : ''}{money(net, currency)}
                           </span>
                         </>
                       ) : (
                         <>
-                          <span className="pr-k">{t('roster.boughtIn')}</span>
-                          <span className="pr-v">{money(p.buyIn || 0, currency)}</span>
                           <button
                             className="btn btn-ghost btn-sm pr-rebuy"
-                            onClick={() => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { buyIn: (p.buyIn || 0) + session.buyIn } })}
+                            onClick={() => buyIn(p.id, session.buyIn)}
+                            title={t('roster.rebuy')}
                           >
                             <IconPlus size={13} /> {money(session.buyIn, currency)}
                           </button>
@@ -174,70 +219,85 @@ export default function PlayerRoster() {
 
                     {menuId === p.id && (
                       <div className="pr-menu">
-                        {gone ? (
+                        <button className="btn btn-ghost btn-sm" onClick={() => { setEditId(p.id); closeRow(); }}>
+                          ✏️ {t('roster.edit')}
+                        </button>
+                        <button
+                          className={`btn btn-sm ${prompt?.id === p.id && prompt.kind === 'rebuy' ? 'btn-primary' : 'btn-ghost'}`}
+                          onClick={() => setPrompt(prompt?.id === p.id && prompt.kind === 'rebuy' ? null : { id: p.id, kind: 'rebuy' })}
+                        >
+                          {gone ? t('roster.buyBackIn') : t('roster.addBuyIn')}
+                        </button>
+                        {!gone && (
+                          <button
+                            className={`btn btn-sm ${prompt?.id === p.id && prompt.kind === 'cashout' ? 'btn-primary' : 'btn-ghost'}`}
+                            onClick={() => setPrompt(prompt?.id === p.id && prompt.kind === 'cashout' ? null : { id: p.id, kind: 'cashout' })}
+                          >
+                            {t('roster.cashOut')}
+                          </button>
+                        )}
+                        {!isCash && !gone && (
                           <button
                             className="btn btn-ghost btn-sm"
                             onClick={() => {
-                              dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { out: false, outAt: undefined, cashOut: 0 } });
+                              dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { out: true, outAt: Date.now(), chips: undefined } });
+                              setKoPickId(bountyMode ? p.id : null);
                               setMenuId(null);
                             }}
                           >
-                            {t('roster.backIn')}
+                            {t('roster.markOut')}
                           </button>
-                        ) : (
-                          <>
-                            <button
-                              className={`btn btn-sm ${cashOutId === p.id ? 'btn-primary' : 'btn-ghost'}`}
-                              onClick={() => setCashOutId(cashOutId === p.id ? null : p.id)}
-                            >
-                              {t('roster.cashOut')}
-                            </button>
-                            {!isCash && (
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                onClick={() => {
-                                  dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { out: true, outAt: Date.now(), chips: undefined } });
-                                  setMenuId(null);
-                                }}
-                              >
-                                {t('roster.markOut')}
-                              </button>
-                            )}
-                          </>
                         )}
                         <div className="spacer" />
-                        <button className="icon-btn danger" style={{ width: 32, height: 32 }} onClick={() => removePlayer(p.id)} aria-label={t('roster.remove')}>
+                        <button
+                          className="icon-btn danger"
+                          style={{ width: 32, height: 32 }}
+                          onClick={() => removePlayer(p.id)}
+                          aria-label={t('roster.remove')}
+                        >
                           <IconTrash size={14} />
                         </button>
                       </div>
                     )}
 
-                    {cashOutId === p.id && (
-                      <div className="pr-cashout">
-                        <div className="faint" style={{ fontSize: 12 }}>{t('roster.cashOutPrompt', { name: p.name || 'Player' })}</div>
-                        <div className="input-affix" style={{ marginTop: 6 }}>
-                          <span className="affix">{currency}</span>
-                          <input
-                            id={`pr-cashout-${p.id}`}
-                            className="input"
-                            type="number"
-                            inputMode="decimal"
-                            autoFocus
-                            defaultValue={p.chips ? Math.round(p.chips * unitValue * 100) / 100 : p.buyIn || ''}
-                          />
-                          <button
-                            className="btn btn-primary btn-sm"
-                            style={{ margin: 4 }}
-                            onClick={() => {
-                              const el = document.getElementById(`pr-cashout-${p.id}`) as HTMLInputElement | null;
-                              const v = Math.max(0, +(el?.value ?? 0));
-                              dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { cashOut: v, out: true, outAt: Date.now(), chips: undefined } });
-                              setCashOutId(null);
-                              setMenuId(null);
-                            }}
-                          >
-                            {t('roster.confirm')}
-                          </button>
+                    {prompt?.id === p.id && (
+                      <AmountPrompt
+                        label={
+                          prompt.kind === 'cashout'
+                            ? t('roster.cashOutPrompt', { name: p.name || 'Player' })
+                            : t('roster.buyInPrompt', { name: p.name || 'Player' })
+                        }
+                        currency={currency}
+                        defaultValue={
+                          prompt.kind === 'cashout'
+                            ? p.chips
+                              ? Math.round(p.chips * unitValue * 100) / 100
+                              : p.buyIn || 0
+                            : session.buyIn
+                        }
+                        confirmLabel={t('roster.confirm')}
+                        onCancel={() => setPrompt(null)}
+                        onConfirm={(v) => (prompt.kind === 'cashout' ? cashOut(p.id, v) : buyIn(p.id, v))}
+                      />
+                    )}
+
+                    {koPickId === p.id && (
+                      <div className="ko-pick">
+                        <div className="faint" style={{ fontSize: 12 }}>{t('table.koPrompt', { name: p.name || 'Player' })}</div>
+                        <div className="ko-pick-grid">
+                          {ledger.filter((o) => o.id !== p.id && !o.out).map((o) => (
+                            <button
+                              key={o.id}
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => {
+                                dispatch({ type: 'LEDGER_UPDATE', id: o.id, patch: { knockouts: (o.knockouts || 0) + 1 } });
+                                setKoPickId(null);
+                              }}
+                            >
+                              {o.emoji ? `${o.emoji} ` : ''}{o.name || 'Player'}
+                            </button>
+                          ))}
+                          <button className="btn btn-ghost btn-sm ko-skip" onClick={() => setKoPickId(null)}>{t('table.koSkip')}</button>
                         </div>
                       </div>
                     )}
@@ -264,7 +324,12 @@ export default function PlayerRoster() {
             </div>
 
             <div className="pr-totals">
-              <span>{t('roster.onTable')} <b>{money(onTable, currency)}</b></span>
+              <span>{isCash ? t('table.onTablePool') : t('table.poolTotal')} <b>{money(pool, currency)}</b></span>
+              {/* In a tournament the pool is everything bought in, but a cash-out means less
+                  than that is still in front of the players — spell the basis out. */}
+              {anyCounted && Math.abs(pool - onTable) > 0.005 && (
+                <span>{t('roster.onTable')} <b>{money(onTable, currency)}</b></span>
+              )}
               {anyCounted && (
                 <>
                   <span>{t('roster.counted')} <b>{money(counted, currency)}</b></span>
@@ -279,6 +344,7 @@ export default function PlayerRoster() {
       </div>
 
       {round && <CountRound only={round.only} onClose={() => setRound(null)} onUndoable={offerUndo} />}
+      {editId && <PlayerSheet playerId={editId} onClose={() => setEditId(null)} />}
 
       {undo && (
         <div className="snackbar" role="status">
@@ -295,5 +361,50 @@ export default function PlayerRoster() {
         </div>
       )}
     </>
+  );
+}
+
+/** Inline "how much?" row used for both cash-outs and (re-)buy-ins. */
+function AmountPrompt({
+  label,
+  currency,
+  defaultValue,
+  confirmLabel,
+  onConfirm,
+  onCancel,
+}: {
+  label: string;
+  currency: string;
+  defaultValue: number;
+  confirmLabel: string;
+  onConfirm: (amount: number) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(defaultValue ? String(defaultValue) : '');
+  const submit = () => onConfirm(Math.max(0, +value || 0));
+
+  return (
+    <div className="pr-cashout">
+      <div className="faint" style={{ fontSize: 12 }}>{label}</div>
+      <div className="input-affix" style={{ marginTop: 6 }}>
+        <span className="affix">{currency}</span>
+        <input
+          className="input"
+          type="number"
+          inputMode="decimal"
+          step="any"
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit();
+            if (e.key === 'Escape') onCancel();
+          }}
+        />
+        <button className="btn btn-primary btn-sm" style={{ margin: 4 }} onClick={submit}>
+          {confirmLabel}
+        </button>
+      </div>
+    </div>
   );
 }

@@ -66,7 +66,7 @@ export default function CashScreen() {
       </div>
 
       <div className="section-label">
-        {t('cash.players')}
+        {t('cash.perPlayer')}
         <span className="hint">{t('cash.manageOnTable')}</span>
       </div>
       <div className="card ledger-card">
