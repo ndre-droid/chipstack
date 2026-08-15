@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { useT, useFmt } from '../lib/i18n';
-import { computeStack, moneyToUnits } from '../lib/distribution';
+import { moneyToUnits } from '../lib/distribution';
+import { startingStackOf } from '../lib/startingStack';
 import type { Denomination, LedgerPlayer } from '../types';
 
 export type ChipSnapshot = { id: string; chips?: number; chipHistory?: { at: number; chips: number }[] };
@@ -44,15 +45,7 @@ export default function CountRound({
   // table. "Show all colours" falls back to the whole owned inventory.
   const [showAll, setShowAll] = useState(false);
   const startStack = useMemo(
-    () =>
-      computeStack(moneyToUnits(session.buyIn, unitValue), denominations, {
-        smallBias: session.smallBias,
-        excluded: new Set<string>(),
-        blind: session.blindLevels[0] ?? null,
-        stacksNeeded: Math.max(1, session.playerCount),
-        maxDenoms: session.maxDenoms,
-        useAllChips: session.useAllChips,
-      }),
+    () => startingStackOf(denominations, session, unitValue),
     [denominations, session, unitValue],
   );
 

@@ -1075,7 +1075,20 @@ input[type='color'] { cursor: pointer; }
   /* TV is themed independently of the phone's <html> skin, so it carries its OWN
      display font (per data-tv-skin below) rather than inheriting :root's. */
   --font-display: var(--font);
-  position: fixed; inset: 0; z-index: 120;
+  /* Display size. Everything below is sized in vmin, which is tuned for a TV seen
+     from across the room. On a laptop standing in for the TV the same numbers are
+     physically tiny, so the whole screen is laid out on a canvas of
+     viewport / --tv-scale and then scaled back up: vmin still resolves against the
+     real viewport, so one factor enlarges text, padding and gaps together. The
+     factor is per-device (Settings.tvScale) — see lib/tvScale.ts. */
+  --tv-scale: 1;
+  position: fixed; top: 0; left: 0; z-index: 120;
+  /* % of the viewport (the fixed-position containing block) — avoids the vw
+     scrollbar gap, and works on the TV's older browser where dvh does not. */
+  width: calc(100% / var(--tv-scale));
+  height: calc(100% / var(--tv-scale));
+  transform: scale(var(--tv-scale));
+  transform-origin: 0 0;
   display: flex; flex-direction: column;
   padding: clamp(12px, 3vmin, 72px);
   background: var(--tv-bg);
@@ -1175,7 +1188,34 @@ input[type='color'] { cursor: pointer; }
   gap: clamp(12px, 2.5vmin, 40px);
   align-items: center;
 }
-.tv-side { display: flex; flex-direction: column; gap: clamp(8px, 1.6vmin, 20px); }
+/* The side columns must never grow past their grid row — on a laptop-shaped
+   viewport (wide but short) the stats + payouts + roster + bust list used to
+   overflow and collide with the quip line below the grid. Cap them and let the
+   column scroll instead; the roster's own list already scrolls inside it. */
+.tv-side {
+  display: flex; flex-direction: column; gap: clamp(8px, 1.6vmin, 20px);
+  min-height: 0; max-height: 100%;
+  overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: none;
+}
+.tv-side::-webkit-scrollbar { width: 0; height: 0; }
+/* Panels keep their natural height — without this, a column that is one panel too
+   tall shrinks EVERY panel proportionally and the players list collapses to 0.
+   The roster is the one allowed to give way (its own list scrolls inside it). */
+.tv-side > * { flex-shrink: 0; }
+.tv-side > .tv-roster { flex-shrink: 1; min-height: clamp(80px, 13vmin, 260px); }
+/* the legend's rows carry their own vertical padding, so an extra gap doubles it */
+.tv-legend { display: flex; flex-direction: column; min-height: 0; }
+.tv-stats { display: flex; flex-direction: column; gap: clamp(8px, 1.6vmin, 20px); }
+/* Short canvas (a laptop as the big screen): the tiles go side by side and lose
+   some bulk, so the players roster keeps its rows. Set from JS — see tvCompact. */
+.tv[data-tv-compact] .tv-stats { display: grid; grid-template-columns: 1fr 1fr; }
+.tv[data-tv-compact] .tv-stat { padding: clamp(8px, 1.2vmin, 18px) clamp(10px, 1.6vmin, 22px); }
+.tv[data-tv-compact] .tv-stat-v { font-size: clamp(18px, 3vmin, 60px); }
+.tv[data-tv-compact] .tv-legend-row { padding: clamp(2px, 0.4vmin, 8px) 0; }
+/* last resort on a very short screen: the chip legend gives way, not the payouts */
+.tv[data-tv-compact] .tv-legend { flex-shrink: 1; overflow-y: auto; scrollbar-width: none; }
+.tv[data-tv-compact] .tv-legend::-webkit-scrollbar { width: 0; height: 0; }
 .tv-stat {
   background: var(--tv-panel);
   border: 1px solid var(--tv-line);
@@ -1243,6 +1283,24 @@ input[type='color'] { cursor: pointer; }
 .tv-controls button:hover { background: var(--tv-line); }
 .tv-controls .tv-play { background: var(--acc); color: var(--on-acc); width: clamp(50px, 7vmin, 110px); height: clamp(50px, 7vmin, 110px); border-radius: 50%; padding: 0; }
 .tv-controls .tv-txt { font-weight: 600; font-size: clamp(12px, 1.6vmin, 30px); }
+/* display-size stepper (A− 120% A+) */
+.tv-zoom {
+  display: inline-flex; align-items: center; gap: clamp(4px, 0.7vmin, 10px);
+  background: var(--tv-panel); border: 1px solid var(--tv-line);
+  border-radius: 999px; padding: 0 clamp(6px, 1vmin, 14px);
+}
+.tv-zoom button {
+  background: none; border: none; color: var(--tv-fg);
+  font-weight: 700; font-size: clamp(12px, 1.6vmin, 30px);
+  padding: clamp(8px, 1.2vmin, 18px) clamp(6px, 0.9vmin, 14px);
+  line-height: 1;
+}
+.tv-zoom button:disabled { opacity: 0.35; }
+.tv-zoom button sup { font-size: 0.8em; }
+.tv-zoom-v {
+  font-family: var(--mono); color: var(--tv-dim);
+  font-size: clamp(11px, 1.4vmin, 26px); min-width: 4ch; text-align: center;
+}
 .tv-controls .tv-exit { color: #f0604d; }
 
 .tv-flash { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; background: color-mix(in srgb, var(--acc) 90%, #000); color: var(--on-acc); animation: tv-flash 0.4s ease; }

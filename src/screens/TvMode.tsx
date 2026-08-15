@@ -9,7 +9,8 @@ import { firebaseConfigured } from '../lib/firebaseConfig';
 import type { Unsubscribe } from 'firebase/firestore';
 import { secondsLeft as clockSecondsLeft, initialClock } from '../lib/clockLogic';
 import type { ClockState } from '../lib/clockLogic';
-import { computeStack, moneyToUnits } from '../lib/distribution';
+import { startingStackOf } from '../lib/startingStack';
+import { autoTvScale, clampTvScale, TV_SCALE_MIN, TV_SCALE_MAX, TV_SCALE_STEP } from '../lib/tvScale';
 import { colorUpEvents } from '../lib/planning';
 import { customAccentVars } from '../lib/color';
 import Sparkline from '../components/Sparkline';
@@ -61,6 +62,26 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const { money, num } = useFmt();
   const { blindLevels } = state.session;
   const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack, bountyMode, bountyAmount, customAccent, tvPenalties, tvHouseRules } = state.settings;
+
+  /* Display size. Per-device and deliberately NOT part of LiveData: the laptop
+     acting as the big screen needs its own zoom, and a phone must not shrink it.
+     `null` = never set on this device, so pick a starting point from the device
+     itself (a real TV browser keeps 1). */
+  const tvScale = state.settings.tvScale ?? autoTvScale();
+  const setTvScale = (n: number) =>
+    dispatch({ type: 'UPDATE_SETTINGS', patch: { tvScale: clampTvScale(n) } });
+
+  /* How tall the layout canvas actually is once the zoom is applied. Below the
+     threshold the side panels can't all stand full height, so the stat tiles go
+     two-up instead of squeezing the players roster out. A media query can't see
+     this — it would only see the untouched viewport. */
+  const [viewportH, setViewportH] = useState(typeof window === 'undefined' ? 1080 : window.innerHeight);
+  useEffect(() => {
+    const onResize = () => setViewportH(window.innerHeight);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const tvCompact = viewportH / tvScale < 860;
   const isCash = gameMode === 'cash';
   // Cash game with the timer off = a single fixed blind level, no countdown.
   const showTimer = !isCash || cashUseTimer;
@@ -481,17 +502,13 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     return best;
   }, [roster]);
 
-  // The starting stack, computed for the big screen when the host casts it.
-  const startStack = useMemo(() => {
-    const units = moneyToUnits(buyIn, unitValue);
-    return computeStack(units, denominations, {
-      smallBias: state.session.smallBias,
-      blind: blindLevels[0] ?? null,
-      stacksNeeded: Math.max(1, playerCount),
-      maxDenoms: state.session.maxDenoms,
-      useAllChips: state.session.useAllChips,
-    });
-  }, [buyIn, unitValue, denominations, state.session.smallBias, state.session.maxDenoms, state.session.useAllChips, blindLevels, playerCount]);
+  // The starting stack, mirrored from the host: the exact same helper the phone
+  // uses, fed by the synced `session` — including the excluded chips and any
+  // hand-tuned counts, which used to be phone-local and never reached the TV.
+  const startStack = useMemo(
+    () => startingStackOf(denominations, state.session, unitValue),
+    [denominations, state.session, unitValue],
+  );
 
   // color-up alarm: at the current level, which chips should be raced off?
   const colorUpNow = useMemo(() => {
@@ -590,13 +607,45 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   // custom accent overrides the preset hue on the TV too
   const accentStyle = customAccent && /^#[0-9a-fA-F]{6}$/.test(customAccent) ? customAccentVars(customAccent) : null;
 
+  /* The payout split rides in the right column next to the chip legend: the left
+     column carries the stats, the roster and the bust order and used to run out of
+     height first, squeezing the players list. */
+  const payoutsPanel = !isCash && tvShowPayouts && payouts.length > 0 && poolMoney > 0 && (
+    <div className="tv-players">
+      <div className="tv-players-h">{t('tv.payouts')}</div>
+      <div className="tv-players-list">
+        {payouts.map((p) => (
+          <div className="tv-players-row" key={p.place}>
+            <span className="tv-players-name">{p.place}</span>
+            <span className="tv-players-amt">{money(p.amount, currency)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+  const bustPanel = !isCash && tvShowBustOrder && bustOrder.length > 0 && (
+    <div className="tv-players">
+      <div className="tv-players-h">{t('tv.knockedOut')}</div>
+      <div className="tv-players-list">
+        {bustOrder.map((p) => (
+          <div className="tv-players-row" key={p.id}>
+            <span className="tv-players-amt" style={{ marginLeft: 0, minWidth: '2.4em' }}>{p.place}.</span>
+            <span className="tv-players-name">{p.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div
       className={`tv ${tvBackground ? 'has-bg' : ''}`}
       data-tv-skin={effTvSkin}
       data-tv-accent={tvAccent}
       data-tv-focus-v={tvBackground ? focusV : undefined}
+      data-tv-compact={tvCompact ? '' : undefined}
       style={{
+        ['--tv-scale']: tvScale,
         ...(accentStyle ?? {}),
         ...(tvBackground
           ? {
@@ -666,39 +715,30 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       <div className="tv-grid">
         {/* left: standings + colour-up */}
         <aside className="tv-side">
-          <div className="tv-stat">
-            <span className="tv-stat-k">{isCash ? t('tv.onTable') : t('tv.prizePool')}</span>
-            <span className="tv-stat-v">{money(poolMoney, currency)}</span>
-          </div>
-          <div className="tv-stat">
-            <span className="tv-stat-k">{t('tv.playersLeft')}</span>
-            <span className="tv-stat-v">{playersLeft}</span>
-          </div>
-          <div className="tv-stat">
-            <span className="tv-stat-k">{t('tv.avgStack')}</span>
-            <span className="tv-stat-v">{num(avgStack)}<small> · {avgBB} BB</small></span>
-          </div>
-          {bountyMode && !isCash && bountyPool > 0 && (
+          {/* Wrapped so a short screen (a laptop standing in for the TV) can lay the
+              tiles two-up instead of eating the roster's vertical space. */}
+          <div className="tv-stats">
             <div className="tv-stat">
-              <span className="tv-stat-k">🎯 {t('tv.bountyPool')}</span>
-              <span className="tv-stat-v">{money(bountyPool, currency)}<small> · {money(bountyAmt, currency)} {t('tv.each')}</small></span>
+              <span className="tv-stat-k">{isCash ? t('tv.onTable') : t('tv.prizePool')}</span>
+              <span className="tv-stat-v">{money(poolMoney, currency)}</span>
             </div>
-          )}
-          {!isCash && tvShowPayouts && payouts.length > 0 && poolMoney > 0 && (
-            <div className="tv-players">
-              <div className="tv-players-h">{t('tv.payouts')}</div>
-              <div className="tv-players-list">
-                {payouts.map((p) => (
-                  <div className="tv-players-row" key={p.place}>
-                    <span className="tv-players-name">{p.place}</span>
-                    <span className="tv-players-amt">{money(p.amount, currency)}</span>
-                  </div>
-                ))}
+            <div className="tv-stat">
+              <span className="tv-stat-k">{t('tv.playersLeft')}</span>
+              <span className="tv-stat-v">{playersLeft}</span>
+            </div>
+            <div className="tv-stat">
+              <span className="tv-stat-k">{t('tv.avgStack')}</span>
+              <span className="tv-stat-v">{num(avgStack)}<small> · {avgBB} BB</small></span>
+            </div>
+            {bountyMode && !isCash && bountyPool > 0 && (
+              <div className="tv-stat">
+                <span className="tv-stat-k">🎯 {t('tv.bountyPool')}</span>
+                <span className="tv-stat-v">{money(bountyPool, currency)}<small> · {money(bountyAmt, currency)} {t('tv.each')}</small></span>
               </div>
-            </div>
-          )}
+            )}
+          </div>
           {tvShowPlayers && roster.length > 0 && (
-            <div className="tv-players">
+            <div className="tv-players tv-roster">
               <div className="tv-players-h">
                 <span>{t('tv.players')}</span>
                 <span className="tv-players-h-sub">{t('tv.buyIn')}</span>
@@ -727,19 +767,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               </div>
             </div>
           )}
-          {!isCash && tvShowBustOrder && bustOrder.length > 0 && (
-            <div className="tv-players">
-              <div className="tv-players-h">{t('tv.knockedOut')}</div>
-              <div className="tv-players-list">
-                {bustOrder.map((p) => (
-                  <div className="tv-players-row" key={p.id}>
-                    <span className="tv-players-amt" style={{ marginLeft: 0, minWidth: '2.4em' }}>{p.place}.</span>
-                    <span className="tv-players-name">{p.name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {bustPanel}
         </aside>
 
         {/* center: the clock (or, cash game with timer off, just the fixed blinds) */}
@@ -781,16 +809,20 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           {!showTimer && <div className="tv-next">{t('tv.blindsFixed')}</div>}
         </main>
 
-        {/* right: chip legend */}
-        <aside className="tv-side tv-legend">
-          <div className="tv-legend-h">{t('tv.chipValues')}</div>
-          {legend.map((d) => (
-            <div className="tv-legend-row" key={d.id}>
-              <Chip value={d.value} color={d.color} accent={d.accent} size={34} shape={d.shape} />
-              <span className="tv-legend-v">{d.value}</span>
-              <span className="tv-legend-m">{money(d.value * unitValue, currency)}</span>
-            </div>
-          ))}
+        {/* right: chip legend (plus, on a short screen, the panels the left column
+            can no longer hold — otherwise they squeeze the players roster away) */}
+        <aside className="tv-side tv-right">
+          <div className="tv-legend">
+            <div className="tv-legend-h">{t('tv.chipValues')}</div>
+            {legend.map((d) => (
+              <div className="tv-legend-row" key={d.id}>
+                <Chip value={d.value} color={d.color} accent={d.accent} size={34} shape={d.shape} />
+                <span className="tv-legend-v">{d.value}</span>
+                <span className="tv-legend-m">{money(d.value * unitValue, currency)}</span>
+              </div>
+            ))}
+          </div>
+          {payoutsPanel}
         </aside>
       </div>
 
@@ -812,6 +844,24 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             )}
           </>
         )}
+        {/* Display size — a laptop standing in for the TV needs everything bigger. */}
+        <span className="tv-zoom" title={t('tv.displaySize')}>
+          <button
+            onClick={() => setTvScale(tvScale - TV_SCALE_STEP)}
+            disabled={tvScale <= TV_SCALE_MIN}
+            aria-label={`${t('tv.displaySize')} −`}
+          >
+            A<sup>−</sup>
+          </button>
+          <span className="tv-zoom-v">{Math.round(tvScale * 100)}%</span>
+          <button
+            onClick={() => setTvScale(tvScale + TV_SCALE_STEP)}
+            disabled={tvScale >= TV_SCALE_MAX}
+            aria-label={`${t('tv.displaySize')} +`}
+          >
+            A<sup>+</sup>
+          </button>
+        </span>
         <button className="tv-txt" onClick={() => setShot(30)}>{t('tv.shotClock')}</button>
         <button className="tv-txt" onClick={spinRound}>{t('tv.whoDrinks')}</button>
         <button

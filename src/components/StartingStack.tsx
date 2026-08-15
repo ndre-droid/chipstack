@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useStore } from '../store';
-import { computeStack, moneyToUnits } from '../lib/distribution';
+import { startingStackOf } from '../lib/startingStack';
 import ChipStackViz from './ChipStackViz';
 import { useT, useFmt } from '../lib/i18n';
 
@@ -14,23 +14,13 @@ export default function StartingStack() {
   const t = useT();
   const { money, num } = useFmt();
   const { denominations, session, settings } = state;
-  const { buyIn, smallBias, maxDenoms, useAllChips, playerCount, blindLevels } = session;
+  const { buyIn } = session;
   const { unitValue, currency, tvShowStartStack } = settings;
 
-  const buyInUnits = moneyToUnits(buyIn, unitValue);
-  const startBlind = blindLevels[0] ?? null;
-
+  // Same helper the Plan tab and the TV use, so all three show one stack.
   const stack = useMemo(
-    () =>
-      computeStack(buyInUnits, denominations, {
-        smallBias,
-        excluded: new Set<string>(),
-        blind: startBlind,
-        stacksNeeded: Math.max(1, playerCount),
-        maxDenoms,
-        useAllChips,
-      }),
-    [buyInUnits, denominations, smallBias, startBlind, playerCount, maxDenoms, useAllChips],
+    () => startingStackOf(denominations, session, unitValue),
+    [denominations, session, unitValue],
   );
 
   if (stack.denomsUsed.length === 0) return null;

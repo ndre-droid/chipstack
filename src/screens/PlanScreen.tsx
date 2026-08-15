@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useStore } from '../store';
 import { computeStack, moneyToUnits, rebalance } from '../lib/distribution';
 import type { StackResult } from '../lib/distribution';
+import { autoStartingStack, activeOverride, excludedSetOf, stackBasisKey, stacksNeededOf } from '../lib/startingStack';
 import { suggestBlindLadder, colorUpEvents } from '../lib/planning';
 import type { ColorUpEvent } from '../lib/planning';
 import type { Denomination, BlindLevel } from '../types';
@@ -18,8 +19,11 @@ export default function PlanScreen() {
   const { denominations, settings, session, presets } = state;
   const { playerCount, buyIn, earlyRebuys, lateRebuyAmount, blindLevels, smallBias, maxDenoms, useAllChips } = session;
 
-  const [excluded, setExcluded] = useState<Set<string>>(new Set());
-  const [startIdx, setStartIdx] = useState(0);
+  // Stack shaping lives in `session` (and therefore in LiveData), not in local
+  // state — otherwise the tuned stack never reaches the TV. See lib/startingStack.ts.
+  const excluded = useMemo(() => excludedSetOf(session), [session]);
+  const startIdx = Math.min(session.startLevelIdx, Math.max(0, session.blindLevels.length - 1));
+  const setStartIdx = (i: number) => dispatch({ type: 'UPDATE_SESSION', patch: { startLevelIdx: i } });
   const [showMins, setShowMins] = useState(false);
   const [showChips, setShowChips] = useState(false);
   const [showLater, setShowLater] = useState(false);
@@ -33,7 +37,7 @@ export default function PlanScreen() {
   const lateRebuyUnits = moneyToUnits(lateRebuyAmount || buyIn, unit);
   const numPlayers = playerCount;
   // early rebuys happen at the starting blinds, so the small chips must stretch to cover them too
-  const startingStacks = numPlayers + Math.max(0, earlyRebuys);
+  const startingStacks = stacksNeededOf(session);
 
   const enabledDenoms = useMemo(
     () => [...denominations].filter((d) => d.enabled).sort((a, b) => a.value - b.value),
@@ -52,16 +56,8 @@ export default function PlanScreen() {
   const startBlind = blindLevels[Math.min(startIdx, blindLevels.length - 1)] ?? null;
 
   const starting: StackResult = useMemo(
-    () =>
-      computeStack(buyInUnits, denominations, {
-        smallBias,
-        excluded,
-        blind: startBlind,
-        stacksNeeded: startingStacks,
-        maxDenoms,
-        useAllChips,
-      }),
-    [buyInUnits, denominations, smallBias, excluded, startBlind, startingStacks, maxDenoms, useAllChips],
+    () => autoStartingStack(denominations, session, unit),
+    [denominations, session, unit],
   );
 
   const laterStages = useMemo(() => {
@@ -85,14 +81,21 @@ export default function PlanScreen() {
     return stages;
   }, [blindLevels, startIdx, smallBias, lateRebuyUnits, denominations, excluded, numPlayers, maxDenoms, starting.baseValue, useAllChips]);
 
-  // ---- Live-adjust editor state ----
-  // `edit` holds manual per-denomination counts + which denoms are pinned.
-  // Reset back to the auto stack whenever the auto result changes.
-  const [edit, setEdit] = useState<{ counts: Record<string, number>; locked: Set<string> } | null>(null);
-  useEffect(() => setEdit(null), [starting]);
+  // ---- Live-adjust editor ----
+  // The manual counts are persisted in `session.stackOverride` (so they sync to
+  // the TV); they carry a signature of the inputs they were tuned against and
+  // are ignored once those change, which replaces the old "reset on recompute"
+  // effect. Only the pin/lock marks stay local — they're an editing aid.
+  const [locked, setLocked] = useState<Set<string>>(new Set());
+  const override = useMemo(() => activeOverride(denominations, session, unit), [denominations, session, unit]);
+  const displayCounts = override ?? starting.counts;
 
-  const displayCounts = edit?.counts ?? starting.counts;
-  const locked = edit?.locked ?? new Set<string>();
+  const setOverride = (counts: Record<string, number> | null) =>
+    dispatch({
+      type: 'UPDATE_SESSION',
+      patch: { stackOverride: counts ? { key: stackBasisKey(denominations, session, unit), counts } : null },
+    });
+
   const capOf = (d: Denomination) =>
     Math.min(Math.floor(d.count / Math.max(1, startingStacks)), d.maxPerPlayer ?? Infinity);
 
@@ -106,24 +109,18 @@ export default function PlanScreen() {
   const stepDenom = (id: string, delta: number) => {
     const denom = editorDenoms.find((d) => d.id === id);
     if (!denom) return;
-    setEdit((prev) => {
-      const base = prev
-        ? { counts: { ...prev.counts }, locked: new Set(prev.locked) }
-        : { counts: { ...starting.counts }, locked: new Set<string>() };
-      const cap = capOf(denom);
-      base.counts[id] = Math.max(0, Math.min(cap, (base.counts[id] ?? 0) + delta));
-      rebalance(base.counts, editorDenoms, buyInUnits, (x) => !base.locked.has(x) && x !== id, capOf);
-      return base;
-    });
+    const counts = { ...displayCounts };
+    const cap = capOf(denom);
+    counts[id] = Math.max(0, Math.min(cap, (counts[id] ?? 0) + delta));
+    rebalance(counts, editorDenoms, buyInUnits, (x) => !locked.has(x) && x !== id, capOf);
+    setOverride(counts);
   };
 
   const toggleLock = (id: string) => {
-    setEdit((prev) => {
-      const base = prev
-        ? { counts: { ...prev.counts }, locked: new Set(prev.locked) }
-        : { counts: { ...starting.counts }, locked: new Set<string>() };
-      base.locked.has(id) ? base.locked.delete(id) : base.locked.add(id);
-      return base;
+    setLocked((prev) => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
     });
   };
 
@@ -150,17 +147,15 @@ export default function PlanScreen() {
   };
 
   const toggleExcluded = (id: string) => {
-    setExcluded((prev) => {
-      const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
+    const n = new Set(excluded);
+    n.has(id) ? n.delete(id) : n.add(id);
+    dispatch({ type: 'UPDATE_SESSION', patch: { excludedDenoms: [...n] } });
   };
 
   const bb = startBlind?.bigBlind ?? 1;
   const bbCount = bb > 0 ? (effTotal / bb).toFixed(0) : '—';
   const baseDenom = denominations.find((d) => d.value === starting.baseValue);
-  const edited = edit !== null;
+  const edited = override !== null;
 
   return (
     <div>
@@ -313,7 +308,7 @@ export default function PlanScreen() {
               : `${effTotal > buyInUnits ? '+' : ''}${num(effTotal - buyInUnits)} pts vs buy-in`}
           </span>
           {edited && (
-            <button className="link-btn" onClick={() => setEdit(null)}>
+            <button className="link-btn" onClick={() => setOverride(null)}>
               {t('plan.resetToAuto')}
             </button>
           )}

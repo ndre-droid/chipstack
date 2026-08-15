@@ -69,6 +69,11 @@ export interface Settings {
    *  advertises a pairing code, and a phone connects to it. Per-device (never
    *  synced or shared), so only the actual TV carries it. */
   deviceIsTv: boolean;
+  /** Big-screen zoom factor (1 = the TV-tuned default). A laptop used as the big
+   *  screen needs everything larger; null means "work it out from the device".
+   *  Per-device like `deviceIsTv` — never synced, so the phone can't shrink the
+   *  laptop's display. */
+  tvScale: number | null;
   /** Live Session (cloud sync): 'tv' = this device shows a pairing code, owns the
    *  clock and mirrors the phone's data once paired; 'host' = the phone that typed
    *  the code, pushing data + sending clock commands. Null when not in a session. */
@@ -85,6 +90,17 @@ export interface SessionConfig {
   smallBias: number;      // 0..1 slider — higher = maximise chip use
   maxDenoms: number;      // limit distinct chip values used (0 = use all)
   useAllChips: boolean;   // include every owned chip type, even ones that don't fit the blind neatly
+  /** chip ids the user took out of the stack on the Plan tab */
+  excludedDenoms: string[];
+  /** which blind level the starting stack is built for (index into blindLevels) */
+  startLevelIdx: number;
+  /**
+   * Hand-tuned per-chip counts from the Plan tab's fine-tune editor, with a
+   * signature of the inputs they were tuned against (see lib/startingStack.ts).
+   * Lives in the session — and therefore in LiveData — so the TV shows the stack
+   * the user actually picked, not a freshly recomputed one.
+   */
+  stackOverride: { key: string; counts: Record<string, number> } | null;
 }
 
 export interface Preset {

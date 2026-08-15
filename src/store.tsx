@@ -69,6 +69,7 @@ const defaultSettings: Settings = {
   tvPenalties: [],
   tvHouseRules: [],
   deviceIsTv: false,
+  tvScale: null,
   liveSessionCode: null,
   liveSessionRole: null,
 };
@@ -85,6 +86,9 @@ const defaultSession: SessionConfig = {
   smallBias: 0.9, // default to maximising chip use; slider still adjusts
   maxDenoms: 0, // 0 = use all available denominations
   useAllChips: false,
+  excludedDenoms: [],
+  startLevelIdx: 0,
+  stackOverride: null,
 };
 
 /** how many counting rounds a player's stack trail keeps (sparkline length) */
@@ -472,6 +476,10 @@ function migrate(raw: string | null): AppState {
   settings.tvPenalties = Array.isArray(settings.tvPenalties) ? settings.tvPenalties.filter((q): q is string => typeof q === 'string') : [];
   settings.tvHouseRules = Array.isArray(settings.tvHouseRules) ? settings.tvHouseRules.filter((q): q is string => typeof q === 'string') : [];
   if (typeof settings.deviceIsTv !== 'boolean') settings.deviceIsTv = false;
+  settings.tvScale =
+    typeof settings.tvScale === 'number' && settings.tvScale > 0
+      ? Math.min(2.5, Math.max(0.6, settings.tvScale))
+      : null;
   if (typeof settings.liveSessionCode !== 'string') settings.liveSessionCode = null;
   // Pairing was rebuilt (TV owns the doc/clock; codes are now 4 digits). Any persisted
   // pre-rebuild session used a 6-digit code and is meaningless now — drop it so a stale
@@ -503,6 +511,9 @@ function migrate(raw: string | null): AppState {
   if (typeof session.earlyRebuys !== 'number') session.earlyRebuys = 2;
   if (typeof session.maxDenoms !== 'number') session.maxDenoms = 0;
   if (typeof session.useAllChips !== 'boolean') session.useAllChips = false;
+  if (!Array.isArray(session.excludedDenoms)) session.excludedDenoms = [];
+  if (typeof session.startLevelIdx !== 'number' || session.startLevelIdx < 0) session.startLevelIdx = 0;
+  if (!session.stackOverride || typeof session.stackOverride.key !== 'string') session.stackOverride = null;
   if (!Array.isArray(session.blindLevels) || session.blindLevels.length === 0)
     session.blindLevels = defaultBlinds(settings.defaultSmallBlind, settings.defaultBigBlind);
 
