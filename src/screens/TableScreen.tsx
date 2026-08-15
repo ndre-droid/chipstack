@@ -6,7 +6,7 @@ import RemoteControl from './RemoteControl';
 import ConnectToTv from './ConnectToTv';
 import StartingStack from '../components/StartingStack';
 import TvBroadcast from '../components/TvBroadcast';
-import ChipCountCard from '../components/ChipCountCard';
+import PlayerRoster from '../components/PlayerRoster';
 import { useT } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 
@@ -95,8 +95,6 @@ export default function TableScreen() {
     </div>
   );
 
-  const playerCount = state.session.playerCount;
-
   return (
     <div>
       {/* Game mode — tournament vs cash game (reshapes the plan, table & TV) */}
@@ -176,24 +174,8 @@ export default function TableScreen() {
       {/* The stack everyone gets for the buy-in */}
       <StartingStack />
 
-      {/* Players at the table — adjustable any time during the session */}
-      <div className="card">
-        <div className="row">
-          <div>
-            <div style={{ fontWeight: 600 }}>{t('plan.playersAtTable')}</div>
-            <div className="faint" style={{ fontSize: 12.5 }}>{t('table.playersAnytime')}</div>
-          </div>
-          <div className="spacer" />
-          <div className="stepper">
-            <button onClick={() => dispatch({ type: 'SET_PLAYER_COUNT', n: playerCount - 1 })}>−</button>
-            <span className="val">{playerCount}</span>
-            <button onClick={() => dispatch({ type: 'SET_PLAYER_COUNT', n: playerCount + 1 })}>+</button>
-          </div>
-        </div>
-      </div>
-
-      {/* Photo chip-count — always reachable, both modes, no TV session needed. */}
-      <ChipCountCard />
+      {/* Everyone at the table: joining, rebuys, stack counts, cash-outs — one card. */}
+      <PlayerRoster />
 
       {showClock && (
         <>
@@ -308,11 +290,8 @@ function DealerAndSeats() {
             <div className="dealer-list">
               {ledger.map((p) => (
                 <div className={`dealer-row ${dealerId === p.id ? 'is-dealer' : ''}`} key={p.id}>
-                  <input
-                    className="ledger-name"
-                    value={p.name}
-                    onChange={(e) => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { name: e.target.value } })}
-                  />
+                  {/* names are edited in the player roster above — read-only here */}
+                  <span className="dealer-name">{p.emoji ? `${p.emoji} ` : ''}{p.name || 'Player'}</span>
                   {dealerId === p.id && <span className="seat-badge" style={{ position: 'static' }}>D</span>}
                 </div>
               ))}

@@ -1562,81 +1562,78 @@ input[type='color'] { cursor: pointer; }
   .tv-confetti i, .tv-pair-idle, .tv-colorup { animation: none; }
 }
 
-/* --- Photo chip count --- */
-.cc-sheet { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column;
-  background: #000; color: #fff; }
-.cc-video { flex: 1; width: 100%; object-fit: cover; }
-.cc-stage { position: relative; flex: 1; overflow: hidden; }
-.cc-guidebox { position: absolute; border: 2px dashed rgba(255,255,255,.85); border-radius: 12px;
-  inset: 12% 8%; pointer-events: none; }
-.cc-hint { position: absolute; left: 0; right: 0; top: 16px; text-align: center; font-weight: 600;
-  text-shadow: 0 1px 4px #000; padding: 0 16px; }
-.cc-bubble { position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
-  width: 46px; height: 180px; border-radius: 23px; background: rgba(0,0,0,.45);
-  border: 1px solid rgba(255,255,255,.3); }
-.cc-bubble-dot { position: absolute; left: 50%; width: 30px; height: 30px; border-radius: 50%;
-  transform: translate(-50%, -50%); background: #e0782b; transition: top .1s, background .1s; }
-.cc-bubble-dot.ok { background: #2e9e52; }
-/* Auto-capture hold ring — fills in while steady + in-range + content is held. */
-.cc-ring { position: absolute; bottom: 96px; left: 50%; transform: translateX(-50%); width: 68px; height: 68px;
-  border-radius: 50%; border: 3px solid rgba(255,255,255,.35); box-shadow: 0 0 0 3px rgba(76,201,240,.0); }
-.cc-ring.active { border-color: #4cc9f0; box-shadow: 0 0 0 3px rgba(76,201,240,.35); }
-.cc-tip { position: absolute; left: 0; right: 0; bottom: 12px; text-align: center; font-size: 12.5px;
-  opacity: .8; text-shadow: 0 1px 4px #000; padding: 0 16px; }
-.cc-bar { display: flex; gap: 10px; align-items: center; justify-content: center; padding: 14px;
-  background: #0a0a0e; }
-.cc-shutter { width: 66px; height: 66px; border-radius: 50%; background: #fff; border: 4px solid #888; }
-.cc-shutter:disabled { opacity: .4; }
-.cc-review { flex: 1; overflow: auto; background: var(--app-bg, #0a0a0e); color: var(--fg, #fff);
-  padding: 16px; }
-.cc-canvas { width: 100%; border-radius: 12px; }
-.cc-row { display: flex; align-items: center; gap: 10px; padding: 10px 6px; border-bottom: 1px solid rgba(128,128,128,.2); }
-.cc-row.low { outline: 2px solid #e0a51f; border-radius: 8px; }
-.cc-check { display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 600; color: #e0a51f; white-space: nowrap; }
-.cc-check-btn { display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 600; color: #e0a51f;
-  white-space: nowrap; background: rgba(224,165,31,.15); border: 1px solid rgba(224,165,31,.45);
-  border-radius: 6px; padding: 3px 8px; cursor: pointer; }
-.cc-swatch { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(0,0,0,.3); }
-.cc-step { width: 34px; height: 34px; border-radius: 8px; font-size: 20px; }
-.cc-total { display: flex; justify-content: space-between; font-weight: 700; font-size: 18px; padding: 12px 6px; }
-.cc-anoms { margin: 8px 0; }
-.cc-anom { font-size: 14px; padding: 6px 10px; border-radius: 8px; margin-bottom: 6px;
-  background: rgba(224,120,43,.15); }
-.cc-anom.blocking { background: rgba(192,57,43,.2); }
-.remote-chips .cc-open { margin-left: 6px; }
-.cc-players { display: flex; flex-direction: column; }
-.cc-player-row { display: flex; align-items: center; gap: 10px; padding: 8px 2px; border-top: 1px solid rgba(128,128,128,.15); }
-.cc-player-row:first-child { border-top: 0; }
-.cc-player-name { flex: 1; font-weight: 500; }
-.cc-player-chips { font-variant-numeric: tabular-nums; opacity: .8; min-width: 56px; text-align: right; }
-.cc-enable { position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); z-index: 2; }
-.cc-player-stats { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; text-align: right; opacity: .92; font-variant-numeric: tabular-nums; }
-.cc-stat-k { opacity: .5; }
-.cc-setall { margin-left: auto; flex: none; white-space: nowrap; align-self: flex-start; }
-.cc-balance-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
-.cc-balance-edit { max-width: 108px; }
-.cc-balance-edit .affix { padding: 0 2px 0 8px; font-size: 13px; }
-.cc-balance-edit .input { width: 62px; text-align: right; padding: 5px 8px 5px 2px; font-size: 13px; font-variant-numeric: tabular-nums; }
-/* Shutter flash — confirms a photo was taken. */
-.cc-flash { position: absolute; inset: 0; background: #fff; opacity: .9; animation: cc-flash .28s ease-out forwards; pointer-events: none; z-index: 5; }
-@keyframes cc-flash { to { opacity: 0; } }
-/* Analyzing / error overlay over the frozen shot. */
-.cc-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 14px; padding: 24px; text-align: center; background: rgba(0,0,0,.55); z-index: 4; }
-.cc-spinner { width: 52px; height: 52px; border-radius: 50%; border: 4px solid rgba(255,255,255,.25); border-top-color: #fff; animation: cc-spin .8s linear infinite; }
-@keyframes cc-spin { to { transform: rotate(360deg); } }
-.cc-overlay-t { color: #fff; font-weight: 600; max-width: 290px; line-height: 1.35; }
-.cc-overlay-sub { color: rgba(255,255,255,.6); font-size: 12px; font-variant-numeric: tabular-nums; max-width: 290px; line-height: 1.3; }
-.cc-overlay-ic { width: 52px; height: 52px; border-radius: 50%; background: #c0392b; color: #fff; font-size: 30px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
-.cc-overlay-btns { display: flex; gap: 10px; margin-top: 4px; }
-.cc-editor { position: absolute; inset: 0; display: flex; flex-direction: column; background: #0b0d10; color: #fff; z-index: 5; }
-.cc-editor-title { padding: 12px 14px 0; font-weight: 600; font-size: 15px; }
-.cc-editor-hint { padding: 10px 14px; font-size: 13px; opacity: .85; }
-.cc-editor-stage { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.cc-editor-imgwrap { position: relative; display: flex; max-width: 100%; max-height: 100%; touch-action: none; }
-.cc-editor-img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
-.cc-seam { position: absolute; left: 0; right: 0; height: 2px; background: rgba(255,209,102,.95); pointer-events: none; }
-.cc-cap { position: absolute; left: 0; right: 0; height: 14px; margin-top: -7px; cursor: ns-resize;
-  background: rgba(80,200,255,.25); border-top: 2px solid #4cc9f0; border-bottom: 2px solid #4cc9f0; }
-.cc-editor-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; gap: 12px; }
-.cc-editor-count { font-size: 16px; }
+/* --- Player roster (Table tab): the one place players are managed --- */
+.pr-list { display: flex; flex-direction: column; }
+.pr-row { padding: 10px 0; border-top: 1px solid var(--line); }
+.pr-row:first-child { border-top: 0; padding-top: 2px; }
+.pr-row.is-out { opacity: .58; }
+.pr-top { display: flex; align-items: center; gap: 8px; }
+.pr-emoji { width: 34px; height: 34px; flex: none; border-radius: 10px; font-size: 19px; line-height: 1;
+  background: var(--surface-2); border: 1px solid var(--line); color: inherit; }
+.pr-name { flex: 1; min-width: 0; font-weight: 600; }
+.pr-more { width: 32px; height: 32px; flex: none; font-size: 18px; }
+.pr-more.active { color: var(--acc); }
+.pr-stats { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-top: 6px;
+  font-size: 13px; font-variant-numeric: tabular-nums; }
+.pr-k { color: var(--text-faint); }
+.pr-v { font-weight: 600; }
+.pr-rebuy { padding: 3px 9px; }
+.pr-stack { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: var(--r-sm);
+  background: var(--surface-2); border: 1px solid var(--line); color: inherit;
+  font-size: 13px; font-variant-numeric: tabular-nums; }
+.pr-stack b { font-weight: 700; }
+.pr-menu { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.pr-cashout { margin-top: 8px; }
+.pr-actions { display: flex; gap: 8px; margin-top: 12px; }
+.pr-actions .btn { flex: 1; }
+.pr-totals { display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px;
+  font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.pr-stats .pos, .pr-totals .pos { color: var(--good); font-weight: 600; }
+.pr-stats .neg, .pr-totals .neg { color: var(--bad); font-weight: 600; }
+.dealer-name { flex: 1; font-weight: 500; }
+
+/* --- Counting round: tally each stack by colour, player by player --- */
+.cr-sheet { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column;
+  background: var(--bg); color: var(--text); }
+.cr-head { position: relative; padding: 16px 54px 12px 16px; border-bottom: 1px solid var(--line); }
+.cr-step { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
+.cr-title { font-size: 22px; font-weight: 700; font-family: var(--font-display); }
+.cr-prev { margin-top: 2px; font-size: 12.5px; color: var(--text-dim); }
+.cr-x { position: absolute; right: 10px; top: 14px; width: 34px; height: 34px; }
+.cr-body { flex: 1; overflow: auto; padding: 12px 16px 16px; }
+.cr-denom { display: flex; align-items: center; gap: 8px; padding: 7px 0; }
+.cr-swatch { width: 22px; height: 22px; flex: none; border-radius: 50%; border: 2px solid; }
+.cr-denom-v { width: 46px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cr-btn { min-width: 40px; height: 38px; border-radius: var(--r-sm); font-size: 15px; font-weight: 600;
+  background: var(--surface-2); border: 1px solid var(--line); color: inherit; }
+.cr-btn.wide { min-width: 48px; }
+.cr-num { width: 58px; text-align: center; padding: 8px 4px; font-variant-numeric: tabular-nums; }
+.cr-denom-sum { flex: 1; text-align: right; font-size: 12.5px; color: var(--text-faint);
+  font-variant-numeric: tabular-nums; }
+.cr-all { margin: 8px 0 2px; }
+.cr-total { display: flex; justify-content: space-between; align-items: baseline; margin: 10px 0 12px;
+  padding-top: 10px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.cr-total b { font-size: 24px; color: var(--acc); font-family: var(--font-display); }
+.cr-bar { display: flex; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line); background: var(--surface); }
+.cr-sum-list { display: flex; flex-direction: column; }
+.cr-sum-row { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0;
+  border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.cr-sum-row:first-child { border-top: 0; }
+.cr-sum-name { font-weight: 600; }
+.cr-check { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--line); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.cr-check .pos { color: var(--good); }
+.cr-check .neg { color: var(--bad); }
+.cr-note { font-size: 12px; margin-top: 10px; }
+
+/* --- Settle-up rows (Cash tab is read-only reporting now) --- */
+.cash-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; padding: 10px 0;
+  border-top: 1px solid var(--line); }
+.cash-row:first-child { border-top: 0; }
+.cash-name { flex: 1 1 100%; font-weight: 600; }
+.cash-fig { display: flex; flex-direction: column; gap: 2px; min-width: 74px;
+  font-size: 13px; font-variant-numeric: tabular-nums; }
+.cash-fig label { font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-faint); }
+.cash-fig .pos { color: var(--good); }
+.cash-fig .neg { color: var(--bad); }

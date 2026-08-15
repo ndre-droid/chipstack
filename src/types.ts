@@ -47,7 +47,6 @@ export interface Settings {
   tvBackgroundTone: number | null; // mean luminance 0..1 of the background, drives scrim strength
   appearance: Appearance;   // system / light / dark — applies to the minimal skin
   chipArt: ChipArt;         // chip face art style
-  aiVisionKey?: string;            // Google Gemini API key for photo chip-count — on-device only, NEVER synced
   language: 'en' | 'de';
   /** Tournament: fixed prize pool, rising blinds, payout split + bust leaderboard.
    *  Cash: chips = money, blinds fixed (timer optional), players cash out anytime and

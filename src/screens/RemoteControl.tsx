@@ -7,21 +7,10 @@ import { togglePlayPause, goLevel, startBreak, cancelBreak, secondsLeft, initial
 import { moneyToUnits } from '../lib/distribution';
 import type { ClockState } from '../lib/clockLogic';
 import { IconPlay, IconPause, IconChevron, IconPlus, IconTrash } from '../components/Icons';
-import { ChipCountSheet } from '../components/ChipCountSheet.tsx';
+import { EmojiPicker } from '../components/EmojiPicker';
+import CountRound from '../components/CountRound';
 
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-
-// small avatar set for players (tap to set, tap the active one to clear)
-// grouped: attitude · animals · poker & luck · drinks & snacks · swagger
-const EMOJIS = [
-  '😎', '🤠', '🤑', '🥸', '😈', '🤖', '👽', '🤡', '🥶', '🤯', '🫡', '🧊',
-  '🦈', '🐷', '🦁', '🐺', '🦊', '🐸', '🐟', '🐙', '🦖', '🐉', '🦉', '🦝',
-  '🐨', '🐯', '🦄', '🦡', '🐢', '🦅', '🐜', '🦂',
-  '👑', '🃏', '♠️', '♥️', '♦️', '♣️', '🎲', '💰', '💎', '🏆', '🎯', '🧲',
-  '🍀', '🧿', '🔮', '💣', '💀', '☠️', '🔥', '⚡', '🌪️', '🧨',
-  '🍺', '🍷', '🥃', '🍸', '☕', '🍕', '🌮', '🍩', '🥜', '🚬',
-  '🎩', '🕶️', '🧢', '🚀', '🛸', '🏴‍☠️', '⚓', '🥊', '🎸', '🦾',
-];
 
 /**
  * The phone's remote, shown on the Table tab only while this phone is hosting a
@@ -48,7 +37,7 @@ export default function RemoteControl() {
   const [koPickId, setKoPickId] = useState<string | null>(null); // busted player awaiting knockout attribution
   const [emojiOpenId, setEmojiOpenId] = useState<string | null>(null);
   const [momentText, setMomentText] = useState('');
-  const [countFor, setCountFor] = useState<{ id: string; name: string } | null>(null);
+  const [countId, setCountId] = useState<string | null>(null);
   const { bountyMode } = state.settings;
 
   const active = firebaseConfigured && liveSessionRole === 'host' && !!liveSessionCode;
@@ -275,20 +264,13 @@ export default function RemoteControl() {
                   </div>
                 </div>
                 {emojiOpenId === p.id && (
-                  <div className="emoji-grid">
-                    {EMOJIS.map((e) => (
-                      <button
-                        key={e}
-                        className={`emoji-opt ${p.emoji === e ? 'active' : ''}`}
-                        onClick={() => {
-                          dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { emoji: p.emoji === e ? undefined : e } });
-                          setEmojiOpenId(null);
-                        }}
-                      >
-                        {e}
-                      </button>
-                    ))}
-                  </div>
+                  <EmojiPicker
+                    value={p.emoji}
+                    onPick={(emoji) => {
+                      dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { emoji } });
+                      setEmojiOpenId(null);
+                    }}
+                  />
                 )}
                 {!isCash && (
                   <div className="remote-chips input-affix">
@@ -305,9 +287,9 @@ export default function RemoteControl() {
                     <button
                       type="button"
                       className="icon-btn cc-open"
-                      aria-label={t('chipcount.title')}
-                      onClick={() => setCountFor({ id: p.id, name: p.name })}
-                    >📷</button>
+                      aria-label={t('count.title')}
+                      onClick={() => setCountId(p.id)}
+                    >🧮</button>
                   </div>
                 )}
                 <div className="remote-player-actions">
@@ -467,13 +449,7 @@ export default function RemoteControl() {
         )}
       </div>
 
-      {countFor && (
-        <ChipCountSheet
-          playerId={countFor.id}
-          playerName={countFor.name}
-          onClose={() => setCountFor(null)}
-        />
-      )}
+      {countId && <CountRound only={countId} onClose={() => setCountId(null)} />}
     </>
   );
 }

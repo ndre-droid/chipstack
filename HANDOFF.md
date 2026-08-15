@@ -18,7 +18,9 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-08-11 from `main` @ `5a4f2ae`**, 4.37 MB; AI chip count is a deliberate **ASSIST**:
+  (⚠️ **BEHIND as of 2026-08-15** — still the 2026-08-11 build, so it has the OLD photo chip-count and no
+  player roster / counting round. Rebuild it from `main` to catch up.
+  Build detail below: rebuilt 2026-08-11 from `main` @ `5a4f2ae`, 4.37 MB; AI chip count was a deliberate **ASSIST**:
   single detect+crop+vote(×3) pass, confidence = sample self-consistency, soft ⚠ flag, manual correction —
   the old 3-channel fusion + forced second-angle were REMOVED. Plus capture-mode gating (angle 22–36°,
   backlight/dark guard), the euro stack-editing feature and the NEW chip-stack app icon. Stable key unchanged →
@@ -154,6 +156,11 @@ src/
     ShareSheet.tsx, Icons.tsx
     StartingStack.tsx  the "stack everyone gets" card on the Table tab (computeStack + ChipStackViz)
     SeasonLeague.tsx   NEW — season league on the Cash tab (save night → net/ROI standings + history)
+    PlayerRoster.tsx   THE player list (Table tab): join / rename / emoji / rebuy / stack / cash-out /
+                       bust / remove. Replaced the player-count stepper + the photo chip-count card.
+    CountRound.tsx     counting-round sheet — tally each player's stack per denomination (−/+1/+20),
+                       "assign the rest" for the last player, summary, one LEDGER_SET_CHIPS_MANY dispatch
+    EmojiPicker.tsx    the 74-emoji set + grid, shared by PlayerRoster and RemoteControl
     TvBroadcast.tsx    TV design/accent/quips/background/penalties+house-rules editors/show-on-TV
                        (link fixed, QR removed) — collapsible on the Table tab, syncs while hosting
   screens/
@@ -258,6 +265,35 @@ RemoteControl (host, Table tab) still covers: clock, level length (±1/±10 + Tu
 break length + auto-break every N, blinds (edit/add/remove), players & pool (rename, buy-in, Rebuy,
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
+
+### Recent work (2026-08-15 — player roster + counting round, photo count DELETED)
+Design spec: `docs/superpowers/specs/2026-08-15-player-roster-counting-round-design.md`.
+Player data used to live in four UIs over one `ledger` (Table stepper, photo card, Cash editor, host
+RemoteControl) — a rebuy could be entered in three of them. Now:
+- **`components/PlayerRoster.tsx`** on the Table tab is THE player list and replaces BOTH the old
+  "players at the table" stepper (which counted a number, not people) and the 📷 chip-count card.
+  Row = emoji · name · `⋯` menu; body = buy-in + one-tap rebuy + stack (as money, tap to count).
+  Menu = cash out (prefilled from the counted stack) · mark out (tournament) · back in · remove.
+  Footer = money on the table vs counted + difference. Add/remove syncs `session.playerCount`.
+- **`components/CountRound.tsx`** — the counting round. Steps through the still-in players; per
+  denomination a `−` / number / `+1` / `+20` row (20 = a barrel), running total in chips AND money,
+  previous value for reference. Denoms default to the ones the starting stack uses (`computeStack`),
+  toggle shows the whole inventory. Last player gets **"assign the rest"** (money on the table minus
+  everyone else). Closing summary (old → new + diff), then **ONE `LEDGER_SET_CHIPS_MANY` dispatch** →
+  a single TV push. Counted per colour, but only the TOTAL is stored (`LedgerPlayer.chips`) — **no new
+  state and no new synced field**. Also reachable per player: roster stack tap, and the 🧮 in
+  RemoteControl (was 📷).
+- **Deliberate scope:** the stack figure is an OVERVIEW, not an audit — the difference is a hint and
+  never blocks, and it still does NOT feed the buy-in/settlement maths.
+- **`components/EmojiPicker.tsx`** — the 74-emoji set extracted from RemoteControl so the roster offers
+  it too (before this, emojis were unreachable without a live TV session).
+- **Cash tab is now read-only reporting**: summary tiles, per-player net, who-pays-whom, league. Its
+  player editor is gone. The "off by X" warning only fires once EVERY player is settled (mid-game the
+  totals are supposed to differ). Dealer card names are read-only too.
+- Verified in the dev preview (de) end-to-end: 3-player round (20×25 + 2×100 = 700 chips = €7),
+  rest = €53 of €80, summary diff €0, persisted in one dispatch; cash-out prefill, bust clears the
+  stack, single-player save, settlement Jana → Tom €33. `npx tsc -b` + `npm run build` clean, no
+  console errors.
 
 ### Recent work (2026-08-11 — 74 player emojis)
 `EMOJIS` in `screens/RemoteControl.tsx` went 16 → **74**, grouped attitude / animals / poker & luck /
@@ -513,87 +549,17 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 
 ## ⚠️ Open items / next steps
 
-### Photo → chip count — Gemini AI ONLY, now a deliberate ASSIST (reframed 2026-08-02)
-📷 count a player's chips from a photo → fills `LedgerPlayer.chips`. Entry points: a **"Count chips"
-card on the Table tab** (`components/ChipCountCard.tsx`, BOTH game modes, no TV session needed;
-shows buy-in + balance per player) AND the per-player 📷 in the host RemoteControl. Spec/plan:
-`docs/superpowers/{specs,plans}/2026-07-31-chip-photo-count*` (on-device parts now historical).
-
-**AI ONLY** (commit fb88edf). The old on-device OpenCV pipeline was **removed** — it miscounted even in
-ideal conditions (plain light matte surface, bright even light, separated stacks) and worse in the user's
-real room. Deleted: `src/lib/chipVision/{extract,opencv,index,color,geometry,anomaly,aggregate}.ts` + tests,
-`ChipCalibrationWizard`, `chipCalibration.ts`, `@techstark/opencv-js` dep, the workbox opencv precache rules,
-and `Settings.chipCountMode`/`chipCalibration`. Kept: `visionCount.ts` + trimmed `chipVision/types.ts`.
-
-**Engine:** `src/lib/chipVision/visionCount.ts` → Google Gemini, DIRECT browser call with the user's own key
-(`Settings.aiVisionKey`, on-device only, NOT synced). Gemini allows browser CORS with a key; OpenAI/Anthropic
-block it → would need a backend the app lacks. Settings → **"Chip counting (AI)"** shows the key field always
-(no toggle). Editable review before save. CONFIRMED WORKING end-to-end 2026-08-01 (user's real photos).
-
-**Model = AUTO-DISCOVERED, never hardcoded** (`resolveModel`). Google kept retiring/gating ids
-(`gemini-2.0-flash` retired, then `gemini-2.5-flash` → "no longer available to new users" — the user's key is
-new). So we call Google **ListModels** with the key, pick the best usable vision model (`scoreModel`: newest
-version, prefer flash, avoid lite/preview/thinking), cache it, and **self-heal**: on a 404 / "not available"
-error mid-call we re-list (force) and retry once. `FALLBACK_MODEL='gemini-flash-latest'` only if the list call
-itself fails. Do NOT reintroduce a hardcoded model id.
-
-**⚠️ 2026-08-02 — the 3-channel fusion was RIPPED OUT; it's now a deliberate ASSIST.** The geometry
-channel, on-device DSP, cross-channel fusion, k-calibration, `pro` tiebreak AND the forced second-angle
-recount all made it WORSE: they produced confident-wrong counts (over by 2–3) and flagged the one correct
-stack (two channels agreeing on the same wrong number → high confidence). All removed (commit 36c72cf,
-−289 lines net). Reliable ±0 auto-count of same-colour stacked chips is NOT realistically solvable by
-general vision models (low-contrast seams between identical chips) — so the feature is now a fast estimate
-the user confirms/corrects, NOT an oracle. **Do NOT re-add the fusion / geometry / DSP / second-angle
-machinery — it was tried and it regressed.** Memory: `memory/chip-count-ai-only.md`.
-
-Current `visionCount.ts` — single honest pass:
-1. **Detect + box** every stack (1 flash call, 1024px).
-2. **Crop + clean** each: crop full-res (pad 12%), on-device `tightenByColor()` (drops clutter via the
-   known denom colour) + `autoLevels()` (auto-exposure), sent at 768px = 1 Gemini tile. These image
-   cleanups STAYED — they help the model see; they don't produce a competing count.
-3. **Vote** via a BATCHED multi-image read (`readAllStacks`, returns `count` + `extent` only now): every
-   crop in ONE call, repeated `SAMPLES=3`× (flash, temp 0.5, pooled `POOL=6`) → **~1 detection + 3 reads
-   ≈ 4 calls/photo**.
-4. Per stack: **majority vote = count; confidence = self-consistency** (fraction of the 3 samples that
-   agreed) — NOT any cross-channel or model self-report. `FLAG_THRESHOLD=0.6` (`fuse.ts`): only a genuine
-   split flags. The flag is a **soft ⚠** that opens the manual `ChipSeamEditor`; it NEVER forces a
-   re-shoot (the whole forced-second-photo flow + `secondAngle`/`framing2`/`analyzing2` phases are gone,
-   as are `fuseStack`/`mergeAngles`/`matchStacks`/`dspCount` and the `box`/`votes`/`ratios` StackResult
-   internals). `fuse.ts` is now just `tally`/`median`/`parseRead`/`flaggedStackIds`.
-5. **Safety (commit c66b3e0): never confident-zero a DETECTED stack.** A detected stack that reads 0
-   (flat top-only chip, dark/backlit, merged seams) is a read FAILURE, not "zero chips" → it always flags,
-   so it can't be silently saved as 0 (this was a real data-loss risk — a dark stack vanished from the
-   total with no warning). And if detection found stacks but they ALL read 0/empty, the sheet now routes
-   to the review (every row flagged, correct-or-reshoot) instead of the dead-end "no chips found" error.
-
-**COST — READ THIS (user hit ~2€ testing).** The self-consistency voting fanned out to ~16–20 calls/photo,
-plus the old `pro` tiebreak (slow + pricey), and **every timeout + "Neu aufnehmen" retry was billed in full**.
-Fixes: (a) **batched** all crops into one call, vote by repeating it 3× → ~4 calls/photo; (b) **removed all
-`pro` calls** (DSP + the confident channel settle disagreements for free); (c) crops 768px (½ the image
-tokens), detection 1024px. Now **fractions of a cent per photo**. Told the user to set a **Google Cloud budget
-cap** on the key. Cheaper lever if wanted: `SAMPLES 3→1` (no voting, ~2 calls/photo).
-
-**TIMEOUTS fixed** (user got repeated "Zeitüberschreitung"): the old pro calls (10–30s, 2 RPM) + 16 flash
-calls blew the 60s budget. Now `REQ_TIMEOUT=18000` aborts any single hung request (AbortController), and the
-call count is tiny. Sheet outer timeout is 60s (`ChipCountSheet.tsx`).
-
-**Physical limits no algorithm fixes** (tell the user — it's capture, not code): a chip lying FLAT/on its
-face (no seams, no height → the red "4" that was really 1) miscounts; touching/leaning stacks merge seams;
-a 90°-rotated (sideways) photo degrades geometry/DSP axis assumptions. **Recipe: upright, separated stacks,
-all in frame, phone held normally (not rotated), no backlight.** APK camera needs the **`CAMERA`** manifest
-permission (present).
-
-**CAPTURE-MODE GATING — DONE 2026-08-02 (commit 71fcc62), the one remaining real lever.** Since the analysis
-is maxed out, the app now PREVENTS bad frames instead of patching them. `useDeviceTilt`: `TILT_MIN_DEG`
-raised 15→**22** (below = too flat/across-the-table → foreshorten + occlude → reject), `TILT_MAX_DEG` **36**
-(sweet spot ≈26–32°). `useCameraCapture`: exposes **`backlit`** (>12% of sampled pixels clipped ≥250 = a
-window/light source in frame) alongside existing **`brightnessOk`** (mean luma < 70 = dark). **Auto-capture is
-gated on tilt-in-range + steady + content + `brightnessOk` + `!backlit`** (manual shutter still overrides so
-the user can force it). Framing hint shows `chipcount.tooDark` / `chipcount.backlit` with EXPOSURE priority
-over angle; `barrelsTip` now coaches straight+separated stacks, no backlight, stand a lone flat chip in a
-stack (EN+DE i18n). Tune knobs if too strict/loose: the two tilt constants + the `0.12` backlit fraction.
-**PWA SW caches hard** — after a Pages deploy, behaviour may not update until SW cleared / app force-reopened /
-APK reinstalled.
+### Photo → chip count — DELETED (2026-08-15)
+The whole photo/AI chip-count feature is **gone**. It was already a soft assist (see the history
+below) and in the user's real game it did not work well enough to be worth keeping. Removed:
+`components/ChipCount{Card,Sheet,Review}.tsx`, `ChipSeamEditor.tsx`, `lib/chipVision/*`,
+`lib/useCameraCapture.ts`, `lib/useDeviceTilt.ts`, `Settings.aiVisionKey` + its Settings block,
+134 `chipcount.*` i18n keys, the capture CSS, and the `CAMERA` / camera `uses-feature` entries in
+`AndroidManifest.xml` (the TV background picker is a plain `<input type=file>` and needs none of them).
+Replaced by the **counting round** — see the 2026-08-15 entry above. **Do NOT rebuild it**: the fusion /
+geometry / DSP / second-angle machinery was tried and regressed (2026-08-02), and the single-pass Gemini
+assist that followed still was not good enough. Historical detail lives in git and in
+`docs/superpowers/{specs,plans}/2026-07-31-chip-photo-count*`.
 
 0. **3D chips: built then REVERTED (2026-07-24 session).** A react-three-fiber prototype (true-3D
    ceramic chip stacks on the Plan hero + a rotatable chip showcase in Settings) was built, shipped,

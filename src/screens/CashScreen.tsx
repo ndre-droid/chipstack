@@ -2,22 +2,28 @@ import { useMemo } from 'react';
 import { useStore } from '../store';
 import { settleUp } from '../lib/settle';
 import type { PlayerBalance } from '../lib/settle';
-import { IconPlus, IconTrash } from '../components/Icons';
 import { useT, useFmt } from '../lib/i18n';
 import SeasonLeague from '../components/SeasonLeague';
 
+/**
+ * Settle-up tab: what the night added up to and who owes whom. Players themselves
+ * (adding, rebuys, stack counts, cashing out) are managed in ONE place — the
+ * roster on the Table tab — so this screen is read-only reporting.
+ */
 export default function CashScreen() {
   const { state, dispatch } = useStore();
   const t = useT();
   const { money: fmtMoney } = useFmt();
   const cur = state.settings.currency;
-  const { buyIn, playerCount } = state.session;
   const ledger = state.ledger;
 
   const totalIn = ledger.reduce((s, p) => s + (p.buyIn || 0), 0);
   const totalOut = ledger.reduce((s, p) => s + (p.cashOut || 0), 0);
   const diff = totalOut - totalIn;
   const anyOut = ledger.some((p) => (p.cashOut || 0) > 0);
+  // Mid-game the totals SHOULD differ (money is still on the table) — only flag a
+  // mismatch once everyone has been settled.
+  const allSettled = ledger.every((p) => p.out || (p.cashOut || 0) > 0);
 
   const transfers = useMemo(() => {
     const balances: PlayerBalance[] = ledger.map((p) => ({ name: p.name || 'Player', net: (p.cashOut || 0) - (p.buyIn || 0) }));
@@ -27,17 +33,9 @@ export default function CashScreen() {
   if (ledger.length === 0) {
     return (
       <div>
-        <div className="section-label">Cash ledger</div>
+        <div className="section-label">{t('cash.moneyInPlay')}</div>
         <div className="card">
-          <div className="empty" style={{ paddingBottom: 16 }}>
-            Track each player's buy-ins during the game, then enter their final chips to settle up.
-          </div>
-          <button className="btn btn-primary btn-block" onClick={() => dispatch({ type: 'LEDGER_ADD_MANY', n: playerCount })}>
-            Start with {playerCount} players
-          </button>
-          <button className="btn btn-ghost btn-block btn-sm mt8" onClick={() => dispatch({ type: 'LEDGER_ADD' })}>
-            <IconPlus size={16} /> {t('cash.addPlayer')}
-          </button>
+          <div className="empty">{t('cash.emptyHint')}</div>
         </div>
         <SeasonLeague />
       </div>
@@ -69,72 +67,36 @@ export default function CashScreen() {
 
       <div className="section-label">
         {t('cash.players')}
-        <span className="hint">tap + each rebuy · enter final chips</span>
+        <span className="hint">{t('cash.manageOnTable')}</span>
       </div>
       <div className="card ledger-card">
         {ledger.map((p) => {
           const net = (p.cashOut || 0) - (p.buyIn || 0);
+          const gone = (p.cashOut || 0) > 0;
           return (
-            <div className="ledger-row" key={p.id}>
-              <input
-                className="ledger-name"
-                value={p.name}
-                placeholder="Name"
-                onChange={(e) => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { name: e.target.value } })}
-              />
-              <button className="icon-btn danger" style={{ width: 30, height: 30 }} onClick={() => dispatch({ type: 'LEDGER_REMOVE', id: p.id })}>
-                <IconTrash size={14} />
-              </button>
-
-              <div className="ledger-fields">
-                <div className="ledger-field">
-                  <label>Bought in</label>
-                  <div className="buyin-ctl">
-                    <input
-                      className="ledger-num"
-                      type="number"
-                      inputMode="decimal"
-                      value={p.buyIn || ''}
-                      onChange={(e) => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { buyIn: Math.max(0, +e.target.value) } })}
-                    />
-                    <button
-                      className="buyin-add"
-                      onClick={() => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { buyIn: (p.buyIn || 0) + buyIn } })}
-                      title={`Add a ${fmtMoney(buyIn, cur)} buy-in`}
-                    >
-                      +{cur}{buyIn}
-                    </button>
-                  </div>
-                </div>
-                <div className="ledger-field">
-                  <label>Final chips</label>
-                  <input
-                    className="ledger-num"
-                    type="number"
-                    inputMode="decimal"
-                    value={p.cashOut || ''}
-                    onChange={(e) => dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { cashOut: Math.max(0, +e.target.value) } })}
-                  />
-                </div>
-                <div className="ledger-net">
-                  <label>Net</label>
-                  <span className={net >= 0 ? 'pos' : 'neg'}>
-                    {net >= 0 ? '+' : ''}
-                    {fmtMoney(net, cur)}
-                  </span>
-                </div>
-              </div>
+            <div className="cash-row" key={p.id}>
+              <span className="cash-name">{p.emoji ? `${p.emoji} ` : ''}{p.name || 'Player'}</span>
+              <span className="cash-fig">
+                <label>{t('cash.boughtIn')}</label>
+                {fmtMoney(p.buyIn || 0, cur)}
+              </span>
+              <span className="cash-fig">
+                <label>{t('cash.cashedOut')}</label>
+                {gone ? fmtMoney(p.cashOut, cur) : '—'}
+              </span>
+              <span className="cash-fig">
+                <label>{t('cash.net')}</label>
+                <b className={net >= 0 ? 'pos' : 'neg'}>{net >= 0 ? '+' : ''}{fmtMoney(net, cur)}</b>
+              </span>
             </div>
           );
         })}
-        <div className="row mt12" style={{ gap: 8 }}>
-          <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => dispatch({ type: 'LEDGER_ADD' })}>
-            <IconPlus size={16} /> {t('cash.addPlayer')}
-          </button>
+        <div className="row mt12">
+          <div className="spacer" />
           <button
             className="btn btn-ghost btn-sm"
             onClick={() => {
-              if (confirm('Clear the ledger for a new game?')) dispatch({ type: 'LEDGER_CLEAR' });
+              if (confirm(t('cash.newGameConfirm'))) dispatch({ type: 'LEDGER_CLEAR' });
             }}
           >
             {t('cash.newGame')}
@@ -142,25 +104,25 @@ export default function CashScreen() {
         </div>
       </div>
 
-      {anyOut && diff !== 0 && (
+      {allSettled && diff !== 0 && (
         <div className="feas warn" style={{ fontSize: 12.5 }}>
-          Final chips total {fmtMoney(totalOut, cur)} but {fmtMoney(totalIn, cur)} was bought in — off by {fmtMoney(Math.abs(diff), cur)}. Re-count the stacks.
+          {t('cash.offBy', { out: fmtMoney(totalOut, cur), in: fmtMoney(totalIn, cur), diff: fmtMoney(Math.abs(diff), cur) })}
         </div>
       )}
 
       <div className="section-label">{t('cash.whoPays')}</div>
       <div className="card">
         {!anyOut ? (
-          <div className="empty">Enter final chips to see the payouts.</div>
+          <div className="empty">{t('cash.needCashOuts')}</div>
         ) : transfers.length === 0 ? (
-          <div className="empty">Everyone's even — no payments needed.</div>
+          <div className="empty">{t('cash.allEven')}</div>
         ) : (
-          transfers.map((t, i) => (
+          transfers.map((tr, i) => (
             <div className="transfer-row" key={i}>
-              <span className="t-from">{t.from}</span>
-              <span className="t-arrow">pays</span>
-              <span className="t-to">{t.to}</span>
-              <span className="t-amt">{fmtMoney(t.amount, cur)}</span>
+              <span className="t-from">{tr.from}</span>
+              <span className="t-arrow">{t('cash.pays')}</span>
+              <span className="t-to">{tr.to}</span>
+              <span className="t-amt">{fmtMoney(tr.amount, cur)}</span>
             </div>
           ))
         )}
