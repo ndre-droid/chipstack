@@ -61,7 +61,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const t = useT();
   const { money, num } = useFmt();
   const { blindLevels } = state.session;
-  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack, bountyMode, bountyAmount, customAccent, tvPenalties, tvHouseRules } = state.settings;
+  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvRosterSort, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack, bountyMode, bountyAmount, customAccent, tvPenalties, tvHouseRules } = state.settings;
 
   /* Display size. Per-device and deliberately NOT part of LiveData: the laptop
      acting as the big screen needs its own zoom, and a phone must not shrink it.
@@ -180,6 +180,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             tvQuips: doc.data.tvQuips,
             tvCustomQuips: doc.data.tvCustomQuips,
             tvShowPlayers: doc.data.tvShowPlayers,
+            tvRosterSort: doc.data.tvRosterSort,
             tvShowPayouts: doc.data.tvShowPayouts,
             tvShowBustOrder: doc.data.tvShowBustOrder,
             breakMinutes: doc.data.breakMinutes,
@@ -466,28 +467,53 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     [denominations],
   );
   // roster shown on the TV — names + amounts, live from the host's ledger. A player
-  // who has left (busted, or cashed out in a cash game) shows their profit/loss.
+  // who is still in shows what their counted chips are worth in money, plus how far
+  // up or down that puts them; one who has left (busted, or cashed out in a cash
+  // game) shows their final profit/loss. Without a chip count there's nothing to
+  // value, so those rows fall back to the buy-in.
   const roster = useMemo(
     () =>
       ledger.length
         ? ledger.map((p) => {
             const left = !!p.out || (p.cashOut || 0) > 0;
-            const net = (p.cashOut || 0) > 0 ? (p.cashOut || 0) - (p.buyIn || 0) : null;
+            const chips = p.chips || 0;
+            const stackMoney = !left && chips > 0 ? chips * unitValue : null;
+            const net = left
+              ? (p.cashOut || 0) > 0
+                ? (p.cashOut || 0) - (p.buyIn || 0)
+                : null
+              : stackMoney !== null
+                ? stackMoney - (p.buyIn || 0)
+                : null;
             return {
               id: p.id,
               name: p.name || 'Player',
               amount: p.buyIn || 0,
               out: left,
               net,
+              stackMoney,
               emoji: p.emoji || '',
-              chips: p.chips || 0,
+              chips,
               trail: (p.chipHistory ?? []).map((h) => h.chips),
               knockouts: p.knockouts || 0,
             };
           })
-        : Array.from({ length: playerCount }, (_, i) => ({ id: String(i), name: `Seat ${i + 1}`, amount: buyIn, out: false, net: null as number | null, emoji: '', chips: 0, trail: [] as number[], knockouts: 0 })),
-    [ledger, playerCount, buyIn],
+        : Array.from({ length: playerCount }, (_, i) => ({ id: String(i), name: `Seat ${i + 1}`, amount: buyIn, out: false, net: null as number | null, stackMoney: null as number | null, emoji: '', chips: 0, trail: [] as number[], knockouts: 0 })),
+    [ledger, playerCount, buyIn, unitValue],
   );
+
+  // roster order: as entered, or biggest stack / biggest profit first. Players who
+  // are out sink to the bottom of a sorted list — the leaderboard is about who's
+  // still playing.
+  const sortedRoster = useMemo(() => {
+    if ((tvRosterSort ?? 'seat') === 'seat') return roster;
+    const rank = tvRosterSort === 'chips' ? (p: (typeof roster)[number]) => p.chips : (p: (typeof roster)[number]) => p.net ?? 0;
+    return [...roster].sort((a, b) => Number(a.out) - Number(b.out) || rank(b) - rank(a));
+  }, [roster, tvRosterSort]);
+
+  // header hint for the right-hand column — it only says "buy-in" while nobody has
+  // a counted stack to value.
+  const rosterAmountLabel = roster.some((p) => p.stackMoney !== null) ? t('tv.stack') : t('tv.buyIn');
 
   // chip-leader crown: the still-in player with the most (host-entered) chips
   const chipLeaderId = useMemo(() => {
@@ -745,10 +771,10 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             <div className="tv-players tv-roster">
               <div className="tv-players-h">
                 <span>{t('tv.players')}</span>
-                <span className="tv-players-h-sub">{t('tv.buyIn')}</span>
+                <span className="tv-players-h-sub">{rosterAmountLabel}</span>
               </div>
               <div className="tv-players-list">
-                {roster.map((p) => (
+                {sortedRoster.map((p) => (
                   <div className={`tv-players-row ${p.out ? 'out' : ''}`} key={p.id}>
                     {p.emoji && <span className="tv-players-emoji">{p.emoji}</span>}
                     {p.id === chipLeaderId && <span className="tv-crown" title="Chip leader">👑</span>}
@@ -759,7 +785,18 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
                     {bountyMode && !isCash && p.knockouts > 0 && (
                       <span className="tv-bounty" title="Bounties">🎯{p.knockouts}</span>
                     )}
-                    {p.net !== null ? (
+                    {p.stackMoney !== null ? (
+                      // still in, chips counted: what the stack is worth, with the
+                      // running profit/loss underneath it
+                      <span className="tv-players-amt tv-stackcell">
+                        <span className="tv-stack-money">{money(p.stackMoney, currency)}</span>
+                        {p.net !== null && (
+                          <small className={`tv-stack-net ${p.net >= 0 ? 'pos' : 'neg'}`}>
+                            {p.net >= 0 ? '+' : '−'}{money(Math.abs(p.net), currency)}
+                          </small>
+                        )}
+                      </span>
+                    ) : p.net !== null ? (
                       <span className={`tv-players-amt tv-net ${p.net >= 0 ? 'pos' : 'neg'}`}>
                         {p.net >= 0 ? '+' : '−'}{money(Math.abs(p.net), currency)}
                       </span>

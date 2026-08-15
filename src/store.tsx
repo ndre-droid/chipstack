@@ -50,6 +50,7 @@ const defaultSettings: Settings = {
   tvQuips: true,
   tvCustomQuips: [],
   tvShowPlayers: true,
+  tvRosterSort: 'seat',
   tvShowPayouts: false,
   tvShowBustOrder: false,
   breakMinutes: 5,
@@ -146,6 +147,7 @@ type Action =
       tvQuips?: boolean;
       tvCustomQuips?: string[];
       tvShowPlayers?: boolean;
+      tvRosterSort?: 'seat' | 'chips' | 'profit';
       tvShowPayouts?: boolean;
       tvShowBustOrder?: boolean;
       breakMinutes?: number;
@@ -295,6 +297,7 @@ function reducer(state: AppState, action: Action): AppState {
           ...(action.tvQuips !== undefined ? { tvQuips: action.tvQuips } : {}),
           ...(action.tvCustomQuips !== undefined ? { tvCustomQuips: action.tvCustomQuips } : {}),
           ...(action.tvShowPlayers !== undefined ? { tvShowPlayers: action.tvShowPlayers } : {}),
+          ...(action.tvRosterSort !== undefined ? { tvRosterSort: action.tvRosterSort } : {}),
           ...(action.tvShowPayouts !== undefined ? { tvShowPayouts: action.tvShowPayouts } : {}),
           ...(action.tvShowBustOrder !== undefined ? { tvShowBustOrder: action.tvShowBustOrder } : {}),
           ...(action.breakMinutes !== undefined ? { breakMinutes: action.breakMinutes } : {}),
@@ -495,6 +498,7 @@ function migrate(raw: string | null): AppState {
   if (!Array.isArray(settings.tvCustomQuips)) settings.tvCustomQuips = [];
   else settings.tvCustomQuips = settings.tvCustomQuips.filter((q): q is string => typeof q === 'string');
   if (typeof settings.tvShowPlayers !== 'boolean') settings.tvShowPlayers = true;
+  if (!['seat', 'chips', 'profit'].includes(settings.tvRosterSort)) settings.tvRosterSort = 'seat';
   if (typeof settings.tvShowPayouts !== 'boolean') settings.tvShowPayouts = false;
   if (typeof settings.tvShowBustOrder !== 'boolean') settings.tvShowBustOrder = false;
   if (typeof settings.breakMinutes !== 'number' || settings.breakMinutes < 1) settings.breakMinutes = 5;

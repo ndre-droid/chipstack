@@ -25,6 +25,8 @@ export interface LiveData {
   tvQuips: boolean;
   tvCustomQuips: string[];
   tvShowPlayers: boolean;
+  /** roster order on the TV: seat order, biggest stack or biggest profit first */
+  tvRosterSort: 'seat' | 'chips' | 'profit';
   tvShowPayouts: boolean;
   tvShowBustOrder: boolean;
   breakMinutes: number;
@@ -69,6 +71,7 @@ export function dataOf(state: AppState): LiveData {
     tvQuips: state.settings.tvQuips,
     tvCustomQuips: state.settings.tvCustomQuips ?? [],
     tvShowPlayers: state.settings.tvShowPlayers ?? true,
+    tvRosterSort: state.settings.tvRosterSort ?? 'seat',
     tvShowPayouts: state.settings.tvShowPayouts ?? false,
     tvShowBustOrder: state.settings.tvShowBustOrder ?? false,
     breakMinutes: state.settings.breakMinutes ?? 5,

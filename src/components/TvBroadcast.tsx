@@ -222,6 +222,24 @@ export default function TvBroadcast() {
               />
             </div>
             <div className="divider" />
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{t('table.rosterSort')}</div>
+            <div className="faint" style={{ fontSize: 12, marginBottom: 8 }}>{t('table.rosterSortDesc')}</div>
+            <div className="segmented">
+              {([
+                ['seat', t('table.sortSeat')],
+                ['chips', t('table.sortChips')],
+                ['profit', t('table.sortProfit')],
+              ] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  className={(settings.tvRosterSort ?? 'seat') === id ? 'active' : ''}
+                  onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvRosterSort: id } })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="divider" />
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{t('settings.tvBackground')}</div>
             <div className="faint" style={{ fontSize: 12, marginBottom: 10 }}>{t('settings.tvBackgroundDesc')}</div>
             <div className="bg-preset-grid">

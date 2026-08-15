@@ -38,6 +38,10 @@ export interface Settings {
   tvQuips: boolean;         // show the rotating cheeky sayings on the TV
   tvCustomQuips: string[];  // the user's own sayings, added to the rotation
   tvShowPlayers: boolean;   // show the live players roster on the TV
+  /** How the TV orders the players roster: seat order (as entered), biggest stack
+   *  first, or biggest profit first. Busted / cashed-out players always sink to
+   *  the bottom of a sorted list. */
+  tvRosterSort: 'seat' | 'chips' | 'profit';
   tvShowPayouts: boolean;   // show the prize-pool payout split on the TV
   tvShowBustOrder: boolean; // show the knocked-out / finish order on the TV
   breakMinutes: number;     // length of a break, in minutes (default 5)

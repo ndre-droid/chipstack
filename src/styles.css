@@ -1475,6 +1475,13 @@ input[type='color'] { cursor: pointer; }
 .tv-players-row .tv-net.pos { color: var(--good); }
 .tv-players-row .tv-net.neg { color: var(--bad); }
 
+/* Live stack value (money) with the running profit/loss tucked underneath */
+.tv-players-row .tv-stackcell { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.tv-players-row .tv-stack-money { color: var(--tv-fg); font-variant-numeric: tabular-nums; }
+.tv-players-row .tv-stack-net { font-size: 0.68em; font-variant-numeric: tabular-nums; }
+.tv-players-row .tv-stack-net.pos { color: var(--good); }
+.tv-players-row .tv-stack-net.neg { color: var(--bad); }
+
 /* Starting-stack overlay cast to the TV */
 .tv-startstack-grid {
   display: flex; flex-wrap: wrap; justify-content: center;
