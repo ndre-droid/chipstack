@@ -18,9 +18,9 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-08-15 from `main` @ `6b5cbce`**, 4.38 MB, run `31874406702`: player roster +
+  (**CURRENT — rebuilt 2026-08-15 from `main` @ `12d8633`**, 4.38 MB, run `31875310835`: single player roster +
   counting round, photo chip-count removed. Stable key unchanged → installs over the top, data kept.
-  Pages run `31874403998` green from the same commit, so APK / `main` / Pages are IN SYNC.
+  Pages run `31875308766` green from the same commit, so APK / `main` / Pages are IN SYNC.
   Historical build note: rebuilt 2026-08-11 from `main` @ `5a4f2ae`, 4.37 MB; AI chip count was a deliberate **ASSIST**:
   single detect+crop+vote(×3) pass, confidence = sample self-consistency, soft ⚠ flag, manual correction —
   the old 3-channel fusion + forced second-angle were REMOVED. Plus capture-mode gating (angle 22–36°,
