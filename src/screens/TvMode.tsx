@@ -649,7 +649,11 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         ...(accentStyle ?? {}),
         ...(tvBackground
           ? {
-              backgroundImage: `url(${tvBackground})`,
+              // Quoted on purpose: the generated SVG presets are data URLs that
+              // still contain raw ' characters (encodeURIComponent leaves them),
+              // and an UNQUOTED url() with an apostrophe is invalid CSS — the
+              // browser drops the whole declaration, so the preset never showed.
+              backgroundImage: `url("${tvBackground}")`,
               backgroundPosition: `${focus.x}% ${focus.y}%`,
               ['--tv-focus-x']: `${focus.x}%`,
               ['--tv-focus-y']: `${focus.y}%`,

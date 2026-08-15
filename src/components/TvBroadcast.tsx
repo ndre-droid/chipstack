@@ -23,7 +23,9 @@ const accentColor = (id: AccentId) => ACCENTS.find((a) => a.id === id)?.color ??
 
 // Themed background presets — generated SVG (no copyright, tiny, syncs to the TV).
 // `tone` is the mean luminance the TV uses to size its readability scrim.
-const svgUrl = (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`;
+// encodeURIComponent leaves ' untouched, which makes an unquoted CSS url() invalid
+// — escape it here too so the value is safe in every context, quoted or not.
+const svgUrl = (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg).replace(/'/g, '%27')}`;
 const W = 1600;
 const H = 900;
 function neonGrid(): string {
@@ -236,7 +238,7 @@ export default function TvBroadcast() {
               ))}
             </div>
             {settings.tvBackground && !PRESETS.some((p) => p.url === settings.tvBackground) && (
-              <div className="tv-bg-preview" style={{ backgroundImage: `url(${settings.tvBackground})` }} />
+              <div className="tv-bg-preview" style={{ backgroundImage: `url("${settings.tvBackground}")` }} />
             )}
             {bgError && <p style={{ color: 'var(--bad)', fontSize: 12, margin: '0 0 8px' }}>{bgError}</p>}
             <div className="row" style={{ gap: 8 }}>
