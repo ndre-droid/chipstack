@@ -7,6 +7,7 @@ import ConnectToTv from './ConnectToTv';
 import StartingStack from '../components/StartingStack';
 import TvBroadcast from '../components/TvBroadcast';
 import PlayerRoster from '../components/PlayerRoster';
+import BlindStepper from '../components/BlindStepper';
 import { useT } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 
@@ -27,8 +28,10 @@ export default function TableScreen() {
   const isHost =
     firebaseConfigured && state.settings.liveSessionRole === 'host' && !!state.settings.liveSessionCode;
   const isCash = state.settings.gameMode === 'cash';
-  // Cash game with the timer off = one fixed blind level, so the local clock hides.
+  // Cash game with the timer off = no countdown, so the local clock hides. The
+  // blinds still move, though — a manual stepper stands in for the clock.
   const showClock = !isHost && (!isCash || state.settings.cashUseTimer);
+  const manualBlinds = !isHost && isCash && !state.settings.cashUseTimer;
 
   const [levelIdx, setLevelIdx] = useState(0);
   const [seconds, setSeconds] = useState(mins * 60);
@@ -219,6 +222,8 @@ export default function TableScreen() {
           </div>
         </>
       )}
+
+      {manualBlinds && <BlindStepper levels={blindLevels} levelIdx={levelIdx} onStep={(d) => goLevel(levelIdx + d)} />}
 
       {/* Hosting a Live Session: this panel is the single clock and drives the TV. */}
       <RemoteControl />

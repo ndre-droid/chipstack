@@ -6,6 +6,7 @@ import type { Unsubscribe } from 'firebase/firestore';
 import { togglePlayPause, goLevel, startBreak, cancelBreak, secondsLeft, initialClock, setMinutesPerLevel } from '../lib/clockLogic';
 import type { ClockState } from '../lib/clockLogic';
 import { IconPlay, IconPause, IconChevron, IconPlus, IconTrash } from '../components/Icons';
+import BlindStepper from '../components/BlindStepper';
 
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -80,6 +81,15 @@ export default function RemoteControl() {
 
   return (
     <>
+      {/* Cash game without the timer: no clock to drive, but the TV still follows
+          the level — so the host can put the blinds up from the phone. */}
+      {!showTimer && (
+        <BlindStepper
+          levels={session.blindLevels}
+          levelIdx={clock.levelIdx}
+          onStep={(d) => send(goLevel(clock, d, maxIdx))}
+        />
+      )}
       {showTimer && (
       <>
       {/* --- Clock --- */}
