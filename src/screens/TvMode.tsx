@@ -12,6 +12,7 @@ import type { ClockState } from '../lib/clockLogic';
 import { computeStack, moneyToUnits } from '../lib/distribution';
 import { colorUpEvents } from '../lib/planning';
 import { customAccentVars } from '../lib/color';
+import Sparkline from '../components/Sparkline';
 
 const PENALTIES = [
   'downs a shot', 'buys the next round', 'shuffles for a whole level',
@@ -74,6 +75,14 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const { playerCount, buyIn } = state.session;
   const denominations = state.denominations;
   const ledger = state.ledger;
+  const counting = state.counting;
+  // age of the newest counting round — the break banner nudges when it goes stale
+  const lastCountAt = ledger.reduce<number | null>((newest, p) => {
+    const last = p.chipHistory?.[p.chipHistory.length - 1]?.at;
+    return last && (newest === null || last > newest) ? last : newest;
+  }, null);
+  const countedMinsAgo = lastCountAt === null ? null : Math.floor((Date.now() - lastCountAt) / 60000);
+  const countStale = ledger.length > 0 && (countedMinsAgo === null || countedMinsAgo >= 25);
 
   // Role model:
   //  - isTv:       this device shows a pairing code, owns the clock, mirrors the
@@ -165,6 +174,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             tvPenalties: doc.data.tvPenalties,
             tvHouseRules: doc.data.tvHouseRules,
             moments: doc.data.moments,
+            counting: doc.data.counting ?? null,
           });
         } else if (isTv) {
           setPaired(false);
@@ -450,10 +460,11 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               net,
               emoji: p.emoji || '',
               chips: p.chips || 0,
+              trail: (p.chipHistory ?? []).map((h) => h.chips),
               knockouts: p.knockouts || 0,
             };
           })
-        : Array.from({ length: playerCount }, (_, i) => ({ id: String(i), name: `Seat ${i + 1}`, amount: buyIn, out: false, net: null as number | null, emoji: '', chips: 0, knockouts: 0 })),
+        : Array.from({ length: playerCount }, (_, i) => ({ id: String(i), name: `Seat ${i + 1}`, amount: buyIn, out: false, net: null as number | null, emoji: '', chips: 0, trail: [] as number[], knockouts: 0 })),
     [ledger, playerCount, buyIn],
   );
 
@@ -608,6 +619,14 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       )}
       {firebaseConfigured && isHostView && <div className="tv-connect-pill live">● {t('tv.liveConnected')}</div>}
       {connectToast && <div className="tv-toast">📱 {t('tv.phoneConnected')}</div>}
+      {/* A counting round is running on the phone — show the table how far it got. */}
+      {counting && (
+        <div className="tv-counting">
+          🧮 {t('tv.counting')}
+          <b>{counting.emoji ? `${counting.emoji} ` : ''}{counting.name}</b>
+          <span className="tv-counting-step">{counting.index}/{counting.total}</span>
+        </div>
+      )}
       {/* Standalone: offer to make this device the permanent TV */}
       {firebaseConfigured && !deviceIsTv && !synced && (
         <button className="tv-connect-pill use-tv" onClick={useAsTv}>📺 {t('tv.useAsTv')}</button>
@@ -690,6 +709,9 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
                     {p.emoji && <span className="tv-players-emoji">{p.emoji}</span>}
                     {p.id === chipLeaderId && <span className="tv-crown" title="Chip leader">👑</span>}
                     <span className="tv-players-name">{p.name}</span>
+                    {!p.out && p.trail.length > 1 && (
+                      <Sparkline className="tv-spark" points={p.trail} width={64} height={20} />
+                    )}
                     {bountyMode && !isCash && p.knockouts > 0 && (
                       <span className="tv-bounty" title="Bounties">🎯{p.knockouts}</span>
                     )}
@@ -740,6 +762,12 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               {!onBreak && breakEvery > 0 && (
                 <div className="tv-break-cue">
                   {levelsToBreak === 0 ? t('tv.breakAfter') : t('tv.breakIn', { n: levelsToBreak })}
+                </div>
+              )}
+              {/* A break is when everyone is up anyway — the ideal moment to recount. */}
+              {onBreak && !counting && countStale && (
+                <div className="tv-colorup">
+                  🧮 {countedMinsAgo === null ? t('tv.countNever') : t('tv.countAgo', { n: countedMinsAgo })}
                 </div>
               )}
               {onBreak && houseRules.length > 0 && (

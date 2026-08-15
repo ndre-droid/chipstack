@@ -104,8 +104,19 @@ export interface LedgerPlayer {
   out?: boolean;   // busted / eliminated this game (drives "players left" + struck-through on the TV)
   outAt?: number;  // epoch ms of elimination — orders the bust-out / finish leaderboard
   chips?: number;  // current live chip count (in chip-units) — optional, drives the TV chip-leader crown
+  /** one entry per counting round, oldest first, capped — drives the stack sparkline */
+  chipHistory?: { at: number; chips: number }[];
   emoji?: string;  // optional avatar emoji shown next to the name
   knockouts?: number; // knockout bounties won (count) — earnings = knockouts × bountyAmount
+}
+
+/** A counting round in progress, so the big screen can show how far around the table it is. */
+export interface CountingProgress {
+  index: number;   // 1-based position of the player being counted
+  total: number;
+  name: string;
+  emoji?: string;
+  at: number;      // epoch ms — the TV ignores a stale progress (phone closed the sheet mid-round)
 }
 
 /** One finished game night, snapshotted into the season league. */
@@ -130,6 +141,8 @@ export interface AppState {
   session: SessionConfig;
   presets: Preset[];
   ledger: LedgerPlayer[];
+  /** live counting-round progress, mirrored to the TV; null when nobody is counting */
+  counting: CountingProgress | null;
   league: LeagueGame[];
   moments: Moment[];
 }

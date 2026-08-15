@@ -1637,3 +1637,41 @@ input[type='color'] { cursor: pointer; }
 .cash-fig label { font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-faint); }
 .cash-fig .pos { color: var(--good); }
 .cash-fig .neg { color: var(--bad); }
+
+/* --- Counting round: extras (numpad, pre-fill, inventory warning, movement) --- */
+.cr-num { min-width: 58px; height: 38px; padding: 0 6px; border-radius: var(--r-sm);
+  background: var(--surface); border: 1px solid var(--line); color: inherit;
+  font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cr-denom.active .cr-num { border-color: var(--acc); box-shadow: 0 0 0 2px var(--acc-wash); }
+.cr-denom-sum.over { color: var(--bad); font-weight: 700; }
+.cr-prefill { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px 10px;
+  border-radius: var(--r-sm); background: var(--acc-wash); border: 1px solid var(--acc-line); font-size: 12.5px; }
+.cr-prefill span { flex: 1; }
+.cr-pad { border-top: 1px solid var(--line); background: var(--surface-2); padding: 10px 12px; }
+.cr-pad-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.cr-pad-val { font-size: 20px; font-weight: 700; color: var(--acc); }
+.cr-pad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.cr-key { height: 46px; border-radius: var(--r-sm); font-size: 19px; font-weight: 600;
+  background: var(--surface); border: 1px solid var(--line); color: inherit; }
+.cr-key:active { background: var(--surface-3); }
+.cr-moves { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--line); font-size: 13.5px; }
+.cr-moves .pos { color: var(--good); }
+.cr-moves .neg { color: var(--bad); }
+
+/* --- Roster: stack trail, count age, undo --- */
+.pr-spark { color: var(--acc); flex: none; }
+.pr-age { margin-top: 8px; text-align: right; font-size: 11.5px; color: var(--text-faint); }
+.pr-age.is-stale { color: var(--acc); font-weight: 600; }
+.snackbar { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 14px); transform: translateX(-50%);
+  z-index: 70; display: flex; align-items: center; gap: 10px; max-width: min(92vw, 420px);
+  padding: 8px 10px 8px 14px; border-radius: var(--r); background: var(--surface-3);
+  border: 1px solid var(--line); box-shadow: 0 8px 28px rgba(0,0,0,.28); font-size: 13.5px; }
+
+/* --- TV: counting-round banner + stack trail --- */
+.tv-counting { position: absolute; top: clamp(10px, 1.6vh, 26px); left: 50%; transform: translateX(-50%);
+  z-index: 6; display: flex; align-items: center; gap: .5em; padding: .45em 1em; border-radius: 999px;
+  background: color-mix(in srgb, var(--tv-panel) 88%, transparent); border: 1px solid var(--tv-line);
+  color: var(--tv-fg); font-size: clamp(13px, 1.5vmin, 26px); }
+.tv-counting-step { color: var(--acc); font-variant-numeric: tabular-nums; font-weight: 700; }
+.tv-spark { color: var(--acc); flex: none; margin-left: .5em; opacity: .9; }

@@ -1,9 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { useT, useFmt } from '../lib/i18n';
 import { IconPlus, IconTrash } from './Icons';
 import { EmojiPicker } from './EmojiPicker';
-import CountRound from './CountRound';
+import CountRound, { type ChipSnapshot } from './CountRound';
+import Sparkline from './Sparkline';
+
+/** how old the newest count may get before the roster nudges you to count again */
+const STALE_MINUTES = 25;
+/** how long the undo offer stays up after a counting round */
+const UNDO_MS = 8000;
 
 /**
  * THE player list for the night, on the Table tab — one place for everything that
@@ -26,6 +32,29 @@ export default function PlayerRoster() {
   const [emojiId, setEmojiId] = useState<string | null>(null);
   const [cashOutId, setCashOutId] = useState<string | null>(null);
   const [round, setRound] = useState<{ only?: string } | null>(null);
+  const [undo, setUndo] = useState<ChipSnapshot[] | null>(null);
+  const undoTimer = useRef<number | null>(null);
+  // re-render on a slow tick so "counted 20 min ago" doesn't go stale on screen
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const h = window.setInterval(() => setTick((n) => n + 1), 60000);
+    return () => window.clearInterval(h);
+  }, []);
+  useEffect(() => () => { if (undoTimer.current) window.clearTimeout(undoTimer.current); }, []);
+
+  const offerUndo = (snapshot: ChipSnapshot[]) => {
+    setUndo(snapshot);
+    if (undoTimer.current) window.clearTimeout(undoTimer.current);
+    undoTimer.current = window.setTimeout(() => setUndo(null), UNDO_MS);
+  };
+
+  /** newest counting round across the table, in minutes ago (null = never counted) */
+  const lastCountAt = ledger.reduce<number | null>((newest, p) => {
+    const last = p.chipHistory?.[p.chipHistory.length - 1]?.at;
+    return last && (newest === null || last > newest) ? last : newest;
+  }, null);
+  const countedMinsAgo = lastCountAt === null ? null : Math.floor((Date.now() - lastCountAt) / 60000);
+  const stale = ledger.length > 0 && (countedMinsAgo === null || countedMinsAgo >= STALE_MINUTES);
 
   const onTable = ledger.reduce((s, p) => s + (p.buyIn || 0) - (p.cashOut || 0), 0);
   const counted = ledger.filter((p) => !p.out).reduce((s, p) => s + (p.chips || 0), 0) * unitValue;
@@ -131,6 +160,9 @@ export default function PlayerRoster() {
                             <IconPlus size={13} /> {money(session.buyIn, currency)}
                           </button>
                           <div className="spacer" />
+                          {(p.chipHistory?.length ?? 0) > 1 && (
+                            <Sparkline className="pr-spark" points={p.chipHistory!.map((h) => h.chips)} />
+                          )}
                           <button className="pr-stack" onClick={() => setRound({ only: p.id })}>
                             <span className="pr-k">{t('roster.stack')}</span>
                             <b>{p.chips ? money(p.chips * unitValue, currency) : '—'}</b>
@@ -218,9 +250,17 @@ export default function PlayerRoster() {
               <button className="btn btn-ghost btn-sm" onClick={addPlayer}>
                 <IconPlus size={15} /> {t('roster.addPlayer')}
               </button>
-              <button className="btn btn-primary btn-sm" onClick={() => setRound({})}>
+              <button className={`btn btn-sm ${stale ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setRound({})}>
                 🧮 {t('roster.countRound')}
               </button>
+            </div>
+
+            <div className={`pr-age ${stale ? 'is-stale' : ''}`}>
+              {countedMinsAgo === null
+                ? t('roster.neverCounted')
+                : countedMinsAgo < 1
+                  ? t('roster.countedJustNow')
+                  : t('roster.countedAgo', { n: countedMinsAgo })}
             </div>
 
             <div className="pr-totals">
@@ -238,7 +278,22 @@ export default function PlayerRoster() {
         )}
       </div>
 
-      {round && <CountRound only={round.only} onClose={() => setRound(null)} />}
+      {round && <CountRound only={round.only} onClose={() => setRound(null)} onUndoable={offerUndo} />}
+
+      {undo && (
+        <div className="snackbar" role="status">
+          <span>{t('roster.countSaved')}</span>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              dispatch({ type: 'LEDGER_RESTORE_CHIPS', players: undo });
+              setUndo(null);
+            }}
+          >
+            {t('roster.undo')}
+          </button>
+        </div>
+      )}
     </>
   );
 }

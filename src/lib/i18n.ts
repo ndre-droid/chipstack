@@ -352,6 +352,24 @@ const dict: Record<Lang, Record<string, string>> = {
     'cash.offBy': 'Cash-outs total {out} but {in} was bought in — off by {diff}.',
     'cash.newGameConfirm': 'Clear the ledger for a new game?',
 
+
+    'roster.neverCounted': 'Stacks not counted yet',
+    'roster.countedJustNow': 'Counted just now',
+    'roster.countedAgo': 'Counted {n} min ago',
+    'roster.countSaved': 'Counting round saved',
+    'roster.undo': 'Undo',
+
+    'count.prefilled': 'Pre-filled with the starting stack — fix the difference',
+    'count.clear': 'Clear',
+    'count.tapToType': 'tap to type',
+    'count.padDone': 'Done',
+    'count.leader': 'Chip leader',
+    'count.biggestMove': 'Biggest move',
+
+    'tv.counting': 'Counting stacks',
+    'tv.countAgo': 'Last stack count was {n} min ago — good moment to recount',
+    'tv.countNever': 'Stacks have not been counted yet — good moment to start',
+
   },
   de: {
     'nav.plan': 'Plan',
@@ -695,6 +713,24 @@ const dict: Record<Lang, Record<string, string>> = {
     'cash.allEven': 'Alle ausgeglichen — keine Zahlungen nötig.',
     'cash.offBy': 'Auszahlungen ergeben {out}, eingekauft wurde {in} — Differenz {diff}.',
     'cash.newGameConfirm': 'Kasse für ein neues Spiel leeren?',
+
+
+    'roster.neverCounted': 'Stacks noch nicht gezählt',
+    'roster.countedJustNow': 'Gerade gezählt',
+    'roster.countedAgo': 'Vor {n} Min gezählt',
+    'roster.countSaved': 'Zähl-Runde gespeichert',
+    'roster.undo': 'Rückgängig',
+
+    'count.prefilled': 'Mit Startstapel vorbelegt — nur die Differenz korrigieren',
+    'count.clear': 'Leeren',
+    'count.tapToType': 'tippen zum Eingeben',
+    'count.padDone': 'Fertig',
+    'count.leader': 'Chipleader',
+    'count.biggestMove': 'Größte Bewegung',
+
+    'tv.counting': 'Stacks zählen',
+    'tv.countAgo': 'Letzte Zählung vor {n} Min — guter Moment zum Nachzählen',
+    'tv.countNever': 'Stacks noch nicht gezählt — guter Moment dafür',
 
   },
 };

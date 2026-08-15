@@ -1,4 +1,4 @@
-import type { AppState, Denomination, SessionConfig, LedgerPlayer, Skin, AccentId, ChipArt, Moment } from '../types';
+import type { AppState, Denomination, SessionConfig, LedgerPlayer, Skin, AccentId, ChipArt, Moment, CountingProgress } from '../types';
 
 /**
  * The shape + selectors for the slice of app state the host phone pushes and the
@@ -48,6 +48,8 @@ export interface LiveData {
   tvHouseRules: string[];
   /** logged hand-of-the-night moments, rotated on the TV */
   moments: Moment[];
+  /** a counting round in progress on the phone — the TV shows how far around the table it is */
+  counting: CountingProgress | null;
 }
 
 export function dataOf(state: AppState): LiveData {
@@ -82,6 +84,7 @@ export function dataOf(state: AppState): LiveData {
     tvPenalties: state.settings.tvPenalties ?? [],
     tvHouseRules: state.settings.tvHouseRules ?? [],
     moments: state.moments ?? [],
+    counting: state.counting ?? null,
   };
 }
 

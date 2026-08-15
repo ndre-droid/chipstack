@@ -267,6 +267,30 @@ break length + auto-break every N, blinds (edit/add/remove), players & pool (ren
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
 
+### Recent work (2026-08-15, part 2 — counting on the TV, stack trail, counting extras)
+Same spec file, "Round 2" section. **One new synced field** — `AppState.counting` — done properly at
+all three spots (`dataOf` in `liveData.ts`, `LIVE_APPLY_REMOTE` in `store.tsx`, the `TvMode` subscribe
+payload). `migrate()` forces it back to `null` on load: it only means "someone is counting RIGHT NOW".
+- **TV shows the round live** — `.tv-counting` pill: `🧮 Stacks zählen · 🐻 Marc · 1/3`. The phone sets
+  progress per player and clears it on unmount.
+- **Stack trail** — `LedgerPlayer.chipHistory` (one entry per counting round, capped 12, appended in the
+  reducer so every write path records it) drawn by the new `components/Sparkline.tsx` in `currentColor`,
+  in the roster row AND the TV roster. Rides the already-synced `ledger` → **no** new synced field.
+- **Inventory check** — a colour tallied above what the box holds shows `⚠ 34/80` on that row
+  (per-colour tallies the round keeps in memory + `denominations[].count`).
+- **Counting reminder** — roster shows the age of the newest count, button turns primary past 25 min;
+  the TV shows the same nudge during a BREAK (everyone is standing up anyway).
+- **Undo** — 8 s snackbar (`.snackbar`) restores the exact previous `chips` + `chipHistory` via the new
+  `LEDGER_RESTORE_CHIPS` action.
+- **Starting-stack pre-fill** — a never-counted player starts from the dealt pattern
+  (`computeStack().counts` is a **denomId → chips Record**, not an array — that bit me once), with a
+  "Leeren" escape.
+- **Own numpad** — tapping a count opens a 3×4 pad (digits / `C` / `⌫`); `−`/`+1`/`+20` stay.
+- Offered but NOT built: counting in seat order, stacks in big blinds.
+- Verified in the dev preview (de): pre-fill = exact dealt stack (2.000 chips = €20), numpad, `⚠ 999/80`,
+  progress 1/3 → 2/3 + TV pill + clear on close, history appended, undo restored chips AND trail, 3
+  sparklines phone + 3 TV, age line. `npx tsc -b` + `npm run build` clean, no console errors.
+
 ### Recent work (2026-08-15 — player roster + counting round, photo count DELETED)
 Design spec: `docs/superpowers/specs/2026-08-15-player-roster-counting-round-design.md`.
 Player data used to live in four UIs over one `ledger` (Table stepper, photo card, Cash editor, host

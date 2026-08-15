@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useReducer } from 'react';
 import type { ReactNode } from 'react';
-import type { AppState, Denomination, BlindLevel, Preset, Settings, SessionConfig, LedgerPlayer, AccentId, Skin, ChipArt, LeagueGame, Moment } from './types';
+import type { AppState, Denomination, BlindLevel, Preset, Settings, SessionConfig, LedgerPlayer, AccentId, Skin, ChipArt, LeagueGame, Moment, CountingProgress } from './types';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -87,12 +87,16 @@ const defaultSession: SessionConfig = {
   useAllChips: false,
 };
 
+/** how many counting rounds a player's stack trail keeps (sparkline length) */
+const HISTORY_MAX = 12;
+
 const initialState: AppState = {
   denominations: defaultDenoms(),
   settings: defaultSettings,
   session: defaultSession,
   presets: [],
   ledger: [],
+  counting: null,
   league: [],
   moments: [],
 };
@@ -143,12 +147,15 @@ type Action =
       tvPenalties?: string[];
       tvHouseRules?: string[];
       moments?: Moment[];
+      counting?: CountingProgress | null;
     }
   | { type: 'LEDGER_ADD'; name?: string }
   | { type: 'LEDGER_ADD_MANY'; n: number }
   | { type: 'LEDGER_UPDATE'; id: string; patch: Partial<LedgerPlayer> }
   | { type: 'LEDGER_SET_ALL_CHIPS'; chips?: number }
   | { type: 'LEDGER_SET_CHIPS_MANY'; entries: { id: string; chips?: number }[] }
+  | { type: 'LEDGER_RESTORE_CHIPS'; players: { id: string; chips?: number; chipHistory?: { at: number; chips: number }[] }[] }
+  | { type: 'COUNTING_SET'; progress: CountingProgress | null }
   | { type: 'LEDGER_REMOVE'; id: string }
   | { type: 'LEDGER_CLEAR' }
   | { type: 'LEAGUE_SAVE_GAME' }
@@ -254,6 +261,7 @@ function reducer(state: AppState, action: Action): AppState {
         session: action.session,
         ledger: action.ledger,
         ...(action.moments !== undefined ? { moments: action.moments } : {}),
+        ...(action.counting !== undefined ? { counting: action.counting } : {}),
         settings: {
           ...state.settings,
           currency: action.currency,
@@ -310,16 +318,39 @@ function reducer(state: AppState, action: Action): AppState {
     case 'LEDGER_SET_CHIPS_MANY': {
       // a whole counting round commits in ONE dispatch → one render, one TV push
       const byId = new Map(action.entries.map((e) => [e.id, e.chips]));
+      const at = Date.now();
       return {
         ...state,
-        ledger: state.ledger.map((p) => (byId.has(p.id) ? { ...p, chips: byId.get(p.id) } : p)),
+        ledger: state.ledger.map((p) =>
+          byId.has(p.id)
+            ? {
+                ...p,
+                chips: byId.get(p.id),
+                // keep a short trail so the stack sparkline has something to draw
+                chipHistory: [...(p.chipHistory ?? []), { at, chips: byId.get(p.id) ?? 0 }].slice(-HISTORY_MAX),
+              }
+            : p,
+        ),
       };
     }
+    case 'LEDGER_RESTORE_CHIPS': {
+      // undo a counting round: put back exactly the chips + trail we replaced
+      const byId = new Map(action.players.map((e) => [e.id, e]));
+      return {
+        ...state,
+        ledger: state.ledger.map((p) => {
+          const prev = byId.get(p.id);
+          return prev ? { ...p, chips: prev.chips, chipHistory: prev.chipHistory } : p;
+        }),
+      };
+    }
+    case 'COUNTING_SET':
+      return { ...state, counting: action.progress };
     case 'LEDGER_REMOVE':
       return { ...state, ledger: state.ledger.filter((p) => p.id !== action.id) };
     case 'LEDGER_CLEAR':
       // a fresh game night: clear players AND the night's logged moments
-      return { ...state, ledger: [], moments: [] };
+      return { ...state, ledger: [], moments: [], counting: null };
     case 'LEAGUE_SAVE_GAME': {
       const players = state.ledger
         .filter((p) => (p.buyIn || 0) > 0 || (p.cashOut || 0) > 0)
@@ -354,6 +385,7 @@ function reducer(state: AppState, action: Action): AppState {
         session: { ...defaultSession, blindLevels: defaultBlinds(10, 20) },
         presets: state.presets,
         ledger: state.ledger,
+        counting: null,
         league: state.league,
         moments: [],
       };
@@ -479,7 +511,8 @@ function migrate(raw: string | null): AppState {
   const league = Array.isArray(parsed.league) ? (parsed.league as LeagueGame[]) : [];
   const moments = Array.isArray(parsed.moments) ? (parsed.moments as Moment[]) : [];
 
-  return { denominations, settings, session, presets, ledger, league, moments };
+  // a counting round never survives a reload — it only means "someone is mid-round right now"
+  return { denominations, settings, session, presets, ledger, counting: null, league, moments };
 }
 
 const StoreContext = createContext<{ state: AppState; dispatch: React.Dispatch<Action> } | null>(null);

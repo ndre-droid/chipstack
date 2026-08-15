@@ -58,6 +58,29 @@ only fires once **everyone** is settled — mid-game the totals are supposed to 
 the photo-capture CSS, and the `CAMERA` / camera-feature entries in AndroidManifest (the TV
 background picker uses a plain file input, which does not need them).
 
+## Round 2 (same day) — live TV, stack trail, and counting extras
+
+- **Counting shows on the TV.** New `AppState.counting: CountingProgress | null` (index / total /
+  name / emoji / at) — the one genuinely new synced field, wired through all three spots
+  (`dataOf`, `LIVE_APPLY_REMOTE`, the TvMode subscribe payload). The phone sets it per player and
+  clears it on unmount; the TV shows a `🧮 counting · Marc · 1/3` pill. Never persisted: `migrate()`
+  forces it back to `null`, because it only means "someone is counting right this second".
+- **Stack trail.** `LedgerPlayer.chipHistory` gets one entry per counting round (capped at 12, in the
+  reducer, so every write path records it). `components/Sparkline.tsx` draws it in `currentColor` —
+  in the roster row and on the TV roster. It rides the already-synced `ledger`, so no new field.
+- **Inventory check.** A colour tallied above what the box holds shows `⚠ 34/80` on that row. Uses
+  the per-colour tallies the round already keeps in memory plus `denominations[].count`.
+- **Counting reminder.** The roster shows the age of the newest count and turns the button primary
+  past 25 minutes; the TV shows the same nudge during a break, when everyone is standing up anyway.
+- **Undo.** An 8-second snackbar after a round restores the exact previous `chips` + `chipHistory`
+  via `LEDGER_RESTORE_CHIPS`.
+- **Starting-stack pre-fill.** A player who has never been counted starts from the dealt stack
+  pattern (`computeStack().counts`, a denomId → chips record), with a "clear" escape.
+- **Own numpad.** Tapping a count opens a 3×4 pad (digits, `C`, `⌫`) instead of the system keyboard.
+  The `−` / `+1` / `+20` buttons stay for the common case.
+
+Not built (offered, not picked): counting in seat order, stacks shown in big blinds.
+
 ## Verified
 
 `npx tsc -b` and `npm run build` clean. Driven end-to-end in the dev preview (de): counting
@@ -66,3 +89,11 @@ on the table, summary diff €0, one dispatch persisted to localStorage; cash-ou
 from the counted stack and moved the player to a net row; bust cleared the stack; the
 single-player count from the roster saved; Cash tab settled Jana → Tom €33. No console
 errors.
+
+Round 2, same preview: pre-fill produced the exact dealt stack (20×10 + 18×25 + 15×50 + 6×100 =
+2.000 chips = €20 = buy-in); the numpad typed 34 into the 10s and the total followed; 999 of a
+denomination the box only has 80 of showed `⚠ 999/80`; `counting` advanced 1/3 → 2/3 and the TV pill
+rendered `🧮 Stacks zählen · 🐻 Marc · 1/3`, cleared to `null` on close; the round appended one
+history entry per player and undo restored both `chips` and the trail; three sparkline paths drew in
+the roster and three on the TV roster; the age line read "Vor 15 Min gezählt". `npx tsc -b` and
+`npm run build` clean, no console errors.
