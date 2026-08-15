@@ -83,8 +83,12 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   }, []);
   const tvCompact = viewportH / tvScale < 860;
   const isCash = gameMode === 'cash';
-  // Cash game with the timer off = a single fixed blind level, no countdown.
+  // Cash game with the timer off = no countdown. There's still a ladder, though:
+  // a cash table raises the blinds when it feels like it, not on a clock, so the
+  // big screen gets a manual stepper instead of a timer. Nothing to step through
+  // with a single level, so the stepper stays hidden then.
   const showTimer = !isCash || cashUseTimer;
+  const manualBlinds = !showTimer && state.session.blindLevels.length > 1;
   const breakMins = breakMinutes ?? 5;
   // per-photo smart placement: crop toward the subject, keep it clear, and nudge the
   // clock to the calm side; brighter photos get a stronger scrim so text stays legible.
@@ -813,7 +817,15 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
 
         {/* center: the clock (or, cash game with timer off, just the fixed blinds) */}
         <main className={`tv-clock ${showTimer ? '' : 'tv-clock-static'}`}>
-          <div className="tv-level">{!showTimer ? t('tv.cashGame') : onBreak ? t('tv.break') : t('tv.level', { n: levelIdx + 1 })}</div>
+          <div className="tv-level">
+            {!showTimer
+              ? manualBlinds
+                ? `${t('tv.cashGame')} · ${t('tv.level', { n: levelIdx + 1 })}`
+                : t('tv.cashGame')
+              : onBreak
+                ? t('tv.break')
+                : t('tv.level', { n: levelIdx + 1 })}
+          </div>
           <div className="tv-blinds">
             {onBreak && showTimer ? t('tv.backSoon') : level ? `${level.smallBlind} / ${level.bigBlind}` : '—'}
             {(!onBreak || !showTimer) && level?.ante ? <span className="tv-ante"> · ante {level.ante}</span> : null}
@@ -847,7 +859,15 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               )}
             </>
           )}
-          {!showTimer && <div className="tv-next">{t('tv.blindsFixed')}</div>}
+          {!showTimer && (
+            <div className="tv-next">
+              {!manualBlinds
+                ? t('tv.blindsFixed')
+                : next
+                  ? t('tv.next', { blinds: `${next.smallBlind} / ${next.bigBlind}` })
+                  : t('tv.topLevel')}
+            </div>
+          )}
         </main>
 
         {/* right: chip legend (plus, on a short screen, the panels the left column
@@ -872,6 +892,19 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
 
       {/* controls (for the phone holding the session) */}
       <div className="tv-controls">
+        {/* Cash game without the timer: no clock to run, but the blinds still go up
+            when the table says so — step the ladder by hand from the big screen. */}
+        {manualBlinds && (
+          <span className="tv-blindstep" title={t('tv.raiseBlinds')}>
+            <button onClick={() => goLevel(levelIdx - 1)} disabled={levelIdx <= 0} aria-label={t('tv.lowerBlinds')}>
+              <span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}><IconChevron size={22} /></span>
+            </button>
+            <span className="tv-blindstep-v">{level ? `${level.smallBlind} / ${level.bigBlind}` : '—'}</span>
+            <button onClick={() => goLevel(levelIdx + 1)} disabled={levelIdx >= blindLevels.length - 1} aria-label={t('tv.raiseBlinds')}>
+              <IconChevron size={22} />
+            </button>
+          </span>
+        )}
         {showTimer && (
           <>
             <button onClick={() => goLevel(levelIdx - 1)} aria-label="Previous level"><span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}><IconChevron size={22} /></span></button>

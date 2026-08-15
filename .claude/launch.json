@@ -14,6 +14,12 @@
       "port": 5199
     },
     {
+      "name": "chipstack-verify-b",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "5211", "--strictPort"],
+      "port": 5211
+    },
+    {
       "name": "chipstack-prod",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite", "preview", "--port", "5200", "--strictPort"],

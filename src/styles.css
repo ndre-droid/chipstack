@@ -1286,6 +1286,22 @@ input[type='color'] { cursor: pointer; }
 .tv-controls button:hover { background: var(--tv-line); }
 .tv-controls .tv-play { background: var(--acc); color: var(--on-acc); width: clamp(50px, 7vmin, 110px); height: clamp(50px, 7vmin, 110px); border-radius: 50%; padding: 0; }
 .tv-controls .tv-txt { font-weight: 600; font-size: clamp(12px, 1.6vmin, 30px); }
+/* manual blind stepper (cash game, timer off) — same pill shape as the zoom */
+.tv-blindstep {
+  display: inline-flex; align-items: center; gap: clamp(4px, 0.7vmin, 10px);
+  background: var(--tv-panel); border: 1px solid var(--tv-line);
+  border-radius: 999px; padding: 0 clamp(6px, 1vmin, 14px);
+}
+.tv-controls .tv-blindstep button {
+  background: none; border: none; border-radius: 999px;
+  padding: clamp(8px, 1.2vmin, 18px) clamp(6px, 0.9vmin, 14px);
+}
+.tv-controls .tv-blindstep button:disabled { opacity: 0.3; }
+.tv-blindstep-v {
+  font-family: var(--mono); font-weight: 700; color: var(--acc);
+  font-size: clamp(13px, 1.7vmin, 32px); min-width: 7ch; text-align: center;
+}
+
 /* display-size stepper (A− 120% A+) */
 .tv-zoom {
   display: inline-flex; align-items: center; gap: clamp(4px, 0.7vmin, 10px);

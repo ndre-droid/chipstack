@@ -238,6 +238,9 @@ const dict: Record<Lang, Record<string, string>> = {
     'tv.onTable': 'On the table',
     'tv.cashGame': 'Cash game',
     'tv.blindsFixed': 'Blinds fixed',
+    'tv.raiseBlinds': 'Raise the blinds',
+    'tv.lowerBlinds': 'Lower the blinds',
+    'tv.topLevel': 'Top of the ladder',
 
     'settings.data': 'Data',
     'settings.resetEverything': 'Reset everything',
@@ -641,6 +644,9 @@ const dict: Record<Lang, Record<string, string>> = {
     'tv.onTable': 'Auf dem Tisch',
     'tv.cashGame': 'Cash Game',
     'tv.blindsFixed': 'Feste Blinds',
+    'tv.raiseBlinds': 'Blinds erhöhen',
+    'tv.lowerBlinds': 'Blinds senken',
+    'tv.topLevel': 'Höchste Stufe',
 
     'settings.data': 'Daten',
     'settings.resetEverything': 'Alles zurücksetzen',
