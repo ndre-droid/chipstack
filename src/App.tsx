@@ -6,6 +6,7 @@ import TableScreen from './screens/TableScreen';
 import CashScreen from './screens/CashScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import TvMode from './screens/TvMode';
+import { firebaseConfigured } from './lib/firebaseConfig';
 import { IconPlan, IconChips, IconTable, IconCash, IconSettings } from './components/Icons';
 import { useT } from './lib/i18n';
 import { useLiveHostSync } from './lib/useLiveHostSync';
@@ -57,7 +58,7 @@ function AppShell() {
   const [view, setView] = useState<View>('plan');
   const lastTab = useRef<Tab>('plan');
   const { state, dispatch } = useStore();
-  const { skin, accents, appearance, deviceIsTv, customAccent } = state.settings;
+  const { skin, accents, appearance, deviceIsTv, customAccent, liveSessionCode, liveSessionRole } = state.settings;
   const activeSkin = skin ?? 'minimal';
   const activeAccent = accents?.[activeSkin] ?? 'amber';
   const t = useT();
@@ -109,6 +110,13 @@ function AppShell() {
     }
   }, [activeSkin, activeAccent, appearance, customAccent]);
 
+  /* Keep <html lang> honest: it drives how a screen reader pronounces the page and
+     how the browser hyphenates it, and the app ships German text under lang="en"
+     otherwise. */
+  useEffect(() => {
+    document.documentElement.lang = state.settings.language ?? 'en';
+  }, [state.settings.language]);
+
   const toSettings = () => {
     if (view === 'settings') setView(lastTab.current);
     else setView('settings');
@@ -123,9 +131,19 @@ function AppShell() {
   if (deviceIsTv) {
     return (
       <TvMode
-        onClose={() =>
-          dispatch({ type: 'UPDATE_SETTINGS', patch: { deviceIsTv: false, liveSessionRole: null, liveSessionCode: null } })
-        }
+        onClose={() => {
+          // The pairing code is public and guessable, so the document goes when the
+          // big screen does instead of lingering until the TTL sweep finds it.
+          const code = liveSessionRole === 'tv' ? liveSessionCode : null;
+          if (code && firebaseConfigured) {
+            import('./lib/liveSession')
+              .then(({ endSession }) => endSession(code))
+              .catch(() => {
+                /* offline — the TTL policy cleans it up */
+              });
+          }
+          dispatch({ type: 'UPDATE_SETTINGS', patch: { deviceIsTv: false, liveSessionRole: null, liveSessionCode: null } });
+        }}
       />
     );
   }

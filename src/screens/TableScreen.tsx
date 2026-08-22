@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useStore } from '../store';
 import { IconPlay, IconPause, IconReset, IconChevron, IconDice, IconExpand } from '../components/Icons';
 import TvMode from './TvMode';
@@ -246,7 +247,11 @@ export default function TableScreen() {
         </p>
       )}
 
-      {tv && <TvMode onClose={() => setTv(false)} />}
+      {/* Portalled to the body on purpose: this screen animates in with a
+          transform, and any transformed ancestor becomes the containing block for
+          `position: fixed` — the big screen was then laid out inside the ~470px
+          card column instead of filling the window. */}
+      {tv && createPortal(<TvMode onClose={() => setTv(false)} />, document.body)}
     </div>
   );
 }

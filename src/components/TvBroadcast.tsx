@@ -82,8 +82,22 @@ const PRESETS: { id: string; name: string; tone: number; url: string }[] = [
  * and how to show it on the TV. Lives on the Table tab (the session hub) so it's right
  * next to the live controls; while hosting, every change syncs to the TV instantly.
  */
+/**
+ * Width/quality steps tried in order until the encoded photo fits BG_MAX_CHARS.
+ * The first step is what a good photo gets; the rest are the fallbacks for the
+ * 12-megapixel one straight off a phone camera.
+ */
+const BG_STEPS: [number, number][] = [
+  [1600, 0.72],
+  [1280, 0.68],
+  [1024, 0.62],
+  [800, 0.55],
+];
+/** ~150 kB of base64. A Firestore document caps at 1 MiB including everything else. */
+const BG_MAX_CHARS = 200_000;
+
 export default function TvBroadcast() {
-  const { state, dispatch } = useStore();
+  const { state, dispatch, storageFull } = useStore();
   const t = useT();
   const { settings } = state;
 
@@ -132,18 +146,27 @@ export default function TvBroadcast() {
     reader.onload = () => {
       img.onload = () => {
         try {
-          // downscale so the data URL fits localStorage AND syncs through Firestore (1 MiB cap)
-          const maxW = 1600;
-          const scale = Math.min(1, maxW / img.naturalWidth);
-          const w = Math.round(img.naturalWidth * scale);
-          const h = Math.round(img.naturalHeight * scale);
+          /* Downscale until the encoded string is comfortably small. It has to fit
+             three budgets: localStorage (a few MB for the WHOLE app state), a
+             Firestore document (1 MiB hard limit, and the base64 of a 1600px photo
+             can be most of it), and a phone's data plan — the background rides in
+             its own document now, but it is still re-sent whenever it changes. */
           const canvas = document.createElement('canvas');
-          canvas.width = w;
-          canvas.height = h;
           const ctx = canvas.getContext('2d');
           if (!ctx) throw new Error('canvas unavailable');
-          ctx.drawImage(img, 0, 0, w, h);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.74);
+          let dataUrl = '';
+          let w = 0;
+          let h = 0;
+          for (const [maxW, quality] of BG_STEPS) {
+            const scale = Math.min(1, maxW / img.naturalWidth);
+            w = Math.round(img.naturalWidth * scale);
+            h = Math.round(img.naturalHeight * scale);
+            canvas.width = w;
+            canvas.height = h;
+            ctx.drawImage(img, 0, 0, w, h);
+            dataUrl = canvas.toDataURL('image/jpeg', quality);
+            if (dataUrl.length <= BG_MAX_CHARS) break;
+          }
           const { focus, tone } = analyzeBackground(ctx, w, h);
           dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: dataUrl, tvBackgroundFocus: focus, tvBackgroundTone: tone } });
         } catch {
@@ -259,6 +282,11 @@ export default function TvBroadcast() {
               <div className="tv-bg-preview" style={{ backgroundImage: `url("${settings.tvBackground}")` }} />
             )}
             {bgError && <p style={{ color: 'var(--bad)', fontSize: 12, margin: '0 0 8px' }}>{bgError}</p>}
+            {/* The photo was dropped to get the rest of the night saved — say so,
+                rather than letting it disappear on the next launch unexplained. */}
+            {storageFull && (
+              <p style={{ color: 'var(--bad)', fontSize: 12, margin: '0 0 8px' }}>{t('settings.storageFull')}</p>
+            )}
             <div className="row" style={{ gap: 8 }}>
               <label className="btn btn-ghost btn-sm" style={{ flex: 1, cursor: 'pointer' }}>
                 {bgBusy ? '…' : settings.tvBackground ? t('settings.replacePhoto') : t('settings.choosePhoto')}
@@ -291,7 +319,7 @@ export default function TvBroadcast() {
             {(settings.tvPenalties ?? []).length > 0 && (
               <div className="chip-list mt8">
                 {(settings.tvPenalties ?? []).map((p, i) => (
-                  <span className="chip-list-item" key={i}>{p}<button onClick={() => removeFromList('tvPenalties', i)} aria-label="Remove">×</button></span>
+                  <span className="chip-list-item" key={i}>{p}<button onClick={() => removeFromList('tvPenalties', i)} aria-label={t('common.remove')}>×</button></span>
                 ))}
               </div>
             )}
@@ -310,7 +338,7 @@ export default function TvBroadcast() {
             {(settings.tvHouseRules ?? []).length > 0 && (
               <div className="chip-list mt8">
                 {(settings.tvHouseRules ?? []).map((p, i) => (
-                  <span className="chip-list-item" key={i}>{p}<button onClick={() => removeFromList('tvHouseRules', i)} aria-label="Remove">×</button></span>
+                  <span className="chip-list-item" key={i}>{p}<button onClick={() => removeFromList('tvHouseRules', i)} aria-label={t('common.remove')}>×</button></span>
                 ))}
               </div>
             )}

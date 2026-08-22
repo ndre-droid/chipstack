@@ -1,10 +1,11 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useStore } from '../store';
 import { firebaseConfigured } from './firebaseConfig';
-import { liveSignature } from './liveData';
+import { backgroundOf, backgroundSignature, liveSignature } from './liveData';
 import {
   cancelLiveSync,
   getLiveSyncState,
+  queueBackground,
   queueData,
   subscribeLiveSync,
   type LiveSyncState,
@@ -34,9 +35,16 @@ export function useLiveHostSync() {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  const hosting = firebaseConfigured && liveSessionRole === 'host' && !!liveSessionCode;
   // A cheap string that changes iff something the TV mirrors changes. Debounced so
   // rapid edits (typing a name, dragging the stack slider) collapse into one write.
-  const sig = firebaseConfigured && liveSessionRole === 'host' && liveSessionCode ? liveSignature(state) : '';
+  /* Memoised on the state object: the store hands out a new one per dispatch, so
+     this serialises the ledger once per actual change instead of once per render
+     of the whole app. */
+  const sig = useMemo(() => (hosting ? liveSignature(state) : ''), [hosting, state]);
+  // The background photo has its own document and its own signature: it is orders
+  // of magnitude bigger than the rest, so it must only go out when it changed.
+  const bgSig = useMemo(() => (hosting ? backgroundSignature(state) : ''), [hosting, state]);
 
   useEffect(() => {
     if (!firebaseConfigured || liveSessionRole !== 'host' || !liveSessionCode) return;
@@ -49,6 +57,13 @@ export function useLiveHostSync() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, liveSessionCode, liveSessionRole]);
+
+  // The photo is pushed on its own, and only when it actually changed.
+  useEffect(() => {
+    if (!firebaseConfigured || liveSessionRole !== 'host' || !liveSessionCode) return;
+    queueBackground(liveSessionCode, () => backgroundOf(stateRef.current));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bgSig, liveSessionCode, liveSessionRole]);
 
   // Left the session (or never in one): drop anything still queued, so a retry can
   // never land on a session this device has walked away from. Keyed on the CODE, not

@@ -1,4 +1,14 @@
-import { doc, setDoc, onSnapshot, getDoc, serverTimestamp, type Unsubscribe } from 'firebase/firestore';
+import {
+  doc,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+  getDoc,
+  runTransaction,
+  serverTimestamp,
+  Timestamp,
+  type Unsubscribe,
+} from 'firebase/firestore';
 import { getDb, firebaseConfigured } from './firebase';
 import type { AppState } from '../types';
 import type { ClockState } from './clockLogic';
@@ -13,6 +23,8 @@ interface FireTimestamp {
 }
 
 export interface LiveDoc {
+  /** when this document may be swept by the TTL policy; refreshed by every write */
+  expiresAt?: FireTimestamp | null;
   /** null while the TV is advertising a code but no phone has connected yet. */
   data: LiveData | null;
   clock: ClockState;
@@ -26,6 +38,21 @@ export { firebaseConfigured };
 /** Short 4-digit pairing code — big on the TV, quick to type on the phone. */
 export function genCode(): string {
   return String(Math.floor(1000 + Math.random() * 9000));
+}
+
+/**
+ * How long a pairing document stays interesting. Every write pushes the stamp out
+ * again, so a live session never expires under the players; an abandoned one is
+ * swept up by the Firestore TTL policy on `expiresAt` (see `firestore.rules` and
+ * README) instead of sitting in the database for good. Nothing in the app depends
+ * on the sweep — it only keeps a public, code-addressed collection from growing
+ * without bound.
+ */
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** The two stamps every write carries: when it happened, and when it may be swept. */
+function stamps() {
+  return { updatedAt: serverTimestamp(), expiresAt: Timestamp.fromMillis(Date.now() + SESSION_TTL_MS) };
 }
 
 function sessionRef(code: string) {
@@ -45,20 +72,30 @@ export async function tvEnsurePairing(existingCode: string | null, clock: ClockS
   if (existingCode) {
     const ref = sessionRef(existingCode);
     const snap = await getDoc(ref);
-    if (!snap.exists()) await setDoc(ref, { data: null, clock, updatedAt: serverTimestamp() });
+    if (!snap.exists()) await setDoc(ref, { data: null, clock, ...stamps() });
     return existingCode;
   }
+  /* Claim the code in a transaction. Reading first and writing after left a gap in
+     which a second TV could pick the same four digits and take over a table that had
+     already paired — rare, but the failure is somebody else's game appearing on your
+     screen, so it is worth the extra round trip. */
+  const db = getDb();
+  if (!db) throw new Error('Firebase is not configured');
   for (let i = 0; i < 8; i++) {
     const code = genCode();
-    const snap = await getDoc(sessionRef(code));
-    if (!snap.exists()) {
-      await setDoc(sessionRef(code), { data: null, clock, updatedAt: serverTimestamp() });
-      return code;
-    }
+    const claimed = await runTransaction(db, async (tx) => {
+      const ref = sessionRef(code);
+      const snap = await tx.get(ref);
+      if (snap.exists()) return false;
+      tx.set(ref, { data: null, clock, ...stamps() });
+      return true;
+    });
+    if (claimed) return code;
   }
-  // extremely unlikely fallback: 8 codes all taken — accept a last one
+  // 8 codes taken in a row: the collection is unusually busy, so take the last one
+  // rather than leaving the screen without a code to show.
   const code = genCode();
-  await setDoc(sessionRef(code), { data: null, clock, updatedAt: serverTimestamp() });
+  await setDoc(sessionRef(code), { data: null, clock, ...stamps() });
   return code;
 }
 
@@ -68,7 +105,7 @@ export async function tvEnsurePairing(existingCode: string | null, clock: ClockS
  * lost (e.g. the host reloaded after the doc expired) instead of failing forever.
  */
 export async function hostPushData(code: string, state: AppState): Promise<void> {
-  await setDoc(sessionRef(code), { data: dataOf(state), updatedAt: serverTimestamp() }, { merge: true });
+  await setDoc(sessionRef(code), { data: dataOf(state), ...stamps() }, { merge: true });
 }
 
 /**
@@ -77,7 +114,43 @@ export async function hostPushData(code: string, state: AppState): Promise<void>
  * phone remote working even after a reload.
  */
 export async function pushClock(code: string, clock: ClockState): Promise<void> {
-  await setDoc(sessionRef(code), { clock, updatedAt: serverTimestamp() }, { merge: true });
+  await setDoc(sessionRef(code), { clock, ...stamps() }, { merge: true });
+}
+
+/**
+ * The background photo's own document — a sibling of the session, `NNNN-bg`, NOT a
+ * subcollection under it. Both would be equally tidy, but a subcollection needs its
+ * own `match` block in the security rules, so the split would only start working
+ * once new rules were deployed. A sibling document is covered by the same rule the
+ * session already lives under and works the moment the app updates.
+ */
+function backgroundRef(code: string) {
+  const db = getDb();
+  if (!db) throw new Error('Firebase is not configured');
+  return doc(db, 'sessions', `${code}-bg`);
+}
+
+/**
+ * Host (phone): publish the big-screen background photo. Its own document on
+ * purpose — it is a few hundred kB of base64 next to a couple of kB of game data,
+ * and a merge write re-sends every field it is given. Kept here, a rebuy costs a
+ * rebuy's worth of traffic instead of a photo's.
+ */
+export async function pushBackground(code: string, image: string | null): Promise<void> {
+  await setDoc(backgroundRef(code), { image, ...stamps() });
+}
+
+/** TV: watch the background document. Same self-healing listener as the session. */
+export function subscribeBackground(code: string, onUpdate: (image: string | null) => void): Unsubscribe {
+  const db = getDb();
+  if (!db) return () => {};
+  return onSnapshot(
+    doc(db, 'sessions', `${code}-bg`),
+    (snap) => onUpdate(snap.exists() ? ((snap.data() as { image?: string | null }).image ?? null) : null),
+    () => {
+      /* the session listener already tells the screen it lost the connection */
+    },
+  );
 }
 
 /**
@@ -85,7 +158,23 @@ export async function pushClock(code: string, clock: ClockState): Promise<void> 
  * short interval while a device is showing the big screen. Merge write, tiny.
  */
 export async function tvHeartbeat(code: string): Promise<void> {
-  await setDoc(sessionRef(code), { tvSeenAt: serverTimestamp() }, { merge: true });
+  await setDoc(sessionRef(code), { tvSeenAt: serverTimestamp(), ...stamps() }, { merge: true });
+}
+
+/**
+ * TV: the big screen is being switched off — take the pairing document with it.
+ * The code is public and guessable, so leaving a finished session lying around is
+ * both clutter and a way for a stranger to watch the table. Failure is ignored:
+ * the TTL sweep is the backstop.
+ */
+export async function endSession(code: string): Promise<void> {
+  try {
+    // the photo first: deleting a parent document does not remove its subcollection
+    await deleteDoc(backgroundRef(code)).catch(() => {});
+    await deleteDoc(sessionRef(code));
+  } catch {
+    /* offline or already gone — the TTL policy cleans up either way */
+  }
 }
 
 /** TV: verify a code exists before joining, so a mistyped code fails fast with a clear message. */
@@ -94,11 +183,56 @@ export async function checkCodeExists(code: string): Promise<boolean> {
   return snap.exists();
 }
 
-/** Subscribe to live updates for a session code. Returns an unsubscribe function. */
-export function subscribeSession(code: string, onUpdate: (doc: LiveDoc) => void): Unsubscribe {
+/** Backoff between attempts to re-open a listener that the server dropped. */
+const RESUBSCRIBE_BACKOFF_MS = [2000, 4000, 8000, 15000, 30000];
+
+/**
+ * Subscribe to live updates for a session code. Returns an unsubscribe function.
+ *
+ * A listener can die — the network drops, the tab sleeps for an hour, the rules
+ * reject the read. Firestore reports that once through the error callback and then
+ * stays silent forever: without this the big screen simply froze on whatever it
+ * last received, with nothing on screen to say so. So an error re-opens the
+ * listener on a backoff, and `onConnected` lets the caller show the truth in the
+ * meantime.
+ */
+export function subscribeSession(
+  code: string,
+  onUpdate: (doc: LiveDoc) => void,
+  onConnected?: (connected: boolean) => void,
+): Unsubscribe {
   const db = getDb();
   if (!db) return () => {};
-  return onSnapshot(doc(db, 'sessions', code), (snap) => {
-    if (snap.exists()) onUpdate(snap.data() as LiveDoc);
-  });
+  const ref = doc(db, 'sessions', code);
+  let stopped = false;
+  let inner: Unsubscribe | null = null;
+  let retry: ReturnType<typeof setTimeout> | null = null;
+  let attempts = 0;
+
+  const open = () => {
+    if (stopped) return;
+    inner = onSnapshot(
+      ref,
+      (snap) => {
+        attempts = 0;
+        onConnected?.(true);
+        if (snap.exists()) onUpdate(snap.data() as LiveDoc);
+      },
+      () => {
+        onConnected?.(false);
+        inner = null;
+        if (stopped) return;
+        const wait = RESUBSCRIBE_BACKOFF_MS[Math.min(attempts, RESUBSCRIBE_BACKOFF_MS.length - 1)];
+        attempts++;
+        retry = setTimeout(open, wait);
+      },
+    );
+  };
+  open();
+
+  return () => {
+    stopped = true;
+    if (retry) clearTimeout(retry);
+    inner?.();
+  };
 }

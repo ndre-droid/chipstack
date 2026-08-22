@@ -47,6 +47,7 @@ export interface LiveSyncState {
 export interface LiveTransport {
   pushData: (code: string, state: AppState) => Promise<void>;
   pushClock: (code: string, clock: ClockState) => Promise<void>;
+  pushBackground: (code: string, image: string | null) => Promise<void>;
 }
 
 const DEFAULT_BACKOFF_MS = [800, 1600, 3200, 6400, 12000, 20000, 30000];
@@ -68,8 +69,8 @@ let transport: LiveTransport | null = null;
 
 async function getTransport(): Promise<LiveTransport> {
   if (!transport) {
-    const { hostPushData, pushClock } = await import('./liveSession');
-    transport = { pushData: hostPushData, pushClock };
+    const { hostPushData, pushClock, pushBackground } = await import('./liveSession');
+    transport = { pushData: hostPushData, pushClock, pushBackground };
   }
   return transport;
 }
@@ -88,8 +89,15 @@ interface PendingClock {
   at: number;
 }
 
+/** The background photo, pushed only when it actually changed (see liveData). */
+interface PendingBackground {
+  code: string;
+  getImage: () => string | null;
+}
+
 let pendingData: PendingData | null = null;
 let pendingClock: PendingClock | null = null;
+let pendingBackground: PendingBackground | null = null;
 let inFlight = false;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let attempts = 0;
@@ -113,7 +121,7 @@ function isOnline(): boolean {
 function currentStatus(): LiveSyncStatus {
   if (inFlight) return 'syncing';
   if (attempts > 0) return 'retrying';
-  if (pendingData || pendingClock) return 'syncing';
+  if (pendingData || pendingClock || pendingBackground) return 'syncing';
   return lastSyncedAt ? 'synced' : 'idle';
 }
 
@@ -181,7 +189,7 @@ function scheduleRetry(): void {
 
 async function run(): Promise<void> {
   if (inFlight || retryTimer) return; // already working, or waiting out a backoff
-  if (!pendingData && !pendingClock) return;
+  if (!pendingData && !pendingClock && !pendingBackground) return;
 
   const gen = generation;
   inFlight = true;
@@ -207,6 +215,14 @@ async function run(): Promise<void> {
       if (pendingData === data) pendingData = null;
     }
 
+    // The photo goes last: it is the big, slow one, and the table cares about the
+    // ledger and the clock long before it cares about the wallpaper.
+    const bg = pendingBackground;
+    if (bg) {
+      await withTimeout(tr.pushBackground(bg.code, bg.getImage()), timeoutMs);
+      if (pendingBackground === bg) pendingBackground = null;
+    }
+
     inFlight = false;
     if (gen !== generation) {
       emit(); // the session was left mid-write — that result belongs to nobody
@@ -215,7 +231,7 @@ async function run(): Promise<void> {
     attempts = 0;
     lastSyncedAt = Date.now();
     emit();
-    if (pendingData || pendingClock) void run();
+    if (pendingData || pendingClock || pendingBackground) void run();
   } catch {
     inFlight = false;
     if (gen !== generation) {
@@ -236,6 +252,17 @@ async function run(): Promise<void> {
  */
 export function queueData(code: string, getState: () => AppState): void {
   pendingData = { code, getState };
+  emit();
+  void run();
+}
+
+/**
+ * Host: publish the background photo. Queued exactly like the rest so a failed
+ * upload is retried rather than leaving the TV on yesterday's wallpaper, and
+ * passed as a getter so a retry sends the current image.
+ */
+export function queueBackground(code: string, getImage: () => string | null): void {
+  pendingBackground = { code, getImage };
   emit();
   void run();
 }
@@ -269,6 +296,7 @@ export function cancelLiveSync(): void {
   }
   pendingData = null;
   pendingClock = null;
+  pendingBackground = null;
   attempts = 0;
   lastSyncedAt = null;
   generation++;

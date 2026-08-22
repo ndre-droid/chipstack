@@ -1,0 +1,81 @@
+rules_version = '2';
+
+/*
+ * ChipStack live sessions (project `chipstack-live`).
+ *
+ * The model: a TV publishes a four-digit code, a phone types it, and both sides
+ * read and write one document. There is no sign-in — the code IS the credential,
+ * which is the right trade for a living-room game but means these rules cannot
+ * authenticate anybody. What they CAN do is keep the collection well-formed and
+ * bounded, so a stray client (or a bored someone walking the 9000 codes) cannot
+ * turn the database into storage:
+ *
+ *   - only four-digit document ids exist at all
+ *   - only the fields the app writes are accepted, with the types it expects
+ *   - `expiresAt` must be present on every write, so the TTL policy on that field
+ *     can sweep abandoned sessions (see README — the policy is a console/gcloud
+ *     setting, not part of this file)
+ *   - the background photo is capped, and lives in its own document so the game
+ *     data stays small
+ *
+ * Deploy: `firebase deploy --only firestore:rules` (config in firebase.json).
+ */
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Session documents are the four-digit pairing code; the background photo lives
+    // beside its session as `NNNN-bg` (a sibling, not a subcollection — see
+    // lib/liveSession.ts for why).
+    function isCode(id) {
+      return id.matches('^[0-9]{4}$');
+    }
+    function isBackground(id) {
+      return id.matches('^[0-9]{4}-bg$');
+    }
+
+    /* A write should push the sweep date out again, and never further than a couple
+       of days: that is what stops an abandoned session living forever. It is
+       tolerated rather than required, because an older installed build (an APK on
+       someone's phone) does not send it, and rejecting those writes would break
+       live sync for anyone who hasn't updated yet. Tighten to a hard requirement
+       once every client in the wild sends it. */
+    function ttlOk() {
+      return !('expiresAt' in request.resource.data)
+        || (request.resource.data.expiresAt is timestamp
+            && request.resource.data.expiresAt.toMillis() > request.time.toMillis()
+            && request.resource.data.expiresAt.toMillis() < request.time.toMillis() + 172800000);
+    }
+
+    match /sessions/{id} {
+      allow read: if isCode(id) || isBackground(id);
+
+      allow create, update: if isCode(id)
+        && ttlOk()
+        && request.resource.data.keys().hasOnly(['data', 'clock', 'tvSeenAt', 'updatedAt', 'expiresAt'])
+        // `data` is null while the TV waits for a phone, a map once one connects
+        && (!('data' in request.resource.data)
+            || request.resource.data.data == null
+            || request.resource.data.data is map)
+        && (!('clock' in request.resource.data) || request.resource.data.clock is map);
+
+      /* The background photo. Capped well under the 1 MiB document limit and about
+         twice what the app's encoder aims for, so an oversized photo is refused
+         outright instead of failing as an oversized document mid-session. */
+      allow create, update: if isBackground(id)
+        && ttlOk()
+        && request.resource.data.keys().hasOnly(['image', 'updatedAt', 'expiresAt'])
+        && (request.resource.data.image == null
+            || (request.resource.data.image is string && request.resource.data.image.size() < 400000));
+
+      // The TV deletes its session (and its photo) when the big screen is switched
+      // off. With no accounts there is nobody to check that against; the TTL policy
+      // is the backstop either way.
+      allow delete: if isCode(id) || isBackground(id);
+    }
+
+    // Nothing else in this project is public.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

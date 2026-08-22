@@ -7,6 +7,9 @@ export default function ChipsScreen() {
   const { state, dispatch } = useStore();
   const { denominations, settings } = state;
   const t = useT();
+  // One translatable sentence with a {settings} placeholder, split so the bold word
+  // lands wherever that language puts it rather than where the markup does.
+  const [unitHintBefore, unitHintAfter = ''] = t('chips.unitHint').split('{settings}');
   const { money: fmtMoney } = useFmt();
 
   const sorted = [...denominations].sort((a, b) => a.value - b.value);
@@ -51,14 +54,14 @@ export default function ChipsScreen() {
                 className={`shape-pill ${d.shape === 'plaque' ? 'on' : ''}`}
                 onClick={() => dispatch({ type: 'UPDATE_DENOM', id: d.id, patch: { shape: d.shape === 'plaque' ? 'chip' : 'plaque' } })}
               >
-                {d.shape === 'plaque' ? 'Plaque' : 'Chip'}
+                {t(d.shape === 'plaque' ? 'chips.plaque' : 'chips.chip')}
               </button>
             </div>
 
             <div className="grow">
               <div className="row" style={{ gap: 8 }}>
                 <div className="field-inline" style={{ width: 70 }}>
-                  <label>Value</label>
+                  <label>{t('chips.value')}</label>
                   <input
                     className="mini-input"
                     type="number"
@@ -70,7 +73,7 @@ export default function ChipsScreen() {
                   />
                 </div>
                 <div className="field-inline" style={{ width: 80 }}>
-                  <label>Owned</label>
+                  <label>{t('chips.owned')}</label>
                   <input
                     className="mini-input"
                     type="number"
@@ -82,7 +85,7 @@ export default function ChipsScreen() {
                   />
                 </div>
                 <div className="field-inline">
-                  <label>Colour</label>
+                  <label>{t('chips.colour')}</label>
                   <input
                     type="color"
                     value={d.color}
@@ -99,7 +102,10 @@ export default function ChipsScreen() {
                 </div>
               </div>
               <div className="denom-meta">
-                = {fmtMoney(chipMoney, settings.currency)} each · {fmtMoney(d.count * chipMoney, settings.currency)} total
+                {t('chips.eachTotal', {
+                  each: fmtMoney(chipMoney, settings.currency),
+                  total: fmtMoney(d.count * chipMoney, settings.currency),
+                })}
               </div>
             </div>
 
@@ -123,9 +129,13 @@ export default function ChipsScreen() {
       </button>
 
       <p className="faint" style={{ fontSize: 12.5, textAlign: 'center', marginTop: 16, lineHeight: 1.6 }}>
-        The toggle includes / excludes a chip from stacks by default.
+        {t('chips.toggleHint')}
         <br />
-        Set what 1 chip point is worth in <b>Settings</b>.
+        {/* The bold word is placed by the translation, not by the layout: German
+            puts "Einstellungen" at a different point in the sentence. */}
+        {unitHintBefore}
+        <b>{t('nav.settings')}</b>
+        {unitHintAfter}
       </p>
     </div>
   );

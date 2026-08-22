@@ -4,6 +4,7 @@ import {
   cancelLiveSync,
   flushLiveSync,
   getLiveSyncState,
+  queueBackground,
   queueClock,
   queueData,
 } from './liveSyncQueue.ts';
@@ -32,6 +33,7 @@ const stateWith = (tag: string) => ({ tag } as unknown as AppState);
 interface Recorder {
   data: { code: string; tag: string }[];
   clocks: { code: string; levelIdx: number }[];
+  backgrounds: { code: string; image: string | null }[];
   fails: number;
   hangs: number;
 }
@@ -58,6 +60,13 @@ function transportThat(rec: Recorder) {
       }
       rec.clocks.push({ code, levelIdx: clock.levelIdx });
     },
+    pushBackground: async (code: string, image: string | null) => {
+      if (rec.fails > 0) {
+        rec.fails--;
+        throw new Error('network');
+      }
+      rec.backgrounds.push({ code, image });
+    },
   };
 }
 
@@ -71,7 +80,7 @@ function setup(rec: Recorder, opts: { timeout?: number; clockMaxAge?: number; ba
   });
 }
 
-const fresh = (): Recorder => ({ data: [], clocks: [], fails: 0, hangs: 0 });
+const fresh = (): Recorder => ({ data: [], clocks: [], backgrounds: [], fails: 0, hangs: 0 });
 
 let failures = 0;
 function check(label: string, ok: boolean, detail = '') {
@@ -194,6 +203,43 @@ async function testCancelDropsPending() {
   check('status reset to idle', getLiveSyncState().status === 'idle', getLiveSyncState().status);
 }
 
+async function testBackgroundIsItsOwnWrite() {
+  console.log('\nthe background photo is queued separately and retried');
+  const rec = fresh();
+  setup(rec);
+  queueData('1234', () => stateWith('a'));
+  queueBackground('1234', () => 'data:image/jpeg;base64,AAAA');
+  await sleep(60);
+  check('game data went out once', rec.data.length === 1, `got ${rec.data.length}`);
+  check('photo went out once', rec.backgrounds.length === 1, `got ${rec.backgrounds.length}`);
+
+  // a second data push must NOT drag the photo along again
+  queueData('1234', () => stateWith('b'));
+  await sleep(60);
+  check('photo not re-sent with the next data push', rec.backgrounds.length === 1, `got ${rec.backgrounds.length}`);
+
+  // and a failed photo upload is retried like everything else
+  rec.fails = 2;
+  queueBackground('1234', () => 'data:image/jpeg;base64,BBBB');
+  await sleep(120);
+  check('photo retried until it landed', rec.backgrounds.length === 2, `got ${rec.backgrounds.length}`);
+  check(
+    'the retry sent the current photo',
+    rec.backgrounds[1]?.image === 'data:image/jpeg;base64,BBBB',
+    String(rec.backgrounds[1]?.image),
+  );
+}
+
+async function testClearingTheBackgroundSyncs() {
+  console.log('\nremoving the photo reaches the TV as null');
+  const rec = fresh();
+  setup(rec);
+  queueBackground('1234', () => null);
+  await sleep(60);
+  check('a null image is pushed, not skipped', rec.backgrounds.length === 1, `got ${rec.backgrounds.length}`);
+  check('and it is null', rec.backgrounds[0]?.image === null, String(rec.backgrounds[0]?.image));
+}
+
 async function main() {
   await testHappyPath();
   await testRetriesUntilItLands();
@@ -204,6 +250,8 @@ async function main() {
   await testFreshClockRetried();
   await testFlushSkipsBackoff();
   await testCancelDropsPending();
+  await testBackgroundIsItsOwnWrite();
+  await testClearingTheBackgroundSyncs();
 
   console.log(`\n${failures === 0 ? 'ALL PASS' : `${failures} FAILED`}`);
   assert.equal(failures, 0, `${failures} live-sync queue check(s) failed`);

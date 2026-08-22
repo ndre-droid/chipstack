@@ -1,6 +1,6 @@
-import type { Denomination, SessionConfig } from '../types';
-import { computeStack, moneyToUnits } from './distribution';
-import type { StackResult } from './distribution';
+import type { Denomination, SessionConfig } from '../types.ts';
+import { computeStack, moneyToUnits } from './distribution.ts';
+import type { StackResult } from './distribution.ts';
 
 /**
  * THE starting stack — one place, so the Plan tab, the Table card, the counting

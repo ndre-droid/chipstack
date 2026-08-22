@@ -1189,7 +1189,11 @@ input[type='color'] { cursor: pointer; }
   display: grid;
   grid-template-columns: 1fr 1.7fr 1fr;
   gap: clamp(12px, 2.5vmin, 40px);
-  align-items: center;
+  /* Stretch, not center: the side columns have to know their full height before
+     they can hand the leftover to the roster (centred, they collapsed to their
+     content and the players list was left with 26px). The clock centres itself
+     inside its own stretched cell instead. */
+  align-items: stretch;
 }
 /* The side columns must never grow past their grid row — on a laptop-shaped
    viewport (wide but short) the stats + payouts + roster + bust list used to
@@ -1206,15 +1210,21 @@ input[type='color'] { cursor: pointer; }
    tall shrinks EVERY panel proportionally and the players list collapses to 0.
    The roster is the one allowed to give way (its own list scrolls inside it). */
 .tv-side > * { flex-shrink: 0; }
-.tv-side > .tv-roster { flex-shrink: 1; min-height: clamp(80px, 13vmin, 260px); }
+/* The roster takes the leftover height instead of sitting at its minimum, and it
+   keeps a floor of two fifths of the column: with the stat tiles and the knocked-out
+   list both switched on it was squeezed down to a quarter of that, which is how an
+   eight-handed table ended up showing three names. */
+.tv-side > .tv-roster { flex: 1 1 auto; min-height: max(clamp(60px, 9vmin, 200px), 40%); }
 /* the legend's rows carry their own vertical padding, so an extra gap doubles it */
 .tv-legend { display: flex; flex-direction: column; min-height: 0; }
 .tv-stats { display: flex; flex-direction: column; gap: clamp(8px, 1.6vmin, 20px); }
 /* Short canvas (a laptop as the big screen): the tiles go side by side and lose
    some bulk, so the players roster keeps its rows. Set from JS — see tvCompact. */
-.tv[data-tv-compact] .tv-stats { display: grid; grid-template-columns: 1fr 1fr; }
-.tv[data-tv-compact] .tv-stat { padding: clamp(8px, 1.2vmin, 18px) clamp(10px, 1.6vmin, 22px); }
-.tv[data-tv-compact] .tv-stat-v { font-size: clamp(18px, 3vmin, 60px); }
+/* `data-2up` is the same treatment asked for by a big roster rather than a short
+   screen — see statsTwoUp in TvMode. */
+.tv[data-tv-compact] .tv-stats, .tv-stats[data-2up] { display: grid; grid-template-columns: 1fr 1fr; }
+.tv[data-tv-compact] .tv-stat, .tv-stats[data-2up] .tv-stat { padding: clamp(8px, 1.2vmin, 18px) clamp(10px, 1.6vmin, 22px); }
+.tv[data-tv-compact] .tv-stat-v, .tv-stats[data-2up] .tv-stat-v { font-size: clamp(18px, 3vmin, 60px); }
 .tv[data-tv-compact] .tv-legend-row { padding: clamp(2px, 0.4vmin, 8px) 0; }
 /* last resort on a very short screen: the chip legend gives way, not the payouts */
 .tv[data-tv-compact] .tv-legend { flex-shrink: 1; overflow-y: auto; scrollbar-width: none; }
@@ -1250,17 +1260,44 @@ input[type='color'] { cursor: pointer; }
 .openapp-banner .btn { flex-shrink: 0; }
 .openapp-x { flex-shrink: 0; width: 26px; height: 26px; border: none; background: transparent; color: var(--on-acc); font-size: 20px; line-height: 1; cursor: pointer; opacity: 0.85; }
 .tv-players-list { display: flex; flex-direction: column; gap: clamp(2px, 0.5vmin, 8px); overflow-y: auto; min-height: 0; }
-.tv-players-row { display: flex; align-items: baseline; gap: clamp(6px, 1.2vmin, 18px); }
+.tv-players-row { display: flex; align-items: baseline; gap: clamp(6px, 1.2vmin, 18px); min-width: 0; }
 .tv-players-row.out { opacity: 0.42; text-decoration: line-through; }
 .tv-players-name { font-weight: 600; font-size: clamp(13px, 1.8vmin, 40px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-players-amt { margin-left: auto; font-family: var(--mono); color: var(--tv-dim); font-size: clamp(12px, 1.6vmin, 34px); }
+
+/* ---- Roster density -------------------------------------------------------
+   The players list is the one panel that MUST show all of its rows: nobody can
+   reach a scrollbar on a TV across the room, so a list that overflows silently
+   drops players off the bottom (an eight-handed table showed three names).
+   Row size therefore follows how many rows one column carries — set from JSX as
+   --tv-roster-rows — and past eight players the list goes two-up. */
+.tv-roster { --tv-roster-rows: 6; --tv-row-fs: min(1.8vmin, calc(14vmin / var(--tv-roster-rows))); }
+/* flex-basis 0 on purpose: the list takes the height the panel gives it and never
+   the other way round, so measuring it can't feed back into the size it measures. */
+.tv-roster .tv-players-list { flex: 1 1 0; gap: min(0.5vmin, calc(3vmin / var(--tv-roster-rows))); }
+.tv-roster .tv-players-list[data-cols='2'] {
+  display: grid; grid-template-columns: 1fr 1fr;
+  column-gap: clamp(10px, 2vmin, 30px);
+  align-content: start;
+}
+.tv-roster .tv-players-name { font-size: clamp(11px, var(--tv-row-fs), 40px); }
+.tv-roster .tv-players-amt { font-size: clamp(10px, calc(var(--tv-row-fs) * 0.92), 34px); }
+.tv-roster .tv-players-emoji { font-size: clamp(12px, calc(var(--tv-row-fs) * 1.05), 40px); }
+.tv-roster .tv-crown { font-size: clamp(11px, calc(var(--tv-row-fs) * 0.95), 36px); }
+.tv-roster .tv-bounty { font-size: clamp(10px, calc(var(--tv-row-fs) * 0.85), 30px); }
+/* the stack trail is decoration — it is the first thing dropped once the rows
+   get tight, so the names and the money keep their size */
+.tv-roster[data-dense] .tv-spark { display: none; }
+/* last-resort honesty: rows that still didn't fit are counted in the header
+   instead of quietly vanishing off the bottom */
+.tv-players-more { color: var(--acc); font-weight: 700; }
 
 .tv-break-cue {
   margin-top: clamp(6px, 1.2vmin, 18px);
   font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--acc); font-size: clamp(12px, 1.6vmin, 34px); font-weight: 700;
 }
-.tv-clock { text-align: center; display: flex; flex-direction: column; align-items: center; }
+.tv-clock { text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .tv-level { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.18em; color: var(--tv-dim); font-size: clamp(14px, 2.3vmin, 46px); }
 .tv-blinds { font-family: var(--font-display); font-weight: 700; color: var(--acc); font-size: clamp(30px, 6vmin, 150px); letter-spacing: -0.01em; margin-top: clamp(2px, 0.6vmin, 8px); font-variant-numeric: tabular-nums; }
 .tv-ante { color: var(--tv-dim); font-size: 0.48em; }
@@ -1345,6 +1382,9 @@ input[type='color'] { cursor: pointer; }
 }
 .tv-connect-pill.live { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
 .tv-connect-pill.host { color: var(--acc); border-color: color-mix(in srgb, var(--acc) 45%, transparent); }
+/* the session listener dropped and is re-opening — the screen is showing the last
+   thing it received, so say so rather than letting it pass for live */
+.tv-connect-pill.lost { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
 .tv-join-hint { color: var(--tv-dim); font-size: clamp(12px, 1.6vmin, 22px); margin: 6px 0 0; text-align: center; max-width: 60vmin; }
 .tv-join-display {
   font-family: var(--mono); font-weight: 700; letter-spacing: 0.3em;

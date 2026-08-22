@@ -57,6 +57,9 @@ const QUIPS = [
 
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
+/** Smallest roster row still worth reading across a room; matches the CSS clamp. */
+const ROW_MIN_FS = 11;
+
 export default function TvMode({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useStore();
   const t = useT();
@@ -123,12 +126,19 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const [levelIdx, setLevelIdx] = useState(0);
   const [seconds, setSeconds] = useState(minutesPerLevel * 60);
   const [running, setRunning] = useState(false);
+  /* The period's wall-clock deadline (epoch ms) while it runs, null while paused.
+     THIS is the countdown's truth — `seconds` is only what was last painted from
+     it. Counting ticks instead loses whatever a throttled timer doesn't deliver,
+     and a laptop or TV browser with the tab in the background delivers roughly one
+     tick a minute; the big screen then quietly runs minutes behind the table. */
+  const deadline = useRef<number | null>(null);
   const [flash, setFlash] = useState(false);
   const [onBreak, setOnBreak] = useState(false);
   const [quipIdx, setQuipIdx] = useState(0);
   const [shot, setShot] = useState<number | null>(null);
   const [spin, setSpin] = useState<{ name: string; done: boolean; penalty?: string } | null>(null);
   const [paired, setPaired] = useState(false); // a phone has connected (doc has data)
+  const [liveLost, setLiveLost] = useState(false); // the session listener dropped and is re-opening
   const [connectToast, setConnectToast] = useState(false); // brief "phone connected" cue
   const prevPaired = useRef(false);
   const tick = useRef<number | null>(null);
@@ -165,55 +175,61 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     let cancelled = false;
     import('../lib/liveSession').then(({ subscribeSession }) => {
       if (cancelled) return;
-      unsub = subscribeSession(liveSessionCode, (doc) => {
-        if (isTv && doc.data) {
-          setPaired(true);
-          dispatch({
-            type: 'LIVE_APPLY_REMOTE',
-            denominations: doc.data.denominations,
-            session: doc.data.session,
-            ledger: doc.data.ledger,
-            currency: doc.data.currency,
-            unitValue: doc.data.unitValue,
-            tvBackground: doc.data.tvBackground ?? null,
-            tvBackgroundFocus: doc.data.tvBackgroundFocus ?? null,
-            tvBackgroundTone: doc.data.tvBackgroundTone ?? null,
-            minutesPerLevel: doc.data.minutesPerLevel,
-            skin: doc.data.skin,
-            tvSkin: doc.data.tvSkin,
-            accents: doc.data.accents,
-            tvQuips: doc.data.tvQuips,
-            tvCustomQuips: doc.data.tvCustomQuips,
-            tvShowPlayers: doc.data.tvShowPlayers,
-            tvRosterSort: doc.data.tvRosterSort,
-            tvShowPayouts: doc.data.tvShowPayouts,
-            tvShowBustOrder: doc.data.tvShowBustOrder,
-            breakMinutes: doc.data.breakMinutes,
-            breakEvery: doc.data.breakEvery,
-            language: doc.data.language,
-            gameMode: doc.data.gameMode,
-            cashUseTimer: doc.data.cashUseTimer,
-            tvShowStartStack: doc.data.tvShowStartStack,
-            chipArt: doc.data.chipArt,
-            bountyMode: doc.data.bountyMode,
-            bountyAmount: doc.data.bountyAmount,
-            customAccent: doc.data.customAccent,
-            tvPenalties: doc.data.tvPenalties,
-            tvHouseRules: doc.data.tvHouseRules,
-            moments: doc.data.moments,
-            counting: doc.data.counting ?? null,
-          });
-        } else if (isTv) {
-          setPaired(false);
-        }
-        // guard: a doc can exist with data but no clock (stale/dead code)
-        if (doc.clock) {
-          setLevelIdx(doc.clock.levelIdx);
-          setOnBreak(doc.clock.onBreak);
-          setRunning(doc.clock.running);
-          setSeconds(clockSecondsLeft(doc.clock));
-        }
-      });
+      unsub = subscribeSession(
+        liveSessionCode,
+        (doc) => {
+          if (isTv && doc.data) {
+            setPaired(true);
+            dispatch({
+              type: 'LIVE_APPLY_REMOTE',
+              denominations: doc.data.denominations,
+              session: doc.data.session,
+              ledger: doc.data.ledger,
+              currency: doc.data.currency,
+              unitValue: doc.data.unitValue,
+              tvBackgroundFocus: doc.data.tvBackgroundFocus ?? null,
+              tvBackgroundTone: doc.data.tvBackgroundTone ?? null,
+              minutesPerLevel: doc.data.minutesPerLevel,
+              skin: doc.data.skin,
+              tvSkin: doc.data.tvSkin,
+              accents: doc.data.accents,
+              tvQuips: doc.data.tvQuips,
+              tvCustomQuips: doc.data.tvCustomQuips,
+              tvShowPlayers: doc.data.tvShowPlayers,
+              tvRosterSort: doc.data.tvRosterSort,
+              tvShowPayouts: doc.data.tvShowPayouts,
+              tvShowBustOrder: doc.data.tvShowBustOrder,
+              breakMinutes: doc.data.breakMinutes,
+              breakEvery: doc.data.breakEvery,
+              language: doc.data.language,
+              gameMode: doc.data.gameMode,
+              cashUseTimer: doc.data.cashUseTimer,
+              tvShowStartStack: doc.data.tvShowStartStack,
+              chipArt: doc.data.chipArt,
+              bountyMode: doc.data.bountyMode,
+              bountyAmount: doc.data.bountyAmount,
+              customAccent: doc.data.customAccent,
+              tvPenalties: doc.data.tvPenalties,
+              tvHouseRules: doc.data.tvHouseRules,
+              moments: doc.data.moments,
+              counting: doc.data.counting ?? null,
+            });
+          } else if (isTv) {
+            setPaired(false);
+          }
+          // guard: a doc can exist with data but no clock (stale/dead code)
+          if (doc.clock) {
+            setLevelIdx(doc.clock.levelIdx);
+            setOnBreak(doc.clock.onBreak);
+            setRunning(doc.clock.running);
+            const left = clockSecondsLeft(doc.clock);
+            setSeconds(left);
+            // adopt the sender's deadline so both screens expire at the same instant
+            deadline.current = doc.clock.running ? (doc.clock.periodEndsAt ?? Date.now() + left * 1000) : null;
+          }
+        },
+        (connected) => setLiveLost(!connected),
+      );
     });
     return () => {
       cancelled = true;
@@ -221,6 +237,26 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [synced, liveSessionCode, liveSessionRole]);
+
+  /* The background photo rides in its own document (see liveData.backgroundOf), so
+     it needs its own listener — the payoff is that the ledger no longer drags a few
+     hundred kB of base64 along on every rename. */
+  useEffect(() => {
+    if (!synced || !liveSessionCode || !isTv) return;
+    let unsub: (() => void) | null = null;
+    let cancelled = false;
+    import('../lib/liveSession').then(({ subscribeBackground }) => {
+      if (cancelled) return;
+      unsub = subscribeBackground(liveSessionCode, (image) => {
+        dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: image } });
+      });
+    });
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [synced, liveSessionCode, isTv]);
 
   // This device is the TV: beat a heartbeat into the session doc so the host phone
   // can show a live "● TV connected / ⚠ TV offline" status and know a silent drop.
@@ -243,6 +279,13 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTv, liveSessionCode]);
+
+  /** Start (or re-arm) the current period: the painted seconds and the deadline
+   *  they are derived from always move together. */
+  const setPeriod = (secs: number, run: boolean) => {
+    setSeconds(secs);
+    deadline.current = run ? Date.now() + secs * 1000 : null;
+  };
 
   const pushClockIfConnected = (li: number, ob: boolean, run: boolean, secs: number) => {
     if (!synced || !liveSessionCode) return;
@@ -300,50 +343,76 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  // main clock
+  // main clock — read off the deadline every tick, so a slow or skipped timer can
+  // cost at most one repaint instead of accumulating into real drift. Also
+  // re-read when the tab comes back, which is when the gap is largest.
   useEffect(() => {
     if (!running) {
       if (tick.current) window.clearInterval(tick.current);
       return;
     }
-    tick.current = window.setInterval(() => {
-      setSeconds((s) => {
-        if (s > 1) return s - 1;
-        // host preview never auto-advances — the TV owns that and pushes it here
-        if (!ownsClockAdvance) return 0;
-        if (onBreak) {
-          setOnBreak(false);
-          pushClockIfConnected(levelIdx, false, true, minutesPerLevel * 60);
-          return minutesPerLevel * 60;
-        }
-        try {
-          navigator.vibrate?.([300, 120, 300]);
-        } catch {
-          /* ignore */
-        }
-        setFlash(true);
-        setTimeout(() => setFlash(false), 3200);
-        let nextIdx = levelIdx;
-        let stillRunning = true;
-        if (levelIdx + 1 < blindLevels.length) {
-          nextIdx = levelIdx + 1;
-          setLevelIdx(nextIdx);
-        } else {
-          stillRunning = false;
-          setRunning(false);
-        }
-        // auto-break: take a break after every N levels of play
-        if (stillRunning && breakEvery > 0 && (levelIdx + 1) % breakEvery === 0) {
-          setOnBreak(true);
-          pushClockIfConnected(nextIdx, true, true, breakMins * 60);
-          return breakMins * 60;
-        }
-        pushClockIfConnected(nextIdx, false, stillRunning, minutesPerLevel * 60);
-        return minutesPerLevel * 60;
-      });
-    }, 1000);
+    const expire = () => {
+      // host preview never auto-advances — the TV owns that and pushes it here
+      if (!ownsClockAdvance) {
+        setSeconds(0);
+        return;
+      }
+      if (onBreak) {
+        setOnBreak(false);
+        setPeriod(minutesPerLevel * 60, true);
+        pushClockIfConnected(levelIdx, false, true, minutesPerLevel * 60);
+        return;
+      }
+      try {
+        navigator.vibrate?.([300, 120, 300]);
+      } catch {
+        /* ignore */
+      }
+      setFlash(true);
+      setTimeout(() => setFlash(false), 3200);
+      let nextIdx = levelIdx;
+      let stillRunning = true;
+      if (levelIdx + 1 < blindLevels.length) {
+        nextIdx = levelIdx + 1;
+        setLevelIdx(nextIdx);
+      } else {
+        stillRunning = false;
+        setRunning(false);
+      }
+      // auto-break: take a break after every N levels of play
+      if (stillRunning && breakEvery > 0 && (levelIdx + 1) % breakEvery === 0) {
+        setOnBreak(true);
+        setPeriod(breakMins * 60, true);
+        pushClockIfConnected(nextIdx, true, true, breakMins * 60);
+        return;
+      }
+      setPeriod(minutesPerLevel * 60, stillRunning);
+      pushClockIfConnected(nextIdx, false, stillRunning, minutesPerLevel * 60);
+    };
+    const step = () => {
+      const end = deadline.current;
+      if (end == null) {
+        // running without a deadline shouldn't happen; degrade to a plain tick
+        setSeconds((s) => Math.max(0, s - 1));
+        return;
+      }
+      const left = Math.max(0, Math.round((end - Date.now()) / 1000));
+      if (left > 0) {
+        setSeconds(left);
+        return;
+      }
+      expire();
+    };
+    tick.current = window.setInterval(step, 1000);
+    const catchUp = () => {
+      if (!document.hidden) step();
+    };
+    document.addEventListener('visibilitychange', catchUp);
+    window.addEventListener('focus', catchUp);
     return () => {
       if (tick.current) window.clearInterval(tick.current);
+      document.removeEventListener('visibilitychange', catchUp);
+      window.removeEventListener('focus', catchUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running, onBreak, blindLevels.length, minutesPerLevel, levelIdx, synced, liveSessionCode, liveSessionRole, ownsClockAdvance, breakEvery, breakMins]);
@@ -393,31 +462,33 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const goLevel = (i: number) => {
     const c = Math.max(0, Math.min(blindLevels.length - 1, i));
     setLevelIdx(c);
-    setSeconds(minutesPerLevel * 60);
+    setPeriod(minutesPerLevel * 60, running);
     setOnBreak(false);
     pushClockIfConnected(c, false, running, minutesPerLevel * 60);
   };
   const takeBreak = () => {
     setOnBreak(true);
-    setSeconds(breakMins * 60);
+    setPeriod(breakMins * 60, true);
     setRunning(true);
     pushClockIfConnected(levelIdx, true, true, breakMins * 60);
   };
   const cancelBreak = () => {
     setOnBreak(false);
-    setSeconds(minutesPerLevel * 60);
+    setPeriod(minutesPerLevel * 60, running);
     pushClockIfConnected(levelIdx, false, running, minutesPerLevel * 60);
   };
   const togglePlay = () => {
     setRunning((r) => {
       const nr = !r;
+      // pausing freezes the remaining seconds; resuming turns them into a deadline
+      deadline.current = nr ? Date.now() + seconds * 1000 : null;
       pushClockIfConnected(levelIdx, onBreak, nr, seconds);
       return nr;
     });
   };
   const resetLevel = () => {
     const secs = (onBreak ? breakMins : minutesPerLevel) * 60;
-    setSeconds(secs);
+    setPeriod(secs, running);
     pushClockIfConnected(levelIdx, onBreak, running, secs);
   };
 
@@ -512,6 +583,77 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     return [...roster].sort((a, b) => Number(a.out) - Number(b.out) || rank(b) - rank(a));
   }, [roster, tvRosterSort]);
 
+  /* Layout of the roster panel: past eight players the list goes two-up, and the
+     rows are sized from the height the panel actually got. A TV has no scrollbar
+     anyone can reach, so a list that doesn't fit doesn't merely scroll out of
+     sight — it silently drops players (an eight-handed table showed three names).
+     Measuring beats guessing in vmin here: the space left for the roster depends
+     on which other panels are switched on. Two columns start at seven players —
+     one column of eight had to drop to the smallest readable size and still lost
+     a row, while two columns of four sit at full size. */
+  const rosterCols = sortedRoster.length > 6 ? 2 : 1;
+  const rosterRows = Math.ceil(sortedRoster.length / rosterCols) || 1;
+  /* The stat tiles are the biggest thing in this column (three tiles ate 522 of
+     665px, leaving the roster 121px for eight players). From six rows up they go
+     side by side and lose some bulk so the roster keeps its share of the height. */
+  const statsTwoUp = tvCompact || (tvShowPlayers && rosterRows >= 6);
+  const rosterListRef = useRef<HTMLDivElement | null>(null);
+  const [rowFs, setRowFs] = useState(0); // px; 0 = not measured yet, CSS default applies
+  const [rosterHidden, setRosterHidden] = useState(0); // players that still didn't fit
+  useEffect(() => {
+    const el = rosterListRef.current;
+    if (!el) {
+      setRosterHidden(0);
+      return;
+    }
+    /* Fit by measuring, not by predicting: a row's height depends on the emoji, the
+       stack trail and whether the money needs a second line, so any formula for it
+       would drift. Measure one row, scale the font by how far off it is, and let the
+       effect run again on the new size — it settles in two or three passes. */
+    const fit = () => {
+      const avail = el.clientHeight;
+      const first = el.querySelector('.tv-players-row') as HTMLElement | null;
+      if (!avail || !first) return;
+      const gap = parseFloat(getComputedStyle(el).rowGap) || 0;
+      const rowH = first.getBoundingClientRect().height + gap;
+      if (rowH <= 0) return;
+      const nameEl = first.querySelector('.tv-players-name') as HTMLElement | null;
+      const currentFs = rowFs || (nameEl ? parseFloat(getComputedStyle(nameEl).fontSize) : 0);
+      if (!currentFs) return;
+      // never bigger than the design size, never too small to read from the sofa
+      const cap = Math.min(40, 0.018 * Math.min(window.innerWidth, window.innerHeight));
+      const target = avail / rosterRows;
+      const next = Math.max(ROW_MIN_FS, Math.min(cap, (currentFs * target) / rowH));
+      if (Math.abs(next - currentFs) > 0.3) setRowFs(next);
+      // Only a roster pinned at the smallest readable size can still lose rows.
+      // Count the ones that really don't fit — this runs again after the size
+      // change lands, so the number it reports is the number on screen.
+      const box = el.getBoundingClientRect();
+      let shown = 0;
+      el.querySelectorAll('.tv-players-row').forEach((row) => {
+        const b = row.getBoundingClientRect();
+        if (b.top >= box.top - 1 && b.bottom <= box.bottom + 1) shown++;
+      });
+      setRosterHidden(Math.max(0, sortedRoster.length - shown));
+    };
+    fit();
+    /* The panel keeps moving after this first pass: the display webfont swaps in
+       and the stat tiles above grow, which takes height away from the roster. A
+       ResizeObserver catches that on a live screen; the timer and the font hook are
+       the belt for browsers that deliver observer callbacks lazily. */
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    const settle = window.setTimeout(fit, 400);
+    document.fonts?.ready?.then(fit).catch(() => {});
+    return () => {
+      window.clearTimeout(settle);
+      ro.disconnect();
+    };
+    // rowFs is a dependency on purpose: re-measuring after the size changed is how
+    // this converges. The list's height comes from `flex: 1 1 0`, so it cannot be
+    // pushed around by the font size it is being measured for.
+  }, [rosterRows, rosterCols, rowFs, sortedRoster.length, viewportH, tvScale, statsTwoUp]);
+
   // header hint for the right-hand column — it only says "buy-in" while nobody has
   // a counted stack to value.
   const rosterAmountLabel = roster.some((p) => p.stackMoney !== null) ? t('tv.stack') : t('tv.buyIn');
@@ -556,7 +698,14 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     const pct =
       entrants <= 3 ? [1] : entrants <= 5 ? [0.65, 0.35] : entrants <= 8 ? [0.5, 0.3, 0.2] : [0.45, 0.27, 0.18, 0.1];
     const places = ['1st', '2nd', '3rd', '4th'];
-    return pct.map((p, i) => ({ place: places[i], amount: Math.round(poolMoney * p) }));
+    /* Round the lower places and give first place the remainder, so the split
+       always adds up to the pool on screen. Rounding each share on its own left a
+       euro unaccounted for at the table (€55 as 25/17/13 = €55, but €65 as
+       33/20/13 = €66), and the person holding the pot is the one who has to explain
+       the difference. */
+    const rest = pct.slice(1).map((p) => Math.round(poolMoney * p));
+    const first = poolMoney - rest.reduce((sum, amount) => sum + amount, 0);
+    return [first, ...rest].map((amount, i) => ({ place: places[i], amount }));
   }, [ledger.length, playerCount, poolMoney]);
 
   // knocked-out / finish order — later busts finish higher
@@ -693,11 +842,19 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
 
       {/* Corner status pill */}
       {firebaseConfigured && isTv && (
-        <div className={`tv-connect-pill ${paired ? 'live' : ''}`}>
-          {paired ? `● ${t('tv.liveConnected')}` : `${t('connect.code')} ${liveSessionCode}`}
+        <div className={`tv-connect-pill ${liveLost ? 'lost' : paired ? 'live' : ''}`}>
+          {liveLost
+            ? `⚠ ${t('tv.connectionLost')}`
+            : paired
+              ? `● ${t('tv.liveConnected')}`
+              : `${t('connect.code')} ${liveSessionCode}`}
         </div>
       )}
-      {firebaseConfigured && isHostView && <div className="tv-connect-pill live">● {t('tv.liveConnected')}</div>}
+      {firebaseConfigured && isHostView && (
+        <div className={`tv-connect-pill ${liveLost ? 'lost' : 'live'}`}>
+          {liveLost ? `⚠ ${t('tv.connectionLost')}` : `● ${t('tv.liveConnected')}`}
+        </div>
+      )}
       {connectToast && <div className="tv-toast">📱 {t('tv.phoneConnected')}</div>}
       {/* A counting round is running on the phone — show the table how far it got. */}
       {counting && (
@@ -748,7 +905,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         <aside className="tv-side">
           {/* Wrapped so a short screen (a laptop standing in for the TV) can lay the
               tiles two-up instead of eating the roster's vertical space. */}
-          <div className="tv-stats">
+          <div className="tv-stats" data-2up={statsTwoUp ? '' : undefined}>
             <div className="tv-stat">
               <span className="tv-stat-k">{isCash ? t('tv.onTable') : t('tv.prizePool')}</span>
               <span className="tv-stat-v">{money(poolMoney, currency)}</span>
@@ -769,19 +926,36 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             )}
           </div>
           {tvShowPlayers && roster.length > 0 && (
-            <div className="tv-players tv-roster">
+            <div
+              className="tv-players tv-roster"
+              data-dense={rosterRows > 7 ? '' : undefined}
+              style={{
+                ['--tv-roster-rows']: rosterRows,
+                ...(rowFs ? { ['--tv-row-fs']: `${rowFs}px` } : {}),
+              } as CSSProperties}
+            >
               <div className="tv-players-h">
                 <span>{t('tv.players')}</span>
-                <span className="tv-players-h-sub">{rosterAmountLabel}</span>
+                <span className="tv-players-h-sub">
+                  {rosterHidden > 0 && <span className="tv-players-more">+{rosterHidden} · </span>}
+                  {rosterAmountLabel}
+                </span>
               </div>
-              <div className="tv-players-list">
+              <div className="tv-players-list" data-cols={rosterCols} ref={rosterListRef}>
                 {sortedRoster.map((p) => (
                   <div className={`tv-players-row ${p.out ? 'out' : ''}`} key={p.id}>
                     {p.emoji && <span className="tv-players-emoji">{p.emoji}</span>}
                     {p.id === chipLeaderId && <span className="tv-crown" title="Chip leader">👑</span>}
                     <span className="tv-players-name">{p.name}</span>
                     {!p.out && p.trail.length > 1 && (
-                      <Sparkline className="tv-spark" points={p.trail} width={64} height={20} />
+                      // sized off the fitted row so the trail can never be the thing
+                      // that makes a row too tall to fit
+                      <Sparkline
+                        className="tv-spark"
+                        points={p.trail}
+                        width={Math.round((rowFs || 19) * 3.3)}
+                        height={Math.round((rowFs || 19) * 1.05)}
+                      />
                     )}
                     {bountyMode && !isCash && p.knockouts > 0 && (
                       <span className="tv-bounty" title="Bounties">🎯{p.knockouts}</span>

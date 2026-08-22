@@ -27,7 +27,9 @@ export default defineConfig({
               theme_color: '#0a0a0c',
               background_color: '#0a0a0c',
               display: 'standalone',
-              orientation: 'portrait',
+              // 'any', not 'portrait': the phone is used upright, but the same
+              // installed app is what a tablet or laptop runs as the big screen.
+              orientation: 'any',
               start_url: '.',
               scope: '.',
               icons: [
@@ -38,7 +40,19 @@ export default defineConfig({
             },
             workbox: {
               globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+              /* The Firebase chunk is ~470kB of the precache and only a phone that
+                 pairs with a TV ever loads it — everyone else was downloading it on
+                 install for nothing. Cached on first use instead; live sync needs
+                 the network anyway, so there is nothing to keep offline here. */
+              globIgnores: ['**/liveSession-*.js'],
               cleanupOutdatedCaches: true,
+              runtimeCaching: [
+                {
+                  urlPattern: /\/liveSession-[^/]*\.js$/,
+                  handler: 'CacheFirst',
+                  options: { cacheName: 'chipstack-live-sync', expiration: { maxEntries: 4 } },
+                },
+              ],
             },
           }),
         ]),

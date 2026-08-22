@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { Denomination } from '../types';
+import { useT } from '../lib/i18n';
 import Chip from './Chip';
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
  * whole spread is always visible with no scrolling.
  */
 export default function ChipStackViz({ denoms, counts, maxDiscs = 11 }: Props) {
+  const t = useT();
   const used = denoms.filter((d) => counts[d.id] > 0);
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(320);
@@ -29,7 +31,7 @@ export default function ChipStackViz({ denoms, counts, maxDiscs = 11 }: Props) {
     return () => ro.disconnect();
   }, []);
 
-  if (used.length === 0) return <div className="empty">No chips to show yet.</div>;
+  if (used.length === 0) return <div className="empty">{t('plan.noChipsYet')}</div>;
 
   const gap = 12;
   const weight = (d: Denomination) => (d.shape === 'plaque' ? 1.5 : 1);

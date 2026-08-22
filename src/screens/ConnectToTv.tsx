@@ -50,15 +50,23 @@ export default function ConnectToTv() {
     let cancelled = false;
     import('../lib/liveSession').then(({ subscribeSession }) => {
       if (cancelled) return;
-      unsub = subscribeSession(liveSessionCode, (doc) => {
-        const ms = doc.tvSeenAt?.toMillis?.() ?? 0;
-        if (ms && ms !== prevSeenVal.current) {
-          prevSeenVal.current = ms;
-          lastBeatAt.current = Date.now(); // record against the local clock (skew-free)
-          setTvSeen(true);
-          setOnline(true);
-        }
-      });
+      unsub = subscribeSession(
+        liveSessionCode,
+        (doc) => {
+          const ms = doc.tvSeenAt?.toMillis?.() ?? 0;
+          if (ms && ms !== prevSeenVal.current) {
+            prevSeenVal.current = ms;
+            lastBeatAt.current = Date.now(); // record against the local clock (skew-free)
+            setTvSeen(true);
+            setOnline(true);
+          }
+        },
+        // A dropped listener means we stopped hearing the TV, not that the TV died.
+        // Don't let a silent connection pass for a live one.
+        (connected) => {
+          if (!connected) setOnline(false);
+        },
+      );
     });
     return () => {
       cancelled = true;

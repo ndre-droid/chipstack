@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useReducer } from 'react';
+import { createContext, useContext, useEffect, useReducer, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AppState, Denomination, BlindLevel, Preset, Settings, SessionConfig, LedgerPlayer, AccentId, Skin, ChipArt, LeagueGame, Moment, CountingProgress } from './types';
 
@@ -137,7 +137,6 @@ type Action =
       ledger: LedgerPlayer[];
       currency: string;
       unitValue: number;
-      tvBackground?: string | null;
       tvBackgroundFocus?: { x: number; y: number } | null;
       tvBackgroundTone?: number | null;
       minutesPerLevel?: number;
@@ -286,7 +285,6 @@ function reducer(state: AppState, action: Action): AppState {
           currency: action.currency,
           unitValue: action.unitValue,
           // The host owns the big-screen photo so a phone upload shows on the TV.
-          ...(action.tvBackground !== undefined ? { tvBackground: action.tvBackground } : {}),
           ...(action.tvBackgroundFocus !== undefined ? { tvBackgroundFocus: action.tvBackgroundFocus } : {}),
           ...(action.tvBackgroundTone !== undefined ? { tvBackgroundTone: action.tvBackgroundTone } : {}),
           // The host also drives the TV look, timer length and toggles remotely.
@@ -572,9 +570,27 @@ function migrate(raw: string | null): AppState {
   return { denominations, settings, session, presets, ledger, counting: null, league, moments };
 }
 
-const StoreContext = createContext<{ state: AppState; dispatch: React.Dispatch<Action> } | null>(null);
+const StoreContext = createContext<{
+  state: AppState;
+  dispatch: React.Dispatch<Action>;
+  /** the save was too big for this browser and the TV photo had to be dropped */
+  storageFull: boolean;
+} | null>(null);
+
+/** Browsers disagree on the name; all of them mean the same thing. */
+function isQuotaError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return (
+    err.name === 'QuotaExceededError' ||
+    err.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+    err.name === 'QUOTA_EXCEEDED_ERR'
+  );
+}
 
 export function StoreProvider({ children }: { children: ReactNode }) {
+  /* True once the browser refused to store the state and the photo had to be
+     dropped to make it fit — surfaced in Settings rather than failing quietly. */
+  const [storageFull, setStorageFull] = useState(false);
   const [state, dispatch] = useReducer(reducer, initialState, () => {
     try {
       return migrate(localStorage.getItem(KEY));
@@ -583,15 +599,47 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   });
 
+  /* Saving is debounced: this fires on EVERY dispatch, and serialising the whole
+     night (ledger, chip history, a background photo as base64) on each keystroke of
+     a player's name is real work on a phone. A quarter second of typing costs one
+     write instead of ten, and the flush below covers the app being closed between
+     two of them. */
   useEffect(() => {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(state));
-    } catch {
-      /* ignore */
-    }
+    const save = () => {
+      try {
+        localStorage.setItem(KEY, JSON.stringify(state));
+        setStorageFull(false);
+      } catch (err) {
+        /* Out of quota is the one failure worth reacting to: dropping the save in
+           silence means the night's numbers are gone at the next launch. The TV
+           photo is the only thing in here big enough to matter, so give that up and
+           keep the game. */
+        if (!isQuotaError(err)) return;
+        setStorageFull(true);
+        try {
+          const trimmed = { ...state, settings: { ...state.settings, tvBackground: null } };
+          localStorage.setItem(KEY, JSON.stringify(trimmed));
+        } catch {
+          /* nothing else worth giving up */
+        }
+      }
+    };
+    const id = window.setTimeout(save, 250);
+    // A phone closing the app never gets the timer; it does get this.
+    const flush = () => {
+      if (document.hidden) {
+        window.clearTimeout(id);
+        save();
+      }
+    };
+    document.addEventListener('visibilitychange', flush);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener('visibilitychange', flush);
+    };
   }, [state]);
 
-  return <StoreContext.Provider value={{ state, dispatch }}>{children}</StoreContext.Provider>;
+  return <StoreContext.Provider value={{ state, dispatch, storageFull }}>{children}</StoreContext.Provider>;
 }
 
 export function useStore() {

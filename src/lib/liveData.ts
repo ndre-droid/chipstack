@@ -13,8 +13,8 @@ export interface LiveData {
   ledger: LedgerPlayer[];
   currency: string;
   unitValue: number;
-  /** big-screen background photo + its smart-placement analysis, so a phone upload shows on the TV */
-  tvBackground: string | null;
+  /** the background photo's smart-placement analysis. The image ITSELF is not in
+   *  here — see `backgroundOf` and the `assets/background` document. */
   tvBackgroundFocus: { x: number; y: number } | null;
   tvBackgroundTone: number | null;
   /** TV look + behaviour the host controls remotely (design, timer length, toggles) */
@@ -61,7 +61,6 @@ export function dataOf(state: AppState): LiveData {
     ledger: state.ledger,
     currency: state.settings.currency,
     unitValue: state.settings.unitValue,
-    tvBackground: state.settings.tvBackground ?? null,
     tvBackgroundFocus: state.settings.tvBackgroundFocus ?? null,
     tvBackgroundTone: state.settings.tvBackgroundTone ?? null,
     minutesPerLevel: state.settings.minutesPerLevel,
@@ -92,24 +91,37 @@ export function dataOf(state: AppState): LiveData {
 }
 
 /**
+ * The big-screen background image, as a data URL. It travels in its OWN document
+ * rather than in `LiveData`: it is by far the biggest thing the TV mirrors (a
+ * photo is a few hundred kB of base64 against a couple of kB for everything else),
+ * a Firestore document caps at 1 MiB, and a merge write re-sends the whole map —
+ * so leaving it in `data` meant every rename and every rebuy pushed the photo
+ * across the phone's connection again.
+ */
+export function backgroundOf(state: AppState): string | null {
+  return state.settings.tvBackground ?? null;
+}
+
+/**
  * A short string that changes iff something the TV mirrors changes. Used by the
  * host-sync hook to decide when to push, without maintaining a hand-written list
  * of dependencies (the source of the old "some changes never reached the TV" bug).
- * The background photo can be a large data URL, so it's proxied by length rather
- * than stringified in full on every render.
  */
 export function liveSignature(state: AppState): string {
-  const d = dataOf(state);
-  const raw = d.tvBackground;
-  // The generated SVG presets differ only by a few colour values, so a
-  // length + first-24-chars proxy collides between them (they share a prefix and
-  // an identical length) — that was why switching presets never reached the TV.
-  // Include small backgrounds (the presets) in FULL; only large photo uploads are
-  // proxied, and then by sampling start+middle+end so different photos still differ.
-  const bg = !raw
-    ? ''
-    : raw.length < 50000
-      ? raw
-      : `${raw.length}:${raw.slice(0, 32)}:${raw.slice(raw.length >> 1, (raw.length >> 1) + 32)}:${raw.slice(-32)}`;
-  return JSON.stringify({ ...d, tvBackground: bg });
+  return JSON.stringify(dataOf(state));
+}
+
+/**
+ * The same idea for the background image, which is pushed separately. Sampling
+ * start/middle/end keeps a long data URL cheap to compare while still telling two
+ * different photos apart; the generated SVG presets share a prefix AND a length,
+ * which is why the length alone is not enough (switching preset never reached the
+ * TV back when this was a plain length check).
+ */
+export function backgroundSignature(state: AppState): string {
+  const raw = backgroundOf(state);
+  if (!raw) return '';
+  if (raw.length < 50000) return raw;
+  const mid = raw.length >> 1;
+  return `${raw.length}:${raw.slice(0, 32)}:${raw.slice(mid, mid + 32)}:${raw.slice(-32)}`;
 }

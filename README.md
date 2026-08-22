@@ -26,9 +26,44 @@ npm install
 npm run dev        # http://localhost:5173
 npm run build      # -> dist/  (installable PWA: manifest + offline service worker)
 npm run preview    # serve the built PWA locally
+npm test           # the engine + live-sync tests (plain node, no framework)
 ```
 
 Regenerate app icons after changing the design: `node scripts/gen-icons.mjs`.
+
+## Live session backend (Firestore)
+
+The phone↔TV link is one document per four-digit code in the `chipstack-live` Firestore
+project, plus a second document for the big-screen photo:
+
+```
+sessions/{code}       data (the mirrored game), clock, tvSeenAt, expiresAt
+sessions/{code}-bg    image (the big-screen photo as a data URL), expiresAt
+```
+
+The photo is deliberately kept out of `data`: a merge write re-sends every field it is
+given, so a few hundred kB of base64 would ride along with every rename and every rebuy,
+and a Firestore document caps at 1 MiB.
+
+`firestore.rules` is the source of truth for what the backend accepts — deploy it with:
+
+```bash
+firebase deploy --only firestore:rules
+```
+
+**TTL sweep (one-time setup).** Every write stamps `expiresAt` ~24h out. Turn on the
+policy that acts on it, or abandoned sessions accumulate forever:
+
+```bash
+gcloud firestore fields ttls update expiresAt --collection-group=sessions --enable-ttl --project=chipstack-live
+```
+
+(Or Firestore console → *Time-to-live* → add policy for collection group `sessions`,
+field `expiresAt`. One policy covers both document kinds — they share the collection.)
+
+There is no sign-in: the code IS the credential. That is the right trade for a living-room
+game, but it means the rules can only keep the data well-formed and bounded, not private —
+anyone who knows or guesses a live code can read that table.
 
 ## Install on your phone (PWA)
 

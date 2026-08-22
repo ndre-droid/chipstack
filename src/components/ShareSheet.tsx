@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import qrcode from 'qrcode-generator';
 import { useStore } from '../store';
+import { useT } from '../lib/i18n';
 import { encodeSetup, decodeSetup, renderStackImage } from '../lib/share';
 import { IconShare, IconCheck } from '../components/Icons';
 
@@ -15,6 +16,7 @@ interface Props {
 
 export default function ShareSheet({ onClose, imageRows, title, subtitle, totalChips, totalLabel }: Props) {
   const { state, dispatch } = useStore();
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const [importText, setImportText] = useState('');
   const [importMsg, setImportMsg] = useState<string | null>(null);
@@ -67,11 +69,11 @@ export default function ShareSheet({ onClose, imageRows, title, subtitle, totalC
   const doImport = () => {
     const decoded = decodeSetup(importText);
     if (!decoded) {
-      setImportMsg('That code could not be read.');
+      setImportMsg(t('share.importFailed'));
       return;
     }
     dispatch({ type: 'IMPORT_SETUP', ...decoded });
-    setImportMsg('Setup imported.');
+    setImportMsg(t('share.imported'));
     setTimeout(onClose, 700);
   };
 
@@ -79,41 +81,41 @@ export default function ShareSheet({ onClose, imageRows, title, subtitle, totalC
     <div className="sheet-overlay" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-handle" />
-        <h3 className="sheet-title">Share this setup</h3>
+        <h3 className="sheet-title">{t('share.title')}</h3>
 
-        <img className="share-img" src={imageUrl} alt="Stack summary" />
+        <img className="share-img" src={imageUrl} alt={t('share.imageAlt')} />
         <button className="btn btn-primary btn-block mt12" onClick={shareImage}>
-          <IconShare size={17} /> Share / save image
+          <IconShare size={17} /> {t('share.shareImage')}
         </button>
 
         <div className="divider" />
-        <div className="section-label" style={{ margin: '0 0 8px' }}>Setup code</div>
+        <div className="section-label" style={{ margin: '0 0 8px' }}>{t('share.setupCode')}</div>
         <div className="code-box">{code}</div>
         <button className="btn btn-ghost btn-block btn-sm mt8" onClick={copyCode}>
           {copied ? (
             <>
-              <IconCheck size={16} /> Copied
+              <IconCheck size={16} /> {t('settings.copied')}
             </>
           ) : (
-            'Copy code'
+            t('share.copyCode')
           )}
         </button>
         {qrUrl ? (
           <div className="qr-wrap">
-            <img src={qrUrl} alt="Setup QR code" />
-            <span className="faint" style={{ fontSize: 11.5 }}>Scan to import on another phone</span>
+            <img src={qrUrl} alt={t('share.qrAlt')} />
+            <span className="faint" style={{ fontSize: 11.5 }}>{t('share.qrHint')}</span>
           </div>
         ) : (
           <p className="faint" style={{ fontSize: 12, textAlign: 'center', marginTop: 8 }}>
-            Setup too large for a QR — use the code above.
+            {t('share.tooLarge')}
           </p>
         )}
 
         <div className="divider" />
-        <div className="section-label" style={{ margin: '0 0 8px' }}>Import a setup</div>
+        <div className="section-label" style={{ margin: '0 0 8px' }}>{t('share.importTitle')}</div>
         <textarea
           className="import-box"
-          placeholder="Paste a CS1:… code"
+          placeholder={t('share.importPlaceholder')}
           value={importText}
           onChange={(e) => {
             setImportText(e.target.value);
@@ -121,7 +123,7 @@ export default function ShareSheet({ onClose, imageRows, title, subtitle, totalC
           }}
         />
         <button className="btn btn-ghost btn-block btn-sm mt8" onClick={doImport} disabled={!importText.trim()}>
-          Import setup
+          {t('share.import')}
         </button>
         {importMsg && (
           <p style={{ fontSize: 12.5, textAlign: 'center', marginTop: 8, color: importMsg.includes('imported') ? '#4fe08a' : '#ffb3aa', fontWeight: 700 }}>
@@ -130,7 +132,7 @@ export default function ShareSheet({ onClose, imageRows, title, subtitle, totalC
         )}
 
         <button className="btn btn-ghost btn-block mt16" onClick={onClose}>
-          Close
+          {t('share.close')}
         </button>
       </div>
     </div>

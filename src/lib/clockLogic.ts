@@ -49,10 +49,6 @@ export function setMinutesPerLevel(c: ClockState, minutes: number): ClockState {
   return { ...c, minutesPerLevel: m, remaining: dur, periodEndsAt: c.running ? Date.now() + dur * 1000 : null };
 }
 
-export function resetLevel(c: ClockState): ClockState {
-  const dur = c.onBreak ? 5 * 60 : c.minutesPerLevel * 60;
-  return { ...c, remaining: dur, periodEndsAt: c.running ? Date.now() + dur * 1000 : null };
-}
 
 export function startBreak(c: ClockState, minutes = 5): ClockState {
   const dur = Math.max(1, Math.floor(minutes)) * 60;
@@ -64,15 +60,3 @@ export function cancelBreak(c: ClockState): ClockState {
   return { ...c, onBreak: false, remaining: dur, periodEndsAt: c.running ? Date.now() + dur * 1000 : null };
 }
 
-/** Called by the clock owner (TV) when its local countdown reaches zero. */
-export function advanceAfterExpiry(c: ClockState, maxIdx: number): ClockState {
-  if (c.onBreak) {
-    const dur = c.minutesPerLevel * 60;
-    return { ...c, onBreak: false, remaining: dur, periodEndsAt: Date.now() + dur * 1000 };
-  }
-  if (c.levelIdx + 1 <= maxIdx) {
-    const dur = c.minutesPerLevel * 60;
-    return { ...c, levelIdx: c.levelIdx + 1, remaining: dur, periodEndsAt: Date.now() + dur * 1000 };
-  }
-  return { ...c, running: false, remaining: 0, periodEndsAt: null };
-}

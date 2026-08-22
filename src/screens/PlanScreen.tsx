@@ -194,8 +194,9 @@ export default function PlanScreen() {
           </div>
         </div>
         <div className="hero-sub">
-          {fmtMoney(effTotal * unit, cur)} · {num(effTotal)} pts · {effUsed.length} {effUsed.length === 1 ? 'denomination' : 'denominations'}
-          {edited && <span className="badge-soft" style={{ marginLeft: 8 }}>edited</span>}
+          {fmtMoney(effTotal * unit, cur)} · {num(effTotal)} pts · {effUsed.length}{' '}
+          {t(effUsed.length === 1 ? 'plan.denomOne' : 'plan.denomMany')}
+          {edited && <span className="badge-soft" style={{ marginLeft: 8 }}>{t('plan.edited')}</span>}
         </div>
 
         <ChipStackViz denoms={effUsed} counts={displayCounts} />
@@ -204,7 +205,7 @@ export default function PlanScreen() {
         <div className="hero-slider">
           <div className="hero-slider-head">
             <span>{t('plan.chipMix')}</span>
-            <span className="badge-soft">{Math.round(smallBias * 100)}% small</span>
+            <span className="badge-soft">{t('plan.pctSmall', { n: Math.round(smallBias * 100) })}</span>
           </div>
           <input
             type="range"
@@ -239,11 +240,12 @@ export default function PlanScreen() {
           <div className={`blind-check ${starting.blindOk ? 'ok' : 'bad'}`}>
             {baseDenom && <Chip value={baseDenom.value} color={baseDenom.color} accent={baseDenom.accent} size={30} shape={baseDenom.shape} />}
             <div>
-              <b>Smallest chip {starting.baseValue}</b>
+              <b>{t('plan.smallestChip', { v: starting.baseValue })}</b>
               <span>
-                {starting.blindOk
-                  ? ` posts the ${startBlind.smallBlind}/${startBlind.bigBlind} blinds and makes change.`
-                  : ` can’t post the ${startBlind.smallBlind}/${startBlind.bigBlind} blinds — add a smaller chip or raise the blinds.`}
+                {t(starting.blindOk ? 'plan.blindOk' : 'plan.blindBad', {
+                  sb: startBlind.smallBlind,
+                  bb: startBlind.bigBlind,
+                })}
               </span>
             </div>
             {starting.blindOk ? <IconCheck size={18} /> : <IconAlert size={18} />}
@@ -254,11 +256,11 @@ export default function PlanScreen() {
       {/* feasibility */}
       {starting.feasible ? (
         <div className="feas ok">
-          <IconCheck size={18} /> {t('plan.enoughChips', { n: numPlayers })}
+          <IconCheck size={18} /> {t('plan.enoughChips', { n: startingStacks })}
         </div>
       ) : (
         <div className="feas warn">
-          <IconAlert size={18} /> {t('plan.notEnoughChips', { n: numPlayers })}
+          <IconAlert size={18} /> {t('plan.notEnoughChips', { n: startingStacks })}
         </div>
       )}
       {starting.warnings.length > 0 && (
@@ -456,7 +458,7 @@ export default function PlanScreen() {
         <div className="row mt12">
           <div>
             <div style={{ fontWeight: 600, fontSize: 14 }}>{t('plan.earlyRebuys')}</div>
-            <div className="faint" style={{ fontSize: 12 }}>Same {fmtMoney(buyIn, cur)} at the starting blinds — they need small chips too.</div>
+            <div className="faint" style={{ fontSize: 12 }}>{t('plan.earlyRebuysHint', { amount: fmtMoney(buyIn, cur) })}</div>
           </div>
           <div className="spacer" />
           <div className="stepper">
@@ -466,7 +468,12 @@ export default function PlanScreen() {
           </div>
         </div>
         <p className="faint" style={{ fontSize: 12, margin: '12px 2px 0' }}>
-          {fmtMoney(buyIn, cur)} = <b style={{ color: 'var(--acc)' }}>{num(buyInUnits)} pts</b> · later rebuy {num(lateRebuyUnits)} pts · dealing {startingStacks} starting stacks
+          {t('plan.buyInSummary', {
+            amount: fmtMoney(buyIn, cur),
+            units: num(buyInUnits),
+            rebuy: num(lateRebuyUnits),
+            stacks: startingStacks,
+          })}
         </p>
       </div>
 
@@ -649,8 +656,11 @@ export default function PlanScreen() {
         <ShareSheet
           onClose={() => setShareOpen(false)}
           imageRows={effUsed.map((d) => ({ value: d.value, color: d.color, count: displayCounts[d.id], shape: d.shape }))}
-          title={`${cur}${buyIn} buy-in`}
-          subtitle={`${numPlayers} players${startBlind ? ` · blinds ${startBlind.smallBlind}/${startBlind.bigBlind}` : ''}`}
+          title={t('plan.shareTitle', { amount: fmtMoney(buyIn, cur) })}
+          subtitle={
+            t('plan.sharePlayers', { n: numPlayers }) +
+            (startBlind ? t('plan.shareBlinds', { sb: startBlind.smallBlind, bb: startBlind.bigBlind }) : '')
+          }
           totalChips={effChips}
           totalLabel={`${fmtMoney(effTotal * unit, cur)}`}
         />
@@ -662,15 +672,16 @@ export default function PlanScreen() {
 /* ---------- Sub-components ---------- */
 
 function StackTable({ stack, stacks, unit, cur }: { stack: StackResult; stacks: number; unit: number; cur: string }) {
+  const t = useT();
   const { money: fmtMoney } = useFmt();
   return (
     <table className="dist-table">
       <thead>
         <tr>
-          <th>Chip</th>
-          <th>Each</th>
-          <th>All {stacks}</th>
-          <th>Value</th>
+          <th>{t('plan.tblChip')}</th>
+          <th>{t('plan.tblEach')}</th>
+          <th>{t('plan.tblAll', { n: stacks })}</th>
+          <th>{t('plan.tblValue')}</th>
         </tr>
       </thead>
       <tbody>
@@ -690,7 +701,7 @@ function StackTable({ stack, stacks, unit, cur }: { stack: StackResult; stacks: 
       </tbody>
       <tfoot>
         <tr>
-          <td>Total</td>
+          <td>{t('plan.tblTotal')}</td>
           <td>{stack.chipCount}</td>
           <td>{stack.chipCount * stacks}</td>
           <td>{fmtMoney(stack.totalValue * unit, cur)}</td>
@@ -701,16 +712,17 @@ function StackTable({ stack, stacks, unit, cur }: { stack: StackResult; stacks: 
 }
 
 function StageCard({ blind, level, stack }: { blind: BlindLevel; level: number; stack: StackResult }) {
+  const t = useT();
   const { num } = useFmt();
   return (
     <div className="stage-card">
       <div className="stage-head">
-        <span className="lvl">Level {level}</span>
+        <span className="lvl">{t('plan.stageLevel', { n: level })}</span>
         <span className="blinds">{blind.smallBlind}/{blind.bigBlind}</span>
       </div>
       <div className="stage-rows">
         {stack.denomsUsed.length === 0 ? (
-          <div className="faint" style={{ fontSize: 12 }}>No stack.</div>
+          <div className="faint" style={{ fontSize: 12 }}>{t('plan.noStack')}</div>
         ) : (
           stack.denomsUsed
             .slice()
