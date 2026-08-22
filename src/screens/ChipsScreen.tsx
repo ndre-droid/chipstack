@@ -2,6 +2,7 @@ import { useStore } from '../store';
 import Chip from '../components/Chip';
 import { IconPlus, IconTrash } from '../components/Icons';
 import { useT, useFmt } from '../lib/i18n';
+import { Toggle } from '../components/Toggle';
 
 export default function ChipsScreen() {
   const { state, dispatch } = useStore();
@@ -110,11 +111,10 @@ export default function ChipsScreen() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-              <div
-                className={`toggle ${d.enabled ? 'on' : ''}`}
-                onClick={() => dispatch({ type: 'UPDATE_DENOM', id: d.id, patch: { enabled: !d.enabled } })}
-                role="switch"
-                aria-checked={d.enabled}
+              <Toggle
+                on={d.enabled}
+                label={`${d.value}`}
+                onChange={() => dispatch({ type: 'UPDATE_DENOM', id: d.id, patch: { enabled: !d.enabled } })}
               />
               <button className="icon-btn danger" onClick={() => dispatch({ type: 'REMOVE_DENOM', id: d.id })} aria-label="Delete">
                 <IconTrash size={17} />

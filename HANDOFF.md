@@ -267,6 +267,80 @@ break length + auto-break every N, blinds (edit/add/remove), players & pool (ren
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
 
+### Recent work (2026-08-22 — stacks are typed in euros; app-wide audit fixes)
+Two things: the stack-entry rework the user asked for, then the whole list of problems the
+audit turned up. **NOT deployed** — see the ⚠️ Firebase steps at the end.
+
+**Stacks: typing the euro amount is now the primary path.**
+- Roster row: tapping the stack opens an inline `€` field (`StackPrompt` in `PlayerRoster.tsx`)
+  with `= Buy-in` / `+€x` quick chips; Enter saves. Colour tallying is a `🧮 Nach Farben` button
+  inside that panel.
+- `CountRound` gained a mode switch, **`Betrag eingeben` is the default**: one big money field per
+  player, pre-filled with what they are believed to hold, `Rest zuweisen` on the last player. The
+  colour-by-colour sheet is unchanged behind `Nach Farben zählen`. The choice persists in the new
+  `Settings.countMode`.
+- Both paths commit through `LEDGER_SET_CHIPS_MANY`, so the trail, sparkline, undo snackbar and
+  the single TV push behave exactly as before.
+
+**The comma bug (this one was eating money).** `<input type="number">` returns an EMPTY string for
+`47,25` in Chrome — and a comma is the decimal key on a German keyboard, so amounts silently became
+0. New `parseMoney()` in `lib/money.ts` (+ `money.test.ts`) and a `components/MoneyInput.tsx`
+(`type="text" inputMode="decimal"`, keeps the raw text while typing). Every money field in the app
+now uses it: roster, counting round, player sheet, Plan buy-in/rebuy, bounty, chip unit value.
+
+**Clock.** `lib/localClock.ts` — the phone's own clock moved OUT of `TableScreen` state. It used to
+reset (and stop) every time you left the tab, because `App` remounts the screen via `<main key={view}>`.
+Now it is a module-level deadline-based `ClockState` that catches up on return. `lib/useHostClock.ts`
+does the same job for a hosting phone (one subscription, owned by the Table tab), and `RemoteControl`
+takes `clock`/`send` as PROPS instead of subscribing itself. **A standalone TV now shares the phone's
+clock** — opening the big screen continues the same countdown instead of forking a second one.
+
+**Table tab UI.** A sticky bar (`.table-sticky`) pins level / blinds / time / play-pause to the top
+while you scroll the roster; game mode, TV broadcast and dealer/seats are folded into a `Tisch-Setup`
+disclosure once anybody has sat down.
+
+**Roster.** Names are read-only until tapped (a stray scroll-tap used to rename people), 👑 marks the
+chip leader, and each still-playing row shows its live net.
+
+**`window.confirm` is gone** (6 uses) — `components/Confirm.tsx` + `useConfirm()`. The native dialog
+blocked the JS thread, so the live-sync queue and the clock stopped while it was open.
+
+**Accessibility.** `components/Toggle.tsx` — every switch was a `<div role="switch" onClick>`: not
+focusable, not operable by keyboard. They are `<button>`s now, which matters because the same UI runs
+on a laptop being used as the big screen.
+
+**TV / live sync.**
+- **WakeLock is re-requested on `visibilitychange`.** It is released whenever the document hides and
+  is never handed back — the big screen went to sleep after any app switch.
+- **`hostSeenAt`** — the mirror of `tvSeenAt`. The host pushes it with every data write plus a 45 s
+  heartbeat; the TV shows `⚠ Handy offline` after 90 s of silence instead of presenting a frozen
+  table as current. Staleness is measured against the TV's OWN clock (a TV stick with a wrong clock
+  would otherwise call a healthy phone dead).
+- TV heartbeat 12 s → 25 s; host data debounce 150 ms → 400 ms. Deliberately NOT skipping pushes when
+  no TV seems to be listening: a phone cannot tell "no TV" from "TV briefly offline", and a skipped
+  push leaves the big screen stale.
+
+**⚠️ Firestore rules were rewritten and are NOT deployed. Manual steps, in this order:**
+1. Firebase console → Authentication → Sign-in method → **enable Anonymous**.
+2. Push to `main` (Pages redeploys itself) **and rebuild + install the APK**.
+3. `firebase deploy --only firestore:rules`
+
+The old rules let anyone who guessed a 4-digit code read, overwrite or **delete** a live session.
+Now every client signs in anonymously (`ensureAuth()` in `lib/firebase.ts`, `firebase/auth` is
+dynamically imported so it stays out of the main bundle), the session records `tvUid`/`hostUid`, and
+only those two devices may write; deletes are the owning screen's only. `expiresAt` is now REQUIRED
+(it was tolerated), and the game payload is bounded by list length. `ensureAuth()` degrades to `null`
+if the provider is not enabled, so the app keeps working against the OLD rules until step 3 — but an
+APK that is not updated will lose live sync once the rules land. Reading a session over the plain
+REST API with the public web key no longer works (it is unauthenticated) — that was the old debugging
+trick.
+
+Verified in the dev preview (de): stack typed with a comma, 4-player money round → diff €0, timer kept
+running across a tab switch (19:58 → 19:56), TV opened at the phone's level/time and its level change
+came back to the sticky bar, toggles focusable with `aria-checked` flipping, in-app confirm cancels
+without touching the ledger, rename closes on Enter. `tsc -b`, `npm run build`, `npm test` (6 files)
+and `oxlint` all clean, no console errors.
+
 ### Recent work (2026-08-15, part 4 — buy-ins hand out real chips, resets, one-tap amounts)
 - **`handoutStack()` in `lib/startingStack.ts`** — the chips for ANY amount. A full buy-in returns
   exactly `startingStackOf()` (fine-tuning included); anything else is computed for that amount, and

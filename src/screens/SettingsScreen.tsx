@@ -2,6 +2,8 @@ import { useStore } from '../store';
 import Chip from '../components/Chip';
 import { useT, useFmt } from '../lib/i18n';
 import type { Appearance, AccentId, Skin, ChipArt } from '../types';
+import { useConfirm } from '../components/Confirm';
+import MoneyInput from '../components/MoneyInput';
 
 const CURRENCIES = ['€', '$', '£', 'zł', 'Fr'];
 const UNIT_PRESETS = [
@@ -46,6 +48,7 @@ export default function SettingsScreen() {
   const { settings } = state;
   const t = useT();
   const { money: fmtMoney } = useFmt();
+  const confirm = useConfirm();
 
   const activeStyle = STYLES.find((s) => s.id === settings.skin) ?? STYLES[0];
   const accentColor = (id: AccentId) => ACCENTS.find((a) => a.id === id)?.color ?? '#f0b429';
@@ -177,13 +180,10 @@ export default function SettingsScreen() {
           <label>{t('settings.oneChipWorth')}</label>
           <div className="input-affix">
             <span className="affix">{settings.currency}</span>
-            <input
-              className="input"
-              type="number"
-              inputMode="decimal"
-              step="0.01"
+            <MoneyInput
               value={settings.unitValue}
-              onChange={(e) => dispatch({ type: 'UPDATE_SETTINGS', patch: { unitValue: Math.max(0, +e.target.value) } })}
+              ariaLabel={t('settings.oneChipWorth')}
+              onCommit={(v) => dispatch({ type: 'UPDATE_SETTINGS', patch: { unitValue: Math.max(0, v) } })}
             />
           </div>
         </div>
@@ -267,7 +267,12 @@ export default function SettingsScreen() {
           <button
             className="btn btn-ghost btn-sm"
             onClick={() => {
-              if (confirm('Reset all chips, players and settings to defaults?')) dispatch({ type: 'RESET' });
+              confirm.ask({
+                text: t('settings.resetConfirm'),
+                confirmLabel: t('settings.reset'),
+                danger: true,
+                onYes: () => dispatch({ type: 'RESET' }),
+              });
             }}
           >
             {t('settings.reset')}
@@ -278,6 +283,7 @@ export default function SettingsScreen() {
       <p className="faint" style={{ fontSize: 12, textAlign: 'center', marginTop: 20 }}>
         {t('settings.footer')}
       </p>
+      {confirm.node}
     </div>
   );
 }

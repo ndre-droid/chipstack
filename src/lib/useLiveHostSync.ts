@@ -51,7 +51,13 @@ export function useLiveHostSync() {
     if (timer.current) window.clearTimeout(timer.current);
     // The queue is handed a getter, not a snapshot, so a retry sends the state as
     // it is at that moment rather than replaying whatever it was when this fired.
-    timer.current = window.setTimeout(() => queueData(liveSessionCode, () => stateRef.current), 150);
+    /* 400ms, not 150: every push is a full merge of the game document, and typing a
+       name or dragging the stack slider used to fire one every 150ms. Nobody at the
+       table can tell the difference, and the write count drops by more than half.
+       (Deliberately NOT skipped when no TV is listening — a phone cannot reliably
+       tell "no TV" from "TV briefly offline", and a skipped push would leave the big
+       screen stale when it comes back. Correctness beats the quota.) */
+    timer.current = window.setTimeout(() => queueData(liveSessionCode, () => stateRef.current), 400);
     return () => {
       if (timer.current) window.clearTimeout(timer.current);
     };
@@ -64,6 +70,28 @@ export function useLiveHostSync() {
     queueBackground(liveSessionCode, () => backgroundOf(stateRef.current));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bgSig, liveSessionCode, liveSessionRole]);
+
+  /* Say "still here" on a slow interval. A table where nothing happens for ten
+     minutes (no rebuy, no count, clock running on the TV) sends no data at all, and
+     without this the big screen could not tell that from a phone Android had quietly
+     discarded. A dropped beat is not worth retrying — the next one is 45s away. */
+  useEffect(() => {
+    if (!firebaseConfigured || liveSessionRole !== 'host' || !liveSessionCode) return;
+    let stopped = false;
+    const beat = () =>
+      import('./liveSession')
+        .then(({ hostHeartbeat }) => {
+          if (!stopped) return hostHeartbeat(liveSessionCode);
+        })
+        .catch(() => {
+          /* offline — the next beat, or the next real push, covers it */
+        });
+    const id = window.setInterval(beat, 45000);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+  }, [liveSessionCode, liveSessionRole]);
 
   // Left the session (or never in one): drop anything still queued, so a retry can
   // never land on a session this device has walked away from. Keyed on the CODE, not

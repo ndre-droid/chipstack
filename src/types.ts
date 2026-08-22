@@ -58,6 +58,10 @@ export interface Settings {
   gameMode: 'tournament' | 'cash';
   /** Cash game only: whether the blind timer/ladder runs. Off = a single fixed level. */
   cashUseTimer: boolean;
+  /** How a stack is entered mid-game. 'money' (the default) types the euro amount
+   *  straight in — the fastest thing at a real table; 'colours' tallies the stack
+   *  chip by chip. Per-device preference, remembered between rounds. */
+  countMode: 'money' | 'colours';
   /** Show the computed starting-stack breakdown as an overlay on the big screen. */
   tvShowStartStack: boolean;
   /** Knockout bounty (tournament): every player pays `bountyAmount` on top of the

@@ -9,7 +9,7 @@ import {
   Timestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
-import { getDb, firebaseConfigured } from './firebase';
+import { ensureAuth, getDb, firebaseConfigured } from './firebase';
 import type { AppState } from '../types';
 import type { ClockState } from './clockLogic';
 import { dataOf, type LiveData } from './liveData';
@@ -31,6 +31,15 @@ export interface LiveDoc {
   /** the TV heartbeat — bumped every few seconds while a TV is showing this
    *  session, so the host phone can tell a live TV from a dropped one. */
   tvSeenAt?: FireTimestamp | null;
+  /** the mirror image: bumped by the host phone on every push, so the big screen
+   *  can say "the phone is gone" instead of showing a frozen table as if it were
+   *  current. Android discards backgrounded tabs without warning anybody. */
+  hostSeenAt?: FireTimestamp | null;
+  /** anonymous uid of the big screen that created this session, and of the phone
+   *  that claimed it. The security rules let these two write and nobody else — the
+   *  four-digit code alone is far too easy to guess for that. */
+  tvUid?: string | null;
+  hostUid?: string | null;
 }
 
 export { firebaseConfigured };
@@ -69,10 +78,12 @@ function sessionRef(code: string) {
  * fills `data` in.
  */
 export async function tvEnsurePairing(existingCode: string | null, clock: ClockState): Promise<string> {
+  const uid = await ensureAuth();
+  const owned = uid ? { tvUid: uid } : {};
   if (existingCode) {
     const ref = sessionRef(existingCode);
     const snap = await getDoc(ref);
-    if (!snap.exists()) await setDoc(ref, { data: null, clock, ...stamps() });
+    if (!snap.exists()) await setDoc(ref, { data: null, clock, ...owned, ...stamps() });
     return existingCode;
   }
   /* Claim the code in a transaction. Reading first and writing after left a gap in
@@ -87,7 +98,7 @@ export async function tvEnsurePairing(existingCode: string | null, clock: ClockS
       const ref = sessionRef(code);
       const snap = await tx.get(ref);
       if (snap.exists()) return false;
-      tx.set(ref, { data: null, clock, ...stamps() });
+      tx.set(ref, { data: null, clock, ...owned, ...stamps() });
       return true;
     });
     if (claimed) return code;
@@ -95,7 +106,7 @@ export async function tvEnsurePairing(existingCode: string | null, clock: ClockS
   // 8 codes taken in a row: the collection is unusually busy, so take the last one
   // rather than leaving the screen without a code to show.
   const code = genCode();
-  await setDoc(sessionRef(code), { data: null, clock, ...stamps() });
+  await setDoc(sessionRef(code), { data: null, clock, ...owned, ...stamps() });
   return code;
 }
 
@@ -105,7 +116,22 @@ export async function tvEnsurePairing(existingCode: string | null, clock: ClockS
  * lost (e.g. the host reloaded after the doc expired) instead of failing forever.
  */
 export async function hostPushData(code: string, state: AppState): Promise<void> {
-  await setDoc(sessionRef(code), { data: dataOf(state), ...stamps() }, { merge: true });
+  const uid = await ensureAuth();
+  await setDoc(
+    sessionRef(code),
+    { data: dataOf(state), hostSeenAt: serverTimestamp(), ...(uid ? { hostUid: uid } : {}), ...stamps() },
+    { merge: true },
+  );
+}
+
+/**
+ * Host (phone): say "still here" without re-sending the game. Called on a slow
+ * interval while hosting, so a quiet table (nobody rebuying, nobody counting) does
+ * not look to the big screen like a phone that died.
+ */
+export async function hostHeartbeat(code: string): Promise<void> {
+  await ensureAuth();
+  await setDoc(sessionRef(code), { hostSeenAt: serverTimestamp(), ...stamps() }, { merge: true });
 }
 
 /**
@@ -114,6 +140,7 @@ export async function hostPushData(code: string, state: AppState): Promise<void>
  * phone remote working even after a reload.
  */
 export async function pushClock(code: string, clock: ClockState): Promise<void> {
+  await ensureAuth();
   await setDoc(sessionRef(code), { clock, ...stamps() }, { merge: true });
 }
 
@@ -137,6 +164,7 @@ function backgroundRef(code: string) {
  * rebuy's worth of traffic instead of a photo's.
  */
 export async function pushBackground(code: string, image: string | null): Promise<void> {
+  await ensureAuth();
   await setDoc(backgroundRef(code), { image, ...stamps() });
 }
 
@@ -144,6 +172,7 @@ export async function pushBackground(code: string, image: string | null): Promis
 export function subscribeBackground(code: string, onUpdate: (image: string | null) => void): Unsubscribe {
   const db = getDb();
   if (!db) return () => {};
+  void ensureAuth();
   return onSnapshot(
     doc(db, 'sessions', `${code}-bg`),
     (snap) => onUpdate(snap.exists() ? ((snap.data() as { image?: string | null }).image ?? null) : null),
@@ -158,6 +187,7 @@ export function subscribeBackground(code: string, onUpdate: (image: string | nul
  * short interval while a device is showing the big screen. Merge write, tiny.
  */
 export async function tvHeartbeat(code: string): Promise<void> {
+  await ensureAuth();
   await setDoc(sessionRef(code), { tvSeenAt: serverTimestamp(), ...stamps() }, { merge: true });
 }
 
@@ -169,6 +199,7 @@ export async function tvHeartbeat(code: string): Promise<void> {
  */
 export async function endSession(code: string): Promise<void> {
   try {
+    await ensureAuth(); // only the screen that created the session may delete it
     // the photo first: deleting a parent document does not remove its subcollection
     await deleteDoc(backgroundRef(code)).catch(() => {});
     await deleteDoc(sessionRef(code));
@@ -179,6 +210,7 @@ export async function endSession(code: string): Promise<void> {
 
 /** TV: verify a code exists before joining, so a mistyped code fails fast with a clear message. */
 export async function checkCodeExists(code: string): Promise<boolean> {
+  await ensureAuth();
   const snap = await getDoc(sessionRef(code));
   return snap.exists();
 }
@@ -205,6 +237,10 @@ export function subscribeSession(
   if (!db) return () => {};
   const ref = doc(db, 'sessions', code);
   let stopped = false;
+  /* Signed in before the first read: the rules only serve sessions to a signed-in
+     device. It resolves in the background — a listener that opens a moment too
+     early fails, and the retry below picks it up. */
+  void ensureAuth();
   let inner: Unsubscribe | null = null;
   let retry: ReturnType<typeof setTimeout> | null = null;
   let attempts = 0;

@@ -10,6 +10,7 @@ import type { Unsubscribe } from 'firebase/firestore';
 import { secondsLeft as clockSecondsLeft, initialClock } from '../lib/clockLogic';
 import type { ClockState } from '../lib/clockLogic';
 import { queueClock } from '../lib/liveSyncQueue';
+import { getLocalClock, setLocalClock } from '../lib/localClock';
 import { startingStackOf } from '../lib/startingStack';
 import { autoTvScale, clampTvScale, TV_SCALE_MIN, TV_SCALE_MAX, TV_SCALE_STEP } from '../lib/tvScale';
 import { colorUpEvents } from '../lib/planning';
@@ -140,6 +141,13 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const [paired, setPaired] = useState(false); // a phone has connected (doc has data)
   const [liveLost, setLiveLost] = useState(false); // the session listener dropped and is re-opening
   const [connectToast, setConnectToast] = useState(false); // brief "phone connected" cue
+  /* When the host phone last said anything. Android silently discards a
+     backgrounded tab, and the big screen then kept showing a frozen table as if it
+     were current — this is what lets it admit the phone is gone. Null means the
+     phone has never sent one (an older build), and then nothing is claimed. */
+  const [hostSeenLocal, setHostSeenLocal] = useState<number | null>(null);
+  const hostSeenServer = useRef<number | null>(null);
+  const [staleTick, setStaleTick] = useState(0);
   const prevPaired = useRef(false);
   const tick = useRef<number | null>(null);
 
@@ -217,6 +225,14 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           } else if (isTv) {
             setPaired(false);
           }
+          /* Recorded against THIS device's clock, not the server stamp: a TV stick
+             with a badly set clock would otherwise declare a healthy phone dead.
+             The server value is only used to notice that it moved. */
+          const seen = doc.hostSeenAt?.toMillis?.();
+          if (typeof seen === 'number' && seen !== hostSeenServer.current) {
+            hostSeenServer.current = seen;
+            setHostSeenLocal(Date.now());
+          }
           // guard: a doc can exist with data but no clock (stale/dead code)
           if (doc.clock) {
             setLevelIdx(doc.clock.levelIdx);
@@ -272,7 +288,9 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           /* transient — the next beat retries */
         });
     beat();
-    const id = window.setInterval(beat, 12000);
+    // 25s: the pill only has to tell a live TV from a dead one, and this is a write
+    // to a public document every time — twice a minute is plenty.
+    const id = window.setInterval(beat, 25000);
     return () => {
       stopped = true;
       window.clearInterval(id);
@@ -323,20 +341,48 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const next = blindLevels[levelIdx + 1];
   const currentBB = level?.bigBlind ?? 1;
 
-  // keep screen awake while the TV is showing
+  /* Nothing from the phone for a minute and a half. Only claimed once the phone has
+     been heard from at least once, so an older build that never sends a heartbeat is
+     never accused of being offline. `staleTick` is what re-evaluates this. */
+  void staleTick;
+  const hostStale = isTv && paired && hostSeenLocal !== null && Date.now() - hostSeenLocal > 90_000;
+
+  /* Keep the screen awake while the big screen is showing.
+     A wake lock is NOT permanent: the browser releases it the moment the document
+     is hidden — switching apps on the TV stick, another tab on the laptop — and it
+     is never handed back on return. Without the re-request below the screen went to
+     sleep mid-game, which is exactly when nobody is touching the device. */
   useEffect(() => {
-    let lock: { release: () => void } | null = null;
+    type Sentinel = { release: () => Promise<void> | void };
+    let lock: Sentinel | null = null;
+    let stopped = false;
     const req = async () => {
+      if (stopped || document.hidden || lock) return;
       try {
-        lock = await (navigator as unknown as { wakeLock?: { request: (t: string) => Promise<{ release: () => void }> } }).wakeLock?.request('screen') ?? null;
+        const api = (navigator as unknown as { wakeLock?: { request: (t: string) => Promise<Sentinel> } }).wakeLock;
+        lock = (await api?.request('screen')) ?? null;
+        // the browser can drop it on its own; forget ours so the next wake re-asks
+        (lock as unknown as { addEventListener?: (t: string, f: () => void) => void })?.addEventListener?.(
+          'release',
+          () => {
+            lock = null;
+          },
+        );
       } catch {
-        /* not supported */
+        /* not supported, or refused while hidden */
       }
     };
-    req();
+    const onVisible = () => {
+      if (document.hidden) lock = null;
+      else void req();
+    };
+    void req();
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
+      stopped = true;
+      document.removeEventListener('visibilitychange', onVisible);
       try {
-        lock?.release();
+        void lock?.release();
       } catch {
         /* ignore */
       }
@@ -416,6 +462,54 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running, onBreak, blindLevels.length, minutesPerLevel, levelIdx, synced, liveSessionCode, liveSessionRole, ownsClockAdvance, breakEvery, breakMins]);
+
+  // The freshness check needs its own heartbeat: the clock's tick stops when the
+  // game is paused, which is exactly when a dead phone is easiest to miss.
+  useEffect(() => {
+    if (!isTv || !paired) return;
+    const id = window.setInterval(() => setStaleTick((n) => n + 1), 20000);
+    return () => window.clearInterval(id);
+  }, [isTv, paired]);
+
+  /* Standalone big screen (no live session): share the phone's own clock rather
+     than start a second one. Opening "Big screen" from the Table tab used to fork a
+     fresh countdown, so the bar at the top of the tab and the screen on the wall
+     disagreed about the level. Now the state is adopted on the way in and handed
+     back on every discrete change. */
+  const wroteLocal = useRef(false);
+  useEffect(() => {
+    if (synced) return;
+    const c = getLocalClock();
+    setLevelIdx(c.levelIdx);
+    setOnBreak(c.onBreak);
+    setRunning(c.running);
+    const left = clockSecondsLeft(c);
+    setSeconds(left);
+    deadline.current = c.running ? (c.periodEndsAt ?? Date.now() + left * 1000) : null;
+    wroteLocal.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [synced]);
+
+  useEffect(() => {
+    if (synced) return;
+    // skip the pass that runs alongside the adoption above, or it would write the
+    // pre-adoption state straight back over the clock it just read
+    if (!wroteLocal.current) {
+      wroteLocal.current = true;
+      return;
+    }
+    setLocalClock({
+      levelIdx,
+      onBreak,
+      running,
+      periodEndsAt: running ? (deadline.current ?? Date.now() + seconds * 1000) : null,
+      remaining: seconds,
+      minutesPerLevel,
+    });
+    // `seconds` is deliberately not a dependency: the deadline is the truth, so one
+    // write per discrete change is enough and a per-second write is pure noise.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [synced, levelIdx, onBreak, running, minutesPerLevel]);
 
   // flash a "phone connected" cue on the big screen the moment a phone pairs
   useEffect(() => {
@@ -842,12 +936,14 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
 
       {/* Corner status pill */}
       {firebaseConfigured && isTv && (
-        <div className={`tv-connect-pill ${liveLost ? 'lost' : paired ? 'live' : ''}`}>
+        <div className={`tv-connect-pill ${liveLost || hostStale ? 'lost' : paired ? 'live' : ''}`}>
           {liveLost
             ? `⚠ ${t('tv.connectionLost')}`
-            : paired
-              ? `● ${t('tv.liveConnected')}`
-              : `${t('connect.code')} ${liveSessionCode}`}
+            : hostStale
+              ? `⚠ ${t('tv.phoneOffline')}`
+              : paired
+                ? `● ${t('tv.liveConnected')}`
+                : `${t('connect.code')} ${liveSessionCode}`}
         </div>
       )}
       {firebaseConfigured && isHostView && (

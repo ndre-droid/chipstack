@@ -4,21 +4,39 @@ rules_version = '2';
  * ChipStack live sessions (project `chipstack-live`).
  *
  * The model: a TV publishes a four-digit code, a phone types it, and both sides
- * read and write one document. There is no sign-in — the code IS the credential,
- * which is the right trade for a living-room game but means these rules cannot
- * authenticate anybody. What they CAN do is keep the collection well-formed and
- * bounded, so a stray client (or a bored someone walking the 9000 codes) cannot
- * turn the database into storage:
+ * read and write one document. There are still no accounts — you pair by typing
+ * four digits, not by logging in — but every client now signs in ANONYMOUSLY in the
+ * background (see `lib/firebase.ts`), which gives these rules something real to
+ * check. Four digits is 9000 guesses; that is minutes of work, and under the
+ * previous rules a guess could read, overwrite or DELETE somebody's live table.
  *
+ * What is enforced here:
+ *   - nothing is readable or writable without a signed-in device
  *   - only four-digit document ids exist at all
+ *   - a session records the uid of the screen that created it (`tvUid`) and of the
+ *     phone that claimed it (`hostUid`); once claimed, only those two may write.
+ *     An unclaimed session stays open — that IS the pairing act.
+ *   - deletes are for the owning screen only
  *   - only the fields the app writes are accepted, with the types it expects
- *   - `expiresAt` must be present on every write, so the TTL policy on that field
- *     can sweep abandoned sessions (see README — the policy is a console/gcloud
- *     setting, not part of this file)
- *   - the background photo is capped, and lives in its own document so the game
- *     data stays small
+ *   - `expiresAt` is REQUIRED on every write, so the TTL policy on that field can
+ *     sweep abandoned sessions (the policy is a console/gcloud setting, not part of
+ *     this file)
+ *   - the game document is bounded structurally (a map has no byte-size function in
+ *     rules, so the caps are on list lengths) and the background photo is capped
+ *     outright, in its own document, so the game data stays small
  *
- * Deploy: `firebase deploy --only firestore:rules` (config in firebase.json).
+ * ============================ DEPLOY ORDER — READ ============================
+ * These rules REJECT clients that do not sign in and do not send `expiresAt`.
+ * Deploying them out of order takes live sync down. Do it in this order:
+ *   1. Firebase console -> Authentication -> Sign-in method -> enable ANONYMOUS.
+ *      (Without this, `signInAnonymously` fails and every client is rejected.)
+ *   2. Ship the app: push to `main` (GitHub Pages redeploys itself) AND rebuild the
+ *      Android APK, then install it. An older APK still on a phone will lose live
+ *      sync until it is updated.
+ *   3. `firebase deploy --only firestore:rules`
+ * Note for debugging: reading a session over the plain REST API with the public web
+ * key no longer works — that read is unauthenticated.
+ * =============================================================================
  */
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -32,45 +50,109 @@ service cloud.firestore {
     function isBackground(id) {
       return id.matches('^[0-9]{4}-bg$');
     }
+    function signedIn() {
+      return request.auth != null;
+    }
+    function me() {
+      return request.auth.uid;
+    }
+    function incoming() {
+      return request.resource.data;
+    }
 
-    /* A write should push the sweep date out again, and never further than a couple
-       of days: that is what stops an abandoned session living forever. It is
-       tolerated rather than required, because an older installed build (an APK on
-       someone's phone) does not send it, and rejecting those writes would break
-       live sync for anyone who hasn't updated yet. Tighten to a hard requirement
-       once every client in the wild sends it. */
+    /* Every write pushes the sweep date out again, and never further than a couple
+       of days: that is what stops an abandoned session living forever. Required, not
+       tolerated — a client that cannot be swept has no business writing here. */
     function ttlOk() {
-      return !('expiresAt' in request.resource.data)
-        || (request.resource.data.expiresAt is timestamp
-            && request.resource.data.expiresAt.toMillis() > request.time.toMillis()
-            && request.resource.data.expiresAt.toMillis() < request.time.toMillis() + 172800000);
+      return incoming().expiresAt is timestamp
+        && incoming().expiresAt.toMillis() > request.time.toMillis()
+        && incoming().expiresAt.toMillis() < request.time.toMillis() + 172800000;
+    }
+
+    /* Bounds on the game payload. Rules cannot measure a map in bytes, so the caps
+       sit on the lists that can actually grow — a runaway ledger or a pasted wall of
+       custom quips would otherwise walk the document up to the 1 MiB limit and make
+       every later push fail mid-game. Generous: a home game is under ten players. */
+    function listOk(m, key, max) {
+      return !(key in m) || m[key] == null || m[key].size() <= max;
+    }
+    function dataOk() {
+      return !('data' in incoming())
+        || incoming().data == null
+        || (incoming().data is map
+            && incoming().data.keys().size() <= 48
+            && listOk(incoming().data, 'ledger', 60)
+            && listOk(incoming().data, 'denominations', 40)
+            && listOk(incoming().data, 'moments', 120)
+            && listOk(incoming().data, 'tvCustomQuips', 120)
+            && listOk(incoming().data, 'tvPenalties', 120)
+            && listOk(incoming().data, 'tvHouseRules', 120));
+    }
+
+    function fieldsOk() {
+      return incoming().keys().hasOnly(
+        ['data', 'clock', 'tvSeenAt', 'hostSeenAt', 'tvUid', 'hostUid', 'updatedAt', 'expiresAt'])
+        && dataOk()
+        && (!('clock' in incoming()) || incoming().clock is map)
+        && (!('tvUid' in incoming()) || incoming().tvUid is string)
+        && (!('hostUid' in incoming()) || incoming().hostUid is string);
+    }
+
+    /* The photo document `NNNN-bg` has no owner fields of its own — it is written by
+       the phone and deleted by the screen — so it borrows the session's. One extra
+       document read per photo write, which happens once a night at most. */
+    function sessionOf(id) {
+      return get(/databases/$(database)/documents/sessions/$(id.split('-')[0]));
+    }
+    function ownsBackground(id) {
+      return exists(/databases/$(database)/documents/sessions/$(id.split('-')[0]))
+        && (!('tvUid' in sessionOf(id).data)
+            || sessionOf(id).data.tvUid == me()
+            || !('hostUid' in sessionOf(id).data)
+            || sessionOf(id).data.hostUid == me());
+    }
+
+    /* Who may change an existing session. The screen that made it and the phone that
+       claimed it — plus anybody while it is still unclaimed, because typing the code
+       on a phone IS the claim. Documents written by an older build carry no uid at
+       all; they stay writable so a session in progress does not die on deploy. */
+    function ownsSession() {
+      return !('tvUid' in resource.data)
+        || resource.data.tvUid == me()
+        || !('hostUid' in resource.data)
+        || resource.data.hostUid == me();
     }
 
     match /sessions/{id} {
-      allow read: if isCode(id) || isBackground(id);
+      // The code alone is no longer enough to watch a table from the outside.
+      allow read: if signedIn() && (isCode(id) || isBackground(id));
 
-      allow create, update: if isCode(id)
-        && ttlOk()
-        && request.resource.data.keys().hasOnly(['data', 'clock', 'tvSeenAt', 'updatedAt', 'expiresAt'])
-        // `data` is null while the TV waits for a phone, a map once one connects
-        && (!('data' in request.resource.data)
-            || request.resource.data.data == null
-            || request.resource.data.data is map)
-        && (!('clock' in request.resource.data) || request.resource.data.clock is map);
+      allow create: if signedIn() && isCode(id) && ttlOk() && fieldsOk()
+        // whoever creates a session must claim it in the same write
+        && (!('tvUid' in incoming()) || incoming().tvUid == me())
+        && (!('hostUid' in incoming()) || incoming().hostUid == me());
+
+      allow update: if signedIn() && isCode(id) && ttlOk() && fieldsOk() && ownsSession()
+        // you may only ever write your OWN uid into an ownership field
+        && (!('tvUid' in incoming()) || incoming().tvUid == me() || incoming().tvUid == resource.data.tvUid)
+        && (!('hostUid' in incoming()) || incoming().hostUid == me() || incoming().hostUid == resource.data.hostUid);
 
       /* The background photo. Capped well under the 1 MiB document limit and about
          twice what the app's encoder aims for, so an oversized photo is refused
          outright instead of failing as an oversized document mid-session. */
-      allow create, update: if isBackground(id)
+      allow create, update: if signedIn() && isBackground(id)
+        && ownsBackground(id)
         && ttlOk()
-        && request.resource.data.keys().hasOnly(['image', 'updatedAt', 'expiresAt'])
-        && (request.resource.data.image == null
-            || (request.resource.data.image is string && request.resource.data.image.size() < 400000));
+        && incoming().keys().hasOnly(['image', 'updatedAt', 'expiresAt'])
+        && (incoming().image == null
+            || (incoming().image is string && incoming().image.size() < 400000));
 
-      // The TV deletes its session (and its photo) when the big screen is switched
-      // off. With no accounts there is nobody to check that against; the TTL policy
-      // is the backstop either way.
-      allow delete: if isCode(id) || isBackground(id);
+      /* The TV deletes its session (and its photo) when the big screen is switched
+         off. Restricted to the owning screen: a guessed code used to be enough to
+         wipe a table mid-game. The TTL policy is the backstop either way. */
+      allow delete: if signedIn()
+        && ((isCode(id) && (!('tvUid' in resource.data) || resource.data.tvUid == me()))
+            || (isBackground(id) && ownsBackground(id)));
     }
 
     // Nothing else in this project is public.

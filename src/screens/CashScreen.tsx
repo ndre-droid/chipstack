@@ -4,6 +4,7 @@ import { settleUp } from '../lib/settle';
 import type { PlayerBalance } from '../lib/settle';
 import { useT, useFmt } from '../lib/i18n';
 import SeasonLeague from '../components/SeasonLeague';
+import { useConfirm } from '../components/Confirm';
 
 /**
  * Settle-up tab: what the night added up to and who owes whom. Players themselves
@@ -16,6 +17,7 @@ export default function CashScreen() {
   const { money: fmtMoney } = useFmt();
   const cur = state.settings.currency;
   const ledger = state.ledger;
+  const confirm = useConfirm();
 
   const totalIn = ledger.reduce((s, p) => s + (p.buyIn || 0), 0);
   const totalOut = ledger.reduce((s, p) => s + (p.cashOut || 0), 0);
@@ -96,7 +98,12 @@ export default function CashScreen() {
           <button
             className="btn btn-ghost btn-sm"
             onClick={() => {
-              if (confirm(t('cash.newGameConfirm'))) dispatch({ type: 'LEDGER_CLEAR' });
+              confirm.ask({
+                text: t('cash.newGameConfirm'),
+                confirmLabel: t('cash.newGame'),
+                danger: true,
+                onYes: () => dispatch({ type: 'LEDGER_CLEAR' }),
+              });
             }}
           >
             {t('cash.newGame')}
@@ -129,6 +136,7 @@ export default function CashScreen() {
       </div>
 
       <SeasonLeague />
+      {confirm.node}
     </div>
   );
 }

@@ -11,6 +11,8 @@ import ChipStackViz from '../components/ChipStackViz';
 import { IconPlus, IconTrash, IconCheck, IconAlert, IconSpark, IconChevron, IconLock, IconShare } from '../components/Icons';
 import ShareSheet from '../components/ShareSheet';
 import { useT, useFmt } from '../lib/i18n';
+import { Toggle } from '../components/Toggle';
+import MoneyInput from '../components/MoneyInput';
 
 export default function PlanScreen() {
   const { state, dispatch } = useStore();
@@ -432,12 +434,10 @@ export default function PlanScreen() {
             <label>{t('plan.buyIn')}</label>
             <div className="input-affix">
               <span className="affix">{cur}</span>
-              <input
-                className="input"
-                type="number"
-                inputMode="decimal"
-                value={buyIn || ''}
-                onChange={(e) => dispatch({ type: 'UPDATE_SESSION', patch: { buyIn: Math.max(0, +e.target.value) } })}
+              <MoneyInput
+                value={buyIn || 0}
+                ariaLabel={t('plan.buyIn')}
+                onCommit={(v) => dispatch({ type: 'UPDATE_SESSION', patch: { buyIn: Math.max(0, v) } })}
               />
             </div>
           </div>
@@ -445,12 +445,10 @@ export default function PlanScreen() {
             <label>{t('plan.laterRebuy')}</label>
             <div className="input-affix">
               <span className="affix">{cur}</span>
-              <input
-                className="input"
-                type="number"
-                inputMode="decimal"
-                value={lateRebuyAmount || ''}
-                onChange={(e) => dispatch({ type: 'UPDATE_SESSION', patch: { lateRebuyAmount: Math.max(0, +e.target.value) } })}
+              <MoneyInput
+                value={lateRebuyAmount || 0}
+                ariaLabel={t('plan.laterRebuy')}
+                onCommit={(v) => dispatch({ type: 'UPDATE_SESSION', patch: { lateRebuyAmount: Math.max(0, v) } })}
               />
             </div>
           </div>
@@ -565,11 +563,10 @@ export default function PlanScreen() {
             <div className="faint" style={{ fontSize: 12 }}>{t('plan.useAllDesc')}</div>
           </div>
           <div className="spacer" />
-          <div
-            className={`toggle ${useAllChips ? 'on' : ''}`}
-            onClick={() => dispatch({ type: 'UPDATE_SESSION', patch: { useAllChips: !useAllChips } })}
-            role="switch"
-            aria-checked={useAllChips}
+          <Toggle
+            on={useAllChips}
+            label={t('plan.useAllChips')}
+            onChange={() => dispatch({ type: 'UPDATE_SESSION', patch: { useAllChips: !useAllChips } })}
           />
         </div>
 

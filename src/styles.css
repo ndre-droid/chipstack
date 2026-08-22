@@ -409,8 +409,11 @@ a { color: inherit; }
   background: var(--surface-3);
   border: 1px solid var(--line);
   position: relative; cursor: pointer; flex-shrink: 0;
+  padding: 0; appearance: none; -webkit-appearance: none;
   transition: background .18s, border-color .18s;
 }
+/* it is a real <button> now, so it can be tabbed to — make that visible */
+.toggle:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .toggle::after {
   content: ''; position: absolute; top: 2px; left: 2px;
   width: 20px; height: 20px; border-radius: 50%;
@@ -1724,6 +1727,13 @@ input[type='color'] { cursor: pointer; }
   background: var(--surface-2); border: 1px solid var(--line); color: inherit;
   font-size: 13px; font-variant-numeric: tabular-nums; }
 .pr-stack b { font-weight: 700; }
+.pr-stack.active { border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc) inset; }
+.pr-count-ic { opacity: .6; }
+/* Typing the stack as money — the primary path, so it gets the accent frame. */
+.pr-stackedit { margin-top: 8px; padding: 9px 10px; border-radius: var(--r-sm);
+  background: var(--acc-wash); border: 1px solid var(--acc-line); }
+.pr-stackedit .input { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.quick-chip.is-set { border-color: var(--acc-line); color: var(--acc); }
 .pr-menu { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .pr-cashout { margin-top: 8px; }
 .pr-actions { display: flex; gap: 8px; margin-top: 12px; }
@@ -1743,6 +1753,13 @@ input[type='color'] { cursor: pointer; }
 .cr-prev { margin-top: 2px; font-size: 12.5px; color: var(--text-dim); }
 .cr-x { position: absolute; right: 10px; top: 14px; width: 34px; height: 34px; }
 .cr-body { flex: 1; overflow: auto; padding: 12px 16px 16px; }
+/* Counting round: how the stack is entered (money by default, colours on request) */
+.cr-mode { margin-bottom: 12px; }
+.cr-money { padding: 2px 0 4px; }
+.cr-money-in { margin-top: 8px; }
+.cr-money-in .input { font-size: 26px; font-weight: 800; padding: 12px 12px 12px 4px;
+  font-variant-numeric: tabular-nums; font-family: var(--font-display); }
+.cr-money-in .affix { font-size: 22px; }
 .cr-denom { display: flex; align-items: center; gap: 8px; padding: 7px 0; }
 .cr-swatch { width: 22px; height: 22px; flex: none; border-radius: 50%; border: 2px solid; }
 .cr-denom-v { width: 46px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -1856,3 +1873,45 @@ input[type='color'] { cursor: pointer; }
   border-radius: var(--r-sm); background: var(--surface-2); border: 1px solid var(--line); }
 .pr-table-menu .btn { justify-content: flex-start; }
 .danger-text { color: var(--bad); }
+
+
+/* ---- Table tab: the clock that stays put while you scroll ---- */
+.table-sticky {
+  position: sticky; top: 0; z-index: 12;
+  display: flex; align-items: center; gap: 10px;
+  margin: -16px -16px 12px; padding: 10px 16px;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
+  border-bottom: 1px solid var(--line);
+}
+.table-sticky .ts-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ts-level { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
+.ts-blinds { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ts-time { font-size: 21px; font-weight: 800; font-variant-numeric: tabular-nums;
+  font-family: var(--font-display); letter-spacing: -.02em; }
+.ts-time.urgent { color: var(--bad); }
+.ts-play { width: 36px; height: 36px; flex: none; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--acc); color: var(--on-acc); border: none; }
+.ts-play:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+
+/* ---- Table tab: the setup fold ---- */
+.setup-toggle { margin: 18px 2px 8px; }
+.setup-body { animation: screen-in .2s ease-out; }
+
+/* ---- In-app confirmation (replaces window.confirm) ---- */
+.confirm-scrim { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center;
+  justify-content: center; padding: 24px; background: rgba(0,0,0,.5); backdrop-filter: blur(2px); }
+.confirm-box { width: min(100%, 380px); padding: 18px; border-radius: var(--r);
+  background: var(--surface-1); border: 1px solid var(--line); box-shadow: 0 18px 48px rgba(0,0,0,.35); }
+.confirm-text { margin: 0 0 16px; font-size: 14.5px; line-height: 1.5; }
+.confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.btn-danger { background: var(--bad); color: #fff; border-color: var(--bad); }
+
+/* ---- Roster row: tap-to-edit name, crown, live net ---- */
+.pr-name-btn { flex: 1; min-width: 0; text-align: left; padding: 4px 2px; background: none;
+  border: none; color: inherit; font: inherit; font-weight: 600; font-size: 14.5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pr-name-btn:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; border-radius: 4px; }
+.pr-crown { font-size: 12px; }
+.pr-net { font-variant-numeric: tabular-nums; font-weight: 600; }

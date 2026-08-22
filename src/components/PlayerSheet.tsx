@@ -4,6 +4,9 @@ import { useT, useFmt } from '../lib/i18n';
 import { moneyToUnits } from '../lib/distribution';
 import { EmojiPicker } from './EmojiPicker';
 import { IconTrash } from './Icons';
+import { Toggle } from './Toggle';
+import { useConfirm } from './Confirm';
+import MoneyInput from './MoneyInput';
 
 /**
  * Everything about one player, editable — the escape hatch for the messy reality of
@@ -24,6 +27,7 @@ export default function PlayerSheet({ playerId, onClose }: { playerId: string; o
   const { currency, unitValue } = state.settings;
   const player = state.ledger.find((p) => p.id === playerId);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const confirm = useConfirm();
 
   if (!player) return null;
   const patch = (p: Partial<typeof player>) => dispatch({ type: 'LEDGER_UPDATE', id: player.id, patch: p });
@@ -61,13 +65,10 @@ export default function PlayerSheet({ playerId, onClose }: { playerId: string; o
           <label>{t('sheet.boughtIn')}</label>
           <div className="input-affix">
             <span className="affix">{currency}</span>
-            <input
-              className="input"
-              type="number"
-              inputMode="decimal"
-              step="any"
-              value={player.buyIn || ''}
-              onChange={(e) => patch({ buyIn: Math.max(0, +e.target.value) })}
+            <MoneyInput
+              value={player.buyIn || 0}
+              ariaLabel={t('sheet.boughtIn')}
+              onCommit={(v) => patch({ buyIn: Math.max(0, v) })}
             />
           </div>
           <p className="faint ps-hint">{t('sheet.boughtInHint')}</p>
@@ -77,13 +78,10 @@ export default function PlayerSheet({ playerId, onClose }: { playerId: string; o
           <label>{t('sheet.cashedOut')}</label>
           <div className="input-affix">
             <span className="affix">{currency}</span>
-            <input
-              className="input"
-              type="number"
-              inputMode="decimal"
-              step="any"
-              value={player.cashOut || ''}
-              onChange={(e) => patch({ cashOut: Math.max(0, +e.target.value) })}
+            <MoneyInput
+              value={player.cashOut || 0}
+              ariaLabel={t('sheet.cashedOut')}
+              onCommit={(v) => patch({ cashOut: Math.max(0, v) })}
             />
           </div>
           <p className="faint ps-hint">{t('sheet.cashedOutHint')}</p>
@@ -93,16 +91,11 @@ export default function PlayerSheet({ playerId, onClose }: { playerId: string; o
           <label>{t('sheet.stack')}</label>
           <div className="input-affix">
             <span className="affix">{currency}</span>
-            <input
-              className="input"
-              type="number"
-              inputMode="decimal"
-              step="any"
+            <MoneyInput
+              value={player.chips ? Math.round(player.chips * unitValue * 100) / 100 : 0}
               placeholder="0"
-              value={player.chips ? Math.round(player.chips * unitValue * 100) / 100 : ''}
-              onChange={(e) =>
-                patch({ chips: +e.target.value > 0 ? moneyToUnits(+e.target.value, unitValue) : undefined })
-              }
+              ariaLabel={t('sheet.stack')}
+              onCommit={(v) => patch({ chips: v > 0 ? moneyToUnits(v, unitValue) : undefined })}
             />
           </div>
           <div className="quick-row">
@@ -122,11 +115,10 @@ export default function PlayerSheet({ playerId, onClose }: { playerId: string; o
             <div className="faint" style={{ fontSize: 12 }}>{t('sheet.inPlayHint')}</div>
           </div>
           <div className="spacer" />
-          <div
-            className={`toggle ${inPlay ? 'on' : ''}`}
-            role="switch"
-            aria-checked={inPlay}
-            onClick={() => patch(inPlay ? { out: true, outAt: Date.now() } : { out: false, outAt: undefined })}
+          <Toggle
+            on={inPlay}
+            label={t('sheet.inPlay')}
+            onChange={() => patch(inPlay ? { out: true, outAt: Date.now() } : { out: false, outAt: undefined })}
           />
         </div>
 
@@ -138,8 +130,11 @@ export default function PlayerSheet({ playerId, onClose }: { playerId: string; o
         <button
           className="btn btn-ghost btn-block btn-sm"
           onClick={() => {
-            if (confirm(t('sheet.resetConfirm', { name: player.name || 'Player' })))
-              dispatch({ type: 'LEDGER_RESET_PLAYER', id: player.id });
+            confirm.ask({
+              text: t('sheet.resetConfirm', { name: player.name || 'Player' }),
+              confirmLabel: t('roster.resetPlayer'),
+              onYes: () => dispatch({ type: 'LEDGER_RESET_PLAYER', id: player.id }),
+            });
           }}
         >
           ↺ {t('roster.resetPlayer')}
@@ -148,10 +143,15 @@ export default function PlayerSheet({ playerId, onClose }: { playerId: string; o
         <button
           className="btn btn-ghost btn-block btn-sm ps-delete"
           onClick={() => {
-            if (confirm(t('sheet.removeConfirm', { name: player.name || 'Player' }))) {
-              dispatch({ type: 'LEDGER_REMOVE', id: player.id });
-              onClose();
-            }
+            confirm.ask({
+              text: t('sheet.removeConfirm', { name: player.name || 'Player' }),
+              confirmLabel: t('roster.remove'),
+              danger: true,
+              onYes: () => {
+                dispatch({ type: 'LEDGER_REMOVE', id: player.id });
+                onClose();
+              },
+            });
           }}
         >
           <IconTrash size={15} /> {t('roster.remove')}
@@ -161,6 +161,7 @@ export default function PlayerSheet({ playerId, onClose }: { playerId: string; o
       <div className="cr-bar">
         <button className="btn btn-primary" style={{ flex: 1 }} onClick={onClose}>{t('sheet.done')}</button>
       </div>
+      {confirm.node}
     </div>
   );
 }

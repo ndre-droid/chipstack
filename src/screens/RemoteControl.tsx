@@ -1,11 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useStore } from '../store';
 import { useT } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
-import type { Unsubscribe } from 'firebase/firestore';
-import { togglePlayPause, goLevel, startBreak, cancelBreak, secondsLeft, initialClock, setMinutesPerLevel } from '../lib/clockLogic';
+import { togglePlayPause, goLevel, startBreak, cancelBreak, secondsLeft, setMinutesPerLevel } from '../lib/clockLogic';
 import type { ClockState } from '../lib/clockLogic';
-import { queueClock } from '../lib/liveSyncQueue';
 import { IconPlay, IconPause, IconChevron, IconPlus, IconTrash } from '../components/Icons';
 import BlindStepper from '../components/BlindStepper';
 
@@ -18,8 +16,12 @@ const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart
  * live in the single roster on the Table tab, not here. The TV's look (design, extras, quips) lives in the
  * separate TV broadcast card. This panel never runs its own countdown; it derives
  * from the shared deadline and sends commands.
+ *
+ * The clock arrives as a prop: the Table tab owns the single subscription (see
+ * `useHostClock`) so the sticky bar at the top of the screen and this panel are two
+ * views of one state instead of two listeners that can drift apart.
  */
-export default function RemoteControl() {
+export default function RemoteControl({ clock, send }: { clock: ClockState; send: (next: ClockState) => void }) {
   const { state, dispatch } = useStore();
   const t = useT();
   const { liveSessionCode, liveSessionRole, minutesPerLevel, breakMinutes, breakEvery, gameMode, cashUseTimer } = state.settings;
@@ -28,55 +30,17 @@ export default function RemoteControl() {
   const showTimer = !isCash || cashUseTimer; // cash + no timer = no clock/break/blinds
   const maxIdx = session.blindLevels.length - 1;
 
-  const [clock, setClock] = useState<ClockState>(() => initialClock(minutesPerLevel));
-  const [now, setNow] = useState(Date.now());
   const [showBlinds, setShowBlinds] = useState(false);
   const [momentText, setMomentText] = useState('');
 
   const active = firebaseConfigured && liveSessionRole === 'host' && !!liveSessionCode;
-
-  useEffect(() => {
-    if (!active || !liveSessionCode) return;
-    let unsub: Unsubscribe | null = null;
-    let cancelled = false;
-    import('../lib/liveSession').then(({ subscribeSession }) => {
-      if (cancelled) return;
-      // The TV owns the clock; a doc may briefly exist with data but no clock
-      // (e.g. a stale/dead code). Never overwrite our valid clock with undefined.
-      unsub = subscribeSession(liveSessionCode, (doc) => {
-        if (doc.clock) setClock(doc.clock);
-      });
-    });
-    return () => {
-      cancelled = true;
-      unsub?.();
-    };
-  }, [active, liveSessionCode]);
-
-  // local 1s tick purely to refresh the displayed countdown — never writes state
-  useEffect(() => {
-    if (!active) return;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [active]);
-
   if (!active || !liveSessionCode) return null;
-
-  const send = (next: ClockState) => {
-    setClock(next); // optimistic
-    // Queued rather than fired and forgotten: a failed command is retried instead
-    // of silently leaving the TV on the old level.
-    queueClock(liveSessionCode, next);
-  };
 
   const setMinutes = (m: number) => {
     const n = Math.max(1, Math.min(180, m));
     dispatch({ type: 'UPDATE_SETTINGS', patch: { minutesPerLevel: n } });
     send(setMinutesPerLevel(clock, n)); // reflect on the TV's current level immediately
   };
-
-  void now; // triggers the re-render each second so secondsLeft() below is fresh
-
 
   return (
     <>

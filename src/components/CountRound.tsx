@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { useT, useFmt } from '../lib/i18n';
 import { moneyToUnits } from '../lib/distribution';
+import { parseMoney } from '../lib/money';
 import { startingStackOf, handoutStack } from '../lib/startingStack';
 import type { Denomination, LedgerPlayer } from '../types';
 
@@ -54,8 +55,17 @@ export default function CountRound({
       ? denominations.filter((d) => d.count > 0).slice().sort((a, b) => a.value - b.value)
       : startStack.denomsUsed;
 
+  /* How the stack gets entered. Typing the euro amount is the default because at a
+     real table it is by far the fastest — you look at the pile, type a number, next
+     player. Tallying by colour is the exact-but-slow path, kept one tap away. The
+     choice is remembered in settings, so a table that prefers one never re-picks it. */
+  const mode: 'money' | 'colours' = settings.countMode ?? 'money';
+  const setMode = (m: 'money' | 'colours') => dispatch({ type: 'UPDATE_SETTINGS', patch: { countMode: m } });
+
   const [idx, setIdx] = useState(0);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  /** the money-mode field, as typed (a string so "" isn't the same as 0) */
+  const [moneyText, setMoneyText] = useState('');
   const [prefilled, setPrefilled] = useState(false);
   const [padId, setPadId] = useState<string | null>(null);
   // playerId → new chip-unit total; only players actually counted appear here
@@ -65,8 +75,15 @@ export default function CountRound({
   const [done, setDone] = useState(false);
 
   const player: LedgerPlayer | undefined = players[idx];
-  const currentUnits = denoms.reduce((s, d) => s + (counts[d.id] || 0) * d.value, 0);
+  const colourUnits = denoms.reduce((s, d) => s + (counts[d.id] || 0) * d.value, 0);
+  const moneyUnits = moneyToUnits(Math.max(0, parseMoney(moneyText)), unitValue);
+  const currentUnits = mode === 'money' ? moneyUnits : colourUnits;
   const isLast = idx >= players.length - 1;
+
+  /** One-tap amounts, same set the roster offers. */
+  const quickAmounts = [session.buyIn, 5, 10, 20, 50].filter((v, i, a) => v > 0 && a.indexOf(v) === i).slice(0, 4);
+  /** What this player has on the table — the sensible "still on their stack" answer. */
+  const heldMoney = Math.max(0, (player?.buyIn || 0) - (player?.cashOut || 0)) || session.buyIn;
 
   // A player nobody has counted yet is still holding what they were handed — so
   // pre-fill with a chip pattern worth exactly THEIR stack, not the standard
@@ -77,6 +94,9 @@ export default function CountRound({
     seeded.current = player.id;
     const counted = (player.chipHistory?.length ?? 0) > 0;
     const held = (player.chips || 0) * unitValue || session.buyIn;
+    // the money field always opens on what they are believed to hold — usually right,
+    // and always a shorter edit than typing the whole number from scratch
+    setMoneyText(held > 0 ? String(Math.round(held * 100) / 100) : '');
     if (!counted && held > 0) {
       const pattern = handoutStack(denominations, session, unitValue, held).counts;
       setCounts({ ...pattern });
@@ -105,10 +125,19 @@ export default function CountRound({
   const bump = (id: string, by: number) =>
     setCounts((c) => ({ ...c, [id]: Math.max(0, (c[id] || 0) + by) }));
 
+  /** Single-player mode (tapped one stack in the roster): save straight away. */
+  const saveOnly = () => {
+    onUndoable?.([{ id: player!.id, chips: player!.chips, chipHistory: player!.chipHistory }]);
+    dispatch({ type: 'LEDGER_SET_CHIPS_MANY', entries: [{ id: player!.id, chips: currentUnits }] });
+    onClose();
+  };
+
   const goNext = (units: number | null) => {
     const next = units === null ? results : { ...results, [player!.id]: units };
     setResults(next);
-    if (units !== null) setTallies((tl) => ({ ...tl, [player!.id]: { ...counts } }));
+    // Only a real colour tally may feed the inventory check — in money mode `counts`
+    // is just the untouched pre-fill and would flag phantom over-counts.
+    if (units !== null && mode === 'colours') setTallies((tl) => ({ ...tl, [player!.id]: { ...counts } }));
     setPadId(null);
     seeded.current = null;
     if (isLast) setDone(true);
@@ -264,7 +293,64 @@ export default function CountRound({
       </div>
 
       <div className="cr-body">
-        {prefilled && (
+        <div className="segmented cr-mode">
+          <button className={mode === 'money' ? 'active' : ''} onClick={() => setMode('money')}>
+            {t('count.modeMoney')}
+          </button>
+          <button className={mode === 'colours' ? 'active' : ''} onClick={() => setMode('colours')}>
+            {t('count.modeColours')}
+          </button>
+        </div>
+
+        {mode === 'money' && (
+          <div className="cr-money">
+            <div className="faint" style={{ fontSize: 13 }}>
+              {t('count.amountOf', { name: player!.name || 'Player' })}
+            </div>
+            <div className="quick-row">
+              {heldMoney > 0 && (
+                <button
+                  type="button"
+                  className="quick-chip is-set"
+                  onClick={() => setMoneyText(String(Math.round(heldMoney * 100) / 100))}
+                >
+                  {t('count.buyInQuick')}
+                </button>
+              )}
+              {quickAmounts.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className="quick-chip"
+                  onClick={() => setMoneyText(String(Math.round((parseMoney(moneyText) + n) * 100) / 100))}
+                >
+                  +{currency}{n}
+                </button>
+              ))}
+              <button type="button" className="quick-chip" onClick={() => setMoneyText('')}>C</button>
+            </div>
+            <div className="input-affix cr-money-in">
+              <span className="affix">{currency}</span>
+              <input
+                className="input"
+                type="text"
+                inputMode="decimal"
+                autoFocus
+                value={moneyText}
+                onFocus={(e) => e.currentTarget.select()}
+                onChange={(e) => setMoneyText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' || currentUnits <= 0) return;
+                  if (only) saveOnly();
+                  else goNext(currentUnits);
+                }}
+              />
+            </div>
+            <p className="faint cr-note">{t('count.moneyHint')}</p>
+          </div>
+        )}
+
+        {mode === 'colours' && prefilled && (
           <div className="cr-prefill">
             <span>{t('count.prefilled')}</span>
             <button className="btn btn-ghost btn-sm" onClick={() => { setCounts({}); setPrefilled(false); }}>
@@ -273,7 +359,7 @@ export default function CountRound({
           </div>
         )}
 
-        {denoms.map((d) => {
+        {mode === 'colours' && denoms.map((d) => {
           const over = overCount(d);
           return (
             <div className={`cr-denom ${padId === d.id ? 'active' : ''}`} key={d.id}>
@@ -297,9 +383,11 @@ export default function CountRound({
           );
         })}
 
-        <button className="mins-toggle cr-all" onClick={() => setShowAll((v) => !v)}>
-          <span>{showAll ? t('count.stackColours') : t('count.allColours')}</span>
-        </button>
+        {mode === 'colours' && (
+          <button className="mins-toggle cr-all" onClick={() => setShowAll((v) => !v)}>
+            <span>{showAll ? t('count.stackColours') : t('count.allColours')}</span>
+          </button>
+        )}
 
         <div className="cr-total">
           <span>{num(currentUnits)} {t('plan.chips').toLowerCase()}</span>
@@ -317,7 +405,7 @@ export default function CountRound({
         )}
       </div>
 
-      {padDenom && (
+      {mode === 'colours' && padDenom && (
         <div className="cr-pad">
           <div className="cr-pad-h">
             <span className="cr-swatch" style={{ background: padDenom.color, borderColor: padDenom.accent }} />
@@ -349,13 +437,7 @@ export default function CountRound({
           className="btn btn-primary"
           style={{ flex: 1 }}
           disabled={currentUnits <= 0}
-          onClick={() => {
-            if (only) {
-              onUndoable?.([{ id: player!.id, chips: player!.chips, chipHistory: player!.chipHistory }]);
-              dispatch({ type: 'LEDGER_SET_CHIPS_MANY', entries: [{ id: player!.id, chips: currentUnits }] });
-              onClose();
-            } else goNext(currentUnits);
-          }}
+          onClick={() => (only ? saveOnly() : goNext(currentUnits))}
         >
           {only ? t('count.save') : isLast ? t('count.toSummary') : t('count.next')}
         </button>

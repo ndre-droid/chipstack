@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../store';
 import { IconPlay, IconPause, IconReset, IconChevron, IconDice, IconExpand } from '../components/Icons';
@@ -9,8 +9,13 @@ import StartingStack from '../components/StartingStack';
 import TvBroadcast from '../components/TvBroadcast';
 import PlayerRoster from '../components/PlayerRoster';
 import BlindStepper from '../components/BlindStepper';
+import { Toggle } from '../components/Toggle';
+import MoneyInput from '../components/MoneyInput';
 import { useT } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
+import { useLocalClock, setLocalClock } from '../lib/localClock';
+import { useHostClock } from '../lib/useHostClock';
+import { goLevel as clockGoLevel, secondsLeft, setMinutesPerLevel, togglePlayPause } from '../lib/clockLogic';
 
 const fmt = (s: number) => {
   const m = Math.floor(s / 60);
@@ -33,61 +38,47 @@ export default function TableScreen() {
   // blinds still move, though — a manual stepper stands in for the clock.
   const showClock = !isHost && (!isCash || state.settings.cashUseTimer);
   const manualBlinds = !isHost && isCash && !state.settings.cashUseTimer;
+  const maxIdx = Math.max(0, blindLevels.length - 1);
 
-  const [levelIdx, setLevelIdx] = useState(0);
-  const [seconds, setSeconds] = useState(mins * 60);
-  const [running, setRunning] = useState(false);
+  /* ONE clock for the whole tab, in both modes: hosting mirrors the TV's clock and
+     sends commands, otherwise the phone runs its own. The sticky bar at the top and
+     the panels below are two views of the same state — they can't disagree, and the
+     local clock survives a tab change because it lives outside React. */
+  const local = useLocalClock(mins, maxIdx, !isHost);
+  const host = useHostClock(state.settings.liveSessionCode, isHost);
+  const clock = isHost ? host.clock : local.clock;
+  const seconds = isHost ? secondsLeft(host.clock) : local.seconds;
+  const send = isHost ? host.send : setLocalClock;
+  const levelIdx = clock.levelIdx;
+  const running = clock.running;
+
   const [tv, setTv] = useState(false);
-  const tick = useRef<number | null>(null);
+  const [setupOpen, setSetupOpen] = useState(false);
 
   const level = blindLevels[Math.min(levelIdx, blindLevels.length - 1)];
   const next = blindLevels[levelIdx + 1];
 
-  // keep the clock in sync if the per-level length changes while paused
+  // Keep the phone's own clock on the length chosen in Settings. (While hosting the
+  // TV holds the length, and the remote pushes changes to it.)
   useEffect(() => {
-    if (!running) setSeconds(mins * 60);
-  }, [mins]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!running) {
-      if (tick.current) window.clearInterval(tick.current);
-      return;
-    }
-    tick.current = window.setInterval(() => {
-      setSeconds((s) => {
-        if (s > 1) return s - 1;
-        // level over → advance
-        try {
-          navigator.vibrate?.(400);
-        } catch {
-          /* ignore */
-        }
-        setLevelIdx((idx) => {
-          if (idx + 1 < blindLevels.length) return idx + 1;
-          setRunning(false);
-          return idx;
-        });
-        return mins * 60;
-      });
-    }, 1000);
-    return () => {
-      if (tick.current) window.clearInterval(tick.current);
-    };
-  }, [running, blindLevels.length, mins]);
+    if (isHost || local.clock.minutesPerLevel === mins) return;
+    setLocalClock(setMinutesPerLevel(local.clock, mins));
+  }, [mins, isHost, local.clock]);
 
   const goLevel = (idx: number) => {
-    const clamped = Math.max(0, Math.min(blindLevels.length - 1, idx));
-    setLevelIdx(clamped);
-    setSeconds(mins * 60);
+    const clamped = Math.max(0, Math.min(maxIdx, idx));
+    send(clockGoLevel(clock, clamped - clock.levelIdx, maxIdx));
   };
 
   const setMins = (v: number) => {
     const n = Math.max(1, Math.min(180, v));
     dispatch({ type: 'UPDATE_SETTINGS', patch: { minutesPerLevel: n } });
-    if (!running) setSeconds(n * 60);
+    send(setMinutesPerLevel(clock, n));
   };
 
-  const clock = (
+  const resetPeriod = () => send(setMinutesPerLevel(clock, clock.minutesPerLevel));
+
+  const clockFace = (
     <div className="clock-face">
       <div className="clock-level">Level {levelIdx + 1}</div>
       <div className="clock-blinds">
@@ -99,78 +90,33 @@ export default function TableScreen() {
     </div>
   );
 
+  /* The bar that stays put while you scroll the roster. During a game the clock is
+     the one thing you keep glancing at, and it used to scroll off the top behind
+     three cards of setup. Play/pause is right here too, so putting the blinds up
+     never means hunting for the clock card. */
+  const showSticky = !manualBlinds && (!isCash || state.settings.cashUseTimer);
+
   return (
     <div>
-      {/* Game mode — tournament vs cash game (reshapes the plan, table & TV) */}
-      <div className="section-label">{t('table.gameMode')}</div>
-      <div className="card">
-        <div className="segmented">
+      {showSticky && (
+        <div className="table-sticky">
+          <div className="ts-main">
+            <span className="ts-level">
+              {clock.onBreak ? t('tv.break') : `${t('plan.level')} ${levelIdx + 1}`}
+            </span>
+            <span className="ts-blinds">{level ? `${level.smallBlind} / ${level.bigBlind}` : '—'}</span>
+          </div>
+          <div className="spacer" />
+          <span className={`ts-time ${running && seconds <= 30 ? 'urgent' : ''}`}>{fmt(seconds)}</span>
           <button
-            className={!isCash ? 'active' : ''}
-            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { gameMode: 'tournament' } })}
+            className="ts-play"
+            onClick={() => send(togglePlayPause(clock))}
+            aria-label={running ? t('table.pause') : t('table.play')}
           >
-            {t('table.tournament')}
-          </button>
-          <button
-            className={isCash ? 'active' : ''}
-            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { gameMode: 'cash' } })}
-          >
-            {t('table.cashGame')}
+            {running ? <IconPause size={17} /> : <IconPlay size={17} />}
           </button>
         </div>
-        <p className="faint" style={{ fontSize: 12.5, margin: '10px 2px 0', lineHeight: 1.55 }}>
-          {isCash ? t('table.gameModeCashDesc') : t('table.gameModeTournDesc')}
-        </p>
-        {isCash && (
-          <div className="row" style={{ marginTop: 12 }}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.cashUseTimer')}</div>
-              <div className="faint" style={{ fontSize: 12 }}>{t('table.cashUseTimerDesc')}</div>
-            </div>
-            <div className="spacer" />
-            <div
-              className={`toggle ${state.settings.cashUseTimer ? 'on' : ''}`}
-              onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { cashUseTimer: !state.settings.cashUseTimer } })}
-              role="switch"
-              aria-checked={state.settings.cashUseTimer}
-            />
-          </div>
-        )}
-        {!isCash && (
-          <>
-            <div className="divider" style={{ margin: '12px 0' }} />
-            <div className="row">
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>🎯 {t('table.bounty')}</div>
-                <div className="faint" style={{ fontSize: 12 }}>{t('table.bountyDesc')}</div>
-              </div>
-              <div className="spacer" />
-              <div
-                className={`toggle ${state.settings.bountyMode ? 'on' : ''}`}
-                onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { bountyMode: !state.settings.bountyMode } })}
-                role="switch"
-                aria-checked={state.settings.bountyMode}
-              />
-            </div>
-            {state.settings.bountyMode && (
-              <div className="row" style={{ marginTop: 10 }}>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.bountyAmount')}</div>
-                <div className="spacer" />
-                <div className="input-affix" style={{ maxWidth: 120 }}>
-                  <span className="affix">{state.settings.currency}</span>
-                  <input
-                    className="input"
-                    type="number"
-                    inputMode="decimal"
-                    value={state.settings.bountyAmount || ''}
-                    onChange={(e) => dispatch({ type: 'UPDATE_SETTINGS', patch: { bountyAmount: Math.max(0, +e.target.value) } })}
-                  />
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+      )}
 
       {/* Connect to the TV — type the code the TV shows, right here on the Table tab */}
       <ConnectToTv />
@@ -189,17 +135,17 @@ export default function TableScreen() {
           </div>
 
           <div className="card clock-card">
-            {clock}
+            {clockFace}
             <div className="clock-controls">
               <button className="icon-btn" onClick={() => goLevel(levelIdx - 1)} aria-label="Previous level">
                 <span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}>
                   <IconChevron size={20} />
                 </span>
               </button>
-              <button className="clock-play" onClick={() => setRunning((r) => !r)}>
+              <button className="clock-play" onClick={() => send(togglePlayPause(clock))}>
                 {running ? <IconPause size={26} /> : <IconPlay size={26} />}
               </button>
-              <button className="icon-btn" onClick={() => setSeconds(mins * 60)} aria-label="Reset timer">
+              <button className="icon-btn" onClick={resetPeriod} aria-label="Reset timer">
                 <IconReset size={19} />
               </button>
               <button className="icon-btn" onClick={() => goLevel(levelIdx + 1)} aria-label="Next level">
@@ -226,8 +172,8 @@ export default function TableScreen() {
 
       {manualBlinds && <BlindStepper levels={blindLevels} levelIdx={levelIdx} onStep={(d) => goLevel(levelIdx + d)} />}
 
-      {/* Hosting a Live Session: this panel is the single clock and drives the TV. */}
-      <RemoteControl />
+      {/* Hosting a Live Session: this panel drives the TV's clock, blinds and moments. */}
+      <RemoteControl clock={host.clock} send={host.send} />
 
       <button className="btn btn-primary btn-block" style={{ marginTop: isHost ? 14 : 0 }} onClick={() => setTv(true)}>
         <IconExpand size={18} /> {t('table.bigScreen')}
@@ -236,16 +182,18 @@ export default function TableScreen() {
         {isHost ? t('table.hostHint') : t('table.castHint')}
       </p>
 
-      {/* TV broadcast — the big-screen look, extras, and how to show it on the TV */}
-      <TvBroadcast />
-
-      <DealerAndSeats />
-
-      {!isCash && (
-        <p className="faint" style={{ fontSize: 12, textAlign: 'center', marginTop: 6 }}>
-          Set the ladder & starting level on the Plan tab; the clock plays through it.
-        </p>
-      )}
+      {/* Everything you set once and stop touching, folded away so the running game
+          is what fills the screen. Open by default until anybody has sat down. */}
+      <SetupSection open={setupOpen || state.ledger.length === 0} onToggle={() => setSetupOpen((v) => !v)}>
+        <GameModeCard />
+        <TvBroadcast />
+        <DealerAndSeats />
+        {!isCash && (
+          <p className="faint" style={{ fontSize: 12, textAlign: 'center', marginTop: 6 }}>
+            Set the ladder & starting level on the Plan tab; the clock plays through it.
+          </p>
+        )}
+      </SetupSection>
 
       {/* Portalled to the body on purpose: this screen animates in with a
           transform, and any transformed ancestor becomes the containing block for
@@ -253,6 +201,101 @@ export default function TableScreen() {
           card column instead of filling the window. */}
       {tv && createPortal(<TvMode onClose={() => setTv(false)} />, document.body)}
     </div>
+  );
+}
+
+/** The fold that hides one-time setup once the table is running. */
+function SetupSection({ open, onToggle, children }: { open: boolean; onToggle: () => void; children: React.ReactNode }) {
+  const t = useT();
+  return (
+    <>
+      <button className="mins-toggle setup-toggle" onClick={onToggle} aria-expanded={open}>
+        <span>
+          {t('table.setup')}
+          <span className="hint" style={{ marginLeft: 8 }}>{t('table.setupHint')}</span>
+        </span>
+        <span className={`chevron ${open ? 'rot90' : ''}`}>
+          <IconChevron size={16} />
+        </span>
+      </button>
+      {open && <div className="setup-body">{children}</div>}
+    </>
+  );
+}
+
+/** Tournament vs cash game — reshapes the plan, the table and the TV. */
+function GameModeCard() {
+  const { state, dispatch } = useStore();
+  const t = useT();
+  const isCash = state.settings.gameMode === 'cash';
+
+  return (
+    <>
+      <div className="section-label">{t('table.gameMode')}</div>
+      <div className="card">
+        <div className="segmented">
+          <button
+            className={!isCash ? 'active' : ''}
+            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { gameMode: 'tournament' } })}
+          >
+            {t('table.tournament')}
+          </button>
+          <button
+            className={isCash ? 'active' : ''}
+            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { gameMode: 'cash' } })}
+          >
+            {t('table.cashGame')}
+          </button>
+        </div>
+        <p className="faint" style={{ fontSize: 12.5, margin: '10px 2px 0', lineHeight: 1.55 }}>
+          {isCash ? t('table.gameModeCashDesc') : t('table.gameModeTournDesc')}
+        </p>
+        {isCash && (
+          <div className="row" style={{ marginTop: 12 }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.cashUseTimer')}</div>
+              <div className="faint" style={{ fontSize: 12 }}>{t('table.cashUseTimerDesc')}</div>
+            </div>
+            <div className="spacer" />
+            <Toggle
+              on={state.settings.cashUseTimer}
+              label={t('table.cashUseTimer')}
+              onChange={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { cashUseTimer: !state.settings.cashUseTimer } })}
+            />
+          </div>
+        )}
+        {!isCash && (
+          <>
+            <div className="divider" style={{ margin: '12px 0' }} />
+            <div className="row">
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>🎯 {t('table.bounty')}</div>
+                <div className="faint" style={{ fontSize: 12 }}>{t('table.bountyDesc')}</div>
+              </div>
+              <div className="spacer" />
+              <Toggle
+                on={!!state.settings.bountyMode}
+                label={t('table.bounty')}
+                onChange={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { bountyMode: !state.settings.bountyMode } })}
+              />
+            </div>
+            {state.settings.bountyMode && (
+              <div className="row" style={{ marginTop: 10 }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.bountyAmount')}</div>
+                <div className="spacer" />
+                <div className="input-affix" style={{ maxWidth: 120 }}>
+                  <span className="affix">{state.settings.currency}</span>
+                  <MoneyInput
+                    value={state.settings.bountyAmount}
+                    onCommit={(v) => dispatch({ type: 'UPDATE_SETTINGS', patch: { bountyAmount: Math.max(0, v) } })}
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -318,7 +361,7 @@ function DealerAndSeats() {
         )}
       </div>
 
-      <button className="mins-toggle" style={{ margin: '2px 2px 8px' }} onClick={() => setShowSeats((v) => !v)}>
+      <button className="mins-toggle" style={{ margin: '2px 2px 8px' }} onClick={() => setShowSeats((v) => !v)} aria-expanded={showSeats}>
         <span>{t('table.seatDraw')}</span>
         <span className={`chevron ${showSeats ? 'rot90' : ''}`}>
           <IconChevron size={16} />

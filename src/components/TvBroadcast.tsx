@@ -4,6 +4,7 @@ import { IconCheck, IconChevron } from './Icons';
 import { useT } from '../lib/i18n';
 import { analyzeBackground } from '../lib/imageAnalysis';
 import type { AccentId, Skin } from '../types';
+import { Toggle } from './Toggle';
 
 const WEB_URL = 'https://ndre-droid.github.io/chipstack/';
 
@@ -237,11 +238,10 @@ export default function TvBroadcast() {
                 <div className="faint" style={{ fontSize: 12 }}>{t('settings.quipsDesc')}</div>
               </div>
               <div className="spacer" />
-              <div
-                className={`toggle ${settings.tvQuips ? 'on' : ''}`}
-                onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvQuips: !settings.tvQuips } })}
-                role="switch"
-                aria-checked={settings.tvQuips}
+              <Toggle
+                on={settings.tvQuips}
+                label={t('settings.quips')}
+                onChange={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvQuips: !settings.tvQuips } })}
               />
             </div>
             <div className="divider" />

@@ -63,6 +63,7 @@ const defaultSettings: Settings = {
   language: 'en',
   gameMode: 'tournament',
   cashUseTimer: false,
+  countMode: 'money',
   tvShowStartStack: false,
   bountyMode: false,
   bountyAmount: 5,
@@ -513,6 +514,7 @@ function migrate(raw: string | null): AppState {
   if (settings.language !== 'en' && settings.language !== 'de') settings.language = 'en';
   if (settings.gameMode !== 'tournament' && settings.gameMode !== 'cash') settings.gameMode = 'tournament';
   if (typeof settings.cashUseTimer !== 'boolean') settings.cashUseTimer = false;
+  if (settings.countMode !== 'money' && settings.countMode !== 'colours') settings.countMode = 'money';
   if (typeof settings.tvShowStartStack !== 'boolean') settings.tvShowStartStack = false;
   if (typeof settings.bountyMode !== 'boolean') settings.bountyMode = false;
   if (typeof settings.bountyAmount !== 'number' || settings.bountyAmount < 0) settings.bountyAmount = 5;
