@@ -18,7 +18,11 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-08-15 from `main` @ `5b3bbe4`**, 4.39 MB, run `31877174344`: single player roster +
+  (**CURRENT — rebuilt 2026-08-22 from `main` @ `d776a25`**, 4.43 MB, run `32584988724`: stack typed in
+  euros, shared clock, in-app confirms, session ownership. Pages run `32584985820` green from the same
+  commit, so APK / `main` / Pages are IN SYNC. ⚠️ The rewritten `firestore.rules` are still NOT deployed
+  — enable Anonymous auth in the Firebase console FIRST, then `firebase deploy --only firestore:rules`.
+  Previous build: rebuilt 2026-08-15 from `main` @ `5b3bbe4`, 4.39 MB, run `31877174344`: single player roster +
   counting round, photo chip-count removed. Stable key unchanged → installs over the top, data kept.
   Pages run `31877169320` green from the same commit, so APK / `main` / Pages are IN SYNC.
   Historical build note: rebuilt 2026-08-11 from `main` @ `5a4f2ae`, 4.37 MB; AI chip count was a deliberate **ASSIST**:
