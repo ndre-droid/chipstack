@@ -68,6 +68,10 @@ sound would hijack the user's Sonos).
   Instead: open a 2nd same-origin tab, `localStorage.clear()` + reload it (→ fresh independent
   device), join as TV, and **do NOT reload the host tab** (same-origin localStorage clobbers
   between tabs, but only bites on reload; in-memory React state is the real source of truth).
+- **Browser-pane automation gotcha (not an app bug).** When the pane isn't displayed, screenshots
+  time out AND the page is not focused, so a programmatic `.focus()` sets `activeElement` without
+  firing focus/blur events. Any component logic that hangs off focus will look broken there. Verify
+  such behaviour by asserting DOM/state, not by trusting a synthetic blur.
 - **HMR deps-array warnings / `[vite] Failed to reload`** in the dev console are transient
   artifacts of editing while running — always confirm against a clean `npm run build` +
   the production preview, which are clean.
@@ -141,7 +145,9 @@ src/
     settle.ts        settleUp() minimal-transfer
     share.ts         encode/decodeSetup (CS1: code), renderStackImage
     money.ts, i18n.ts (t() hook + en/de dict), clockLogic.ts (pure ClockState transitions),
-    firebaseConfig.ts (the pasted chipstack-live web config), firebase.ts (lazy Firestore),
+    firebaseConfig.ts (the pasted chipstack-live web config), firebase.ts (lazy Firestore +
+      ensureAuth() — anonymous sign-in, firebase/auth dynamically imported, resolves to null on
+      failure so writes still work against the old rules),
     liveData.ts (NEW — LiveData type + dataOf + liveSignature; FIREBASE-FREE on purpose so the
       host-sync hook can import it statically without bloating the main bundle),
     liveSession.ts (Firestore session doc read/write/subscribe + tvHeartbeat — DYNAMICALLY
@@ -149,9 +155,18 @@ src/
       re-exports LiveData from liveData.ts),
     color.ts (NEW — darken() + customAccentVars() for the free custom-accent hex picker),
     useLiveHostSync.ts (root hook: while hosting, push the WHOLE synced slice to cloud on any
-      change, debounced 150ms — keyed off liveSignature(state), NOT a curated deps list)
+      change, debounced 400ms — keyed off liveSignature(state), NOT a curated deps list; also
+      beats hostHeartbeat() every 45s so a quiet table isn't mistaken for a dead phone)
+    localClock.ts    THE phone's own blind clock, OUTSIDE React (module-level ClockState +
+      useSyncExternalStore). It must not live in TableScreen state: App remounts the screen on
+      every tab change, which reset AND stopped the timer. Deadline-based, catches up on return.
+      A standalone TvMode adopts it and writes back, so both screens show one clock.
+    useHostClock.ts  the same job while HOSTING: one subscription owned by the Table tab, handed
+      to RemoteControl as props. Never runs a countdown — derives from the shared deadline.
     deepLink.ts (parseTvCode + useNativeDeepLink via @capacitor/app: chipstack://tv/NNNN → host)
-    money.ts (fmtMoney/fmtNum/localeFor — language-driven grouping; i18n.ts useFmt() binds it)
+    money.ts (fmtMoney/fmtNum/localeFor — language-driven grouping; i18n.ts useFmt() binds it —
+      plus parseMoney(), which is why no money field is <input type="number"> any more: Chrome
+      returns an EMPTY string for "47,25" and the comma IS the German decimal key)
     *.test.ts        engine tests (node --experimental-strip-types, imports need .ts extensions)
   components/
     Chip.tsx         SVG chip/plaque — SLOWPLAY ceramic: SMOOTH edge (no clay spots), full-face
@@ -163,9 +178,16 @@ src/
     SeasonLeague.tsx   NEW — season league on the Cash tab (save night → net/ROI standings + history)
     PlayerRoster.tsx   THE player list (Table tab): join / rename / emoji / rebuy / stack / cash-out /
                        bust / remove. Replaced the player-count stepper + the photo chip-count card.
-    CountRound.tsx     counting-round sheet — tally each player's stack per denomination (−/+1/+20),
+    CountRound.tsx     counting-round sheet, TWO modes (Settings.countMode, default 'money'):
+                       type the euro amount per player, or tally by denomination (−/+1/+20).
                        "assign the rest" for the last player, summary, one LEDGER_SET_CHIPS_MANY dispatch
     EmojiPicker.tsx    the 74-emoji set + grid, shared by PlayerRoster and RemoteControl
+    MoneyInput.tsx     EVERY money field. Text + inputMode=decimal + parseMoney; keeps the raw
+                       text while typing and only re-syncs when the value changes from elsewhere.
+    Toggle.tsx         the on/off switch. A <button>, not a <div role="switch"> — the old one had
+                       no tab stop, which breaks a laptop being used as the big screen.
+    Confirm.tsx        useConfirm() + the in-app dialog. window.confirm blocked the JS thread, so
+                       the live-sync queue and the clock stopped while it was open.
     TvBroadcast.tsx    TV design/accent/quips/background/penalties+house-rules editors/show-on-TV
                        (link fixed, QR removed) — collapsible on the Table tab, syncs while hosting
   screens/
@@ -173,8 +195,10 @@ src/
                      slider up top; config (players/buy-in/blinds/options) below a "Session setup"
                      divider; collapsible "Later levels & colour-up"; fine-tune editor; share.
     ChipsScreen.tsx  inventory editor
-    TableScreen.tsx  ConnectToTv card + blind clock + "Big screen · TV mode" button +
-                     RemoteControl (host only) + dealer button + seat draw
+    TableScreen.tsx  sticky level/blinds/time/play bar (.table-sticky) + ConnectToTv + starting
+                     stack + roster + blind clock + "Big screen · TV mode" + RemoteControl (host
+                     only, clock passed as props); game mode, TV broadcast and dealer/seat draw are
+                     folded into a "Tisch-Setup" disclosure once anybody has sat down.
     ConnectToTv.tsx  phone-side link: 4 code boxes → checkCodeExists → role 'host' + code
                      (replaced LiveSessionControl.tsx). Firebase-configured only.
     TvMode.tsx       fullscreen landscape big-screen dashboard (clock/standings/legend/colour-up/
@@ -183,6 +207,8 @@ src/
                      the host's data + OWNS the countdown. NO on-screen keypad (phone types the
                      code). Standalone shows a "Use this device as the TV" pill. clamp()→4K.
     RemoteControl.tsx phone's clock remote (host only); sends commands, never runs a local timer.
+                     Takes clock/send as PROPS from TableScreen — it used to open its own
+                     subscription, so the tab had two listeners that could disagree.
     CashScreen.tsx   persisted ledger → who-pays-whom
     SettingsScreen.tsx Language, Style (4 skins), Appearance (minimal only), Accent (per-skin, 8),
                      TV broadcast style (+ Match phone), TV extras (quips toggle + background photo
@@ -697,6 +723,32 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 
 ## ⚠️ Open items / next steps
 
+### STATE RIGHT NOW (2026-08-22)
+Everything in the repo is shipped and green. Local branch **`feat/chip-photo-count` == `main` ==
+`7abf182`**, Pages and the APK both built from it. Nothing is half-finished in the working tree; the
+only untracked things are the user's own `koffer.png` and `Chips source pics and links/`, deliberately
+not committed.
+
+**THE ONE THING OUTSTANDING — the Firestore rules are written but NOT deployed.** `firestore.rules`
+now requires anonymous auth and session ownership (see the 2026-08-22 entry above for why). Deploying
+it out of order takes live sync down for everyone, so do it in exactly this order:
+1. Firebase console → Authentication → Sign-in method → **enable Anonymous**. Without it,
+   `signInAnonymously` fails and every client is rejected.
+2. Already done: `main`, Pages and the APK all carry the signing-in client (`7abf182`). If more
+   time has passed, re-check that the installed APK is current — an old APK loses live sync at step 3.
+3. `firebase deploy --only firestore:rules`
+
+Until step 3 the app runs against the OLD, wide-open rules and works normally — `ensureAuth()`
+resolves to `null` on failure and the write is attempted anyway. After step 3, reading a session over
+the plain REST API with the public web key no longer works; that used to be the debugging trick, so
+drive the app instead. The TTL policy is still a separate one-off:
+`gcloud firestore fields ttls update expiresAt --collection-group=sessions --enable-ttl`.
+
+**Nothing else is pending from the audit** — every item raised on 2026-08-22 was fixed and verified in
+the same session. Deliberately NOT done, with the reason: skipping data pushes when no TV seems to be
+listening. A phone cannot tell "no TV" from "TV briefly offline", and a skipped push leaves the big
+screen stale; the write cost is not worth that.
+
 ### Photo → chip count — DELETED (2026-08-15)
 The whole photo/AI chip-count feature is **gone**. It was already a soft assist (see the history
 below) and in the user's real game it did not work well enough to be worth keeping. Removed:
@@ -720,7 +772,13 @@ assist that followed still was not good enough. Historical detail lives in git a
    **Kept from that work:** the denom palette was matched to the real photos — `10` → `#31B6C9` (cyan),
    `100` → `#0C0C10` (black) in `store.tsx` `defaultDenoms()`. Existing users' saved colours are
    preserved by `migrate()` (only defaults change).
-1. **✅ MERGED + DEPLOYED (2026-08-11) — `main`, Pages and the APK are all IN SYNC.** `feat/chip-photo-count`
+1. **Ship flow (current, unchanged).** Work on `feat/chip-photo-count`, then
+   `git push origin HEAD:main` (fast-forward → Pages auto-deploys), then
+   `gh workflow run "Build Android APK" -R ndre-droid/chipstack --ref main` — the APK builds from
+   REMOTE main, so push FIRST. Last run of it: 2026-08-22, `7abf182`, both workflows green.
+   **Still pending on-device:** App Links verification. CI still warns on deprecated **Node 20** /
+   `setup-java@v4` actions — bump `actions/*` when convenient.
+   Historical note (2026-08-11): `feat/chip-photo-count`
    was fast-forwarded onto **`main` @ `5a4f2ae`** (`git push origin feat/chip-photo-count:main`; `main` was
    `99a2836` at session start). Landed in two pushes: `8d67811` (the 4 chip-count assist commits + euro
    stack-editing) then `5a4f2ae` (new app icon). Both CI rounds ran green from `main`: **Pages**
@@ -738,17 +796,18 @@ assist that followed still was not good enough. Historical detail lives in git a
    warnings/notes, colour-up retirement math) and a few minor inline strings (e.g. PlanScreen "pts",
    StackTable headers) — those need the language threaded into the engine / those call sites. Extend
    the dict + wrap remaining strings when asked.
-3. **Firestore is verified healthy** (2026-07-24, REST probe with the committed public key: GET
-   missing → 404, PATCH → 200, DELETE → 200). Rules allow read+write on `sessions/{code}`. So any
-   future live-sync failure is **client state, not rules** — don't re-diagnose the backend first.
-   Rule is wide open (`if true`) — brute-forceable but fine for a home game; could harden + add TTL
-   cleanup if wanted. Memory note: `memory/live-sync-firestore.md`.
+3. **Firestore.** The backend is healthy and a live-sync failure is almost always **client state,
+   not rules** — don't re-diagnose the backend first. What is DEPLOYED today is still the old,
+   effectively open rule set; what is IN THE REPO requires anonymous auth + session ownership and is
+   waiting on the three steps at the top of this section. Memory note:
+   `memory/live-sync-firestore.md` (kept current).
 4. **Live Session scope:** host controls clock, level/break length, auto-break, blinds, players/pool
    (incl. Bust), TV design + all the show/hide toggles and custom quips from the phone — all synced
    and immediate for the discrete ones. Still TV-local (not on the phone remote): the shot-clock and
    who-drinks spinner. Payout structure is auto (percent table by entrant count in `TvMode.tsx`), not
-   yet user-editable. **Pitched, not built:** a "● Live / ⚠ disconnected" status pill on the phone
-   remote so a silent TV drop is obvious immediately (user hit this — TV disconnected without a cue).
+   yet user-editable. **Liveness is now covered in BOTH directions** (2026-08-22): the TV's
+   `tvSeenAt` heartbeat drives the phone's pill, and the host's new `hostSeenAt` makes the big screen
+   show `⚠ Handy offline` after 90s of silence instead of presenting a frozen table as current.
 5. **Composition-aware TV backgrounds: DONE** (see Recent work). Analyses each upload and lays text
    out around the subject. Could go further (face/object detection, multiple focal regions).
 6. **User asked for continuous feature suggestions** — proactively pitch good ones as they come to
