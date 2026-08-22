@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { useT } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
+import { useLiveSyncStatus } from '../lib/useLiveHostSync';
+import { flushLiveSync, queueData } from '../lib/liveSyncQueue';
 import type { Unsubscribe } from 'firebase/firestore';
 
 const LEN = 4;
@@ -31,10 +33,9 @@ export default function ConnectToTv() {
   // --- Live TV status (heartbeat) + manual push ---
   const [tvSeen, setTvSeen] = useState(false); // has the TV beat at least once?
   const [online, setOnline] = useState(false); // beat recently enough to be "live"?
-  const [pushState, setPushState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const sync = useLiveSyncStatus(); // is everything this phone changed actually up there?
   const lastBeatAt = useRef(0);
   const prevSeenVal = useRef(0);
-  const pushTimer = useRef<number | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -73,8 +74,6 @@ export default function ConnectToTv() {
     }, 5000);
     return () => window.clearInterval(id);
   }, [connected]);
-
-  useEffect(() => () => { if (pushTimer.current) window.clearTimeout(pushTimer.current); }, []);
 
   if (!firebaseConfigured) return null;
 
@@ -135,24 +134,29 @@ export default function ConnectToTv() {
   const disconnect = () => dispatch({ type: 'UPDATE_SETTINGS', patch: { liveSessionCode: null, liveSessionRole: null } });
 
   // Force the full state to the TV right now. Auto-sync already does this on every
-  // change; this is the recovery path if a write was dropped while the TV blipped.
+  // change and retries by itself; this jumps the backoff when the user is impatient.
   const pushNow = () => {
     if (!liveSessionCode) return;
-    if (pushTimer.current) window.clearTimeout(pushTimer.current);
-    setPushState('sending');
-    import('../lib/liveSession')
-      .then(({ hostPushData }) => hostPushData(liveSessionCode, stateRef.current))
-      .then(() => {
-        setPushState('sent');
-        pushTimer.current = window.setTimeout(() => setPushState('idle'), 2000);
-      })
-      .catch(() => {
-        setPushState('error');
-        pushTimer.current = window.setTimeout(() => setPushState('idle'), 3500);
-      });
+    queueData(liveSessionCode, () => stateRef.current);
+    flushLiveSync();
   };
 
   const statusLabel = online ? t('connect.tvLive') : tvSeen ? t('connect.tvOffline') : t('connect.waitingTv');
+
+  // The outbound half of the link: the heartbeat above says the TV is there, this
+  // says whether what you changed on the phone actually reached it.
+  const stuck = sync.status === 'retrying';
+  const syncTone = stuck ? (sync.online ? 'warn' : 'off') : sync.status === 'syncing' ? 'wait' : 'on';
+  const syncLabel =
+    sync.status === 'syncing'
+      ? t('connect.syncSending')
+      : stuck
+        ? sync.online
+          ? t('connect.syncRetrying', { n: sync.attempts })
+          : t('connect.syncOffline')
+        : sync.status === 'synced'
+          ? t('connect.syncOk')
+          : t('connect.syncIdle');
 
   return (
     <>
@@ -174,18 +178,16 @@ export default function ConnectToTv() {
               <div className="spacer" />
               <button className="btn btn-ghost btn-sm" onClick={disconnect}>{t('connect.disconnect')}</button>
             </div>
+            <div className={`sync-line ${syncTone}`}>
+              <span className={`sync-dot ${syncTone}`} />
+              <span>{syncLabel}</span>
+            </div>
             <button
-              className={`btn btn-block mt12 ${pushState === 'error' ? 'btn-primary' : 'btn-ghost'}`}
+              className={`btn btn-block mt12 ${stuck ? 'btn-primary' : 'btn-ghost'}`}
               onClick={pushNow}
-              disabled={pushState === 'sending'}
+              disabled={sync.status === 'syncing'}
             >
-              {pushState === 'sending'
-                ? t('table.sending')
-                : pushState === 'sent'
-                  ? t('table.sent')
-                  : pushState === 'error'
-                    ? t('table.syncError')
-                    : t('connect.pushNow')}
+              {sync.status === 'syncing' ? t('table.sending') : stuck ? t('connect.retryNow') : t('connect.pushNow')}
             </button>
             <div className="faint" style={{ fontSize: 11.5, textAlign: 'center', marginTop: 6 }}>{t('connect.pushHint')}</div>
           </>

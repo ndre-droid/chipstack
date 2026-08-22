@@ -1414,6 +1414,24 @@ input[type='color'] { cursor: pointer; }
 .live-dot.wait { background: var(--text-faint); animation: live-pulse 1.4s ease-in-out infinite; }
 @keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
+/* phone: the OUTBOUND half of the live link — whether what you changed here has
+   actually reached the cloud. The heartbeat dot above answers "is the TV there?",
+   this one answers "did my change get out?". */
+.sync-line {
+  display: flex; align-items: center; gap: 9px;
+  margin-top: 12px; padding: 9px 11px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface-2);
+  font-size: 12.5px; line-height: 1.45; color: var(--text-faint);
+}
+.sync-line.warn { border-color: color-mix(in srgb, var(--acc) 45%, var(--line)); color: var(--text); }
+.sync-line.off { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); color: var(--text); }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-faint); }
+.sync-dot.on { background: var(--good); }
+.sync-dot.wait { background: var(--acc); animation: live-pulse 1.1s ease-in-out infinite; }
+.sync-dot.warn { background: var(--acc); animation: live-pulse 1.1s ease-in-out infinite; }
+.sync-dot.off { background: var(--bad); }
+
 /* phone: 4-digit "Connect to TV" code entry.
    NOTE: named .code-cell (not .code-box) on purpose — .code-box is the multi-line
    URL / share-code display (see near .qr-wrap); reusing that name here clobbered it

@@ -5,6 +5,7 @@ import { firebaseConfigured } from '../lib/firebaseConfig';
 import type { Unsubscribe } from 'firebase/firestore';
 import { togglePlayPause, goLevel, startBreak, cancelBreak, secondsLeft, initialClock, setMinutesPerLevel } from '../lib/clockLogic';
 import type { ClockState } from '../lib/clockLogic';
+import { queueClock } from '../lib/liveSyncQueue';
 import { IconPlay, IconPause, IconChevron, IconPlus, IconTrash } from '../components/Icons';
 import BlindStepper from '../components/BlindStepper';
 
@@ -63,11 +64,9 @@ export default function RemoteControl() {
 
   const send = (next: ClockState) => {
     setClock(next); // optimistic
-    import('../lib/liveSession').then(({ pushClock }) =>
-      pushClock(liveSessionCode, next).catch(() => {
-        /* the next command or the TV's own tick will reconcile */
-      }),
-    );
+    // Queued rather than fired and forgotten: a failed command is retried instead
+    // of silently leaving the TV on the old level.
+    queueClock(liveSessionCode, next);
   };
 
   const setMinutes = (m: number) => {

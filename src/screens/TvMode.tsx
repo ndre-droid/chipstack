@@ -9,6 +9,7 @@ import { firebaseConfigured } from '../lib/firebaseConfig';
 import type { Unsubscribe } from 'firebase/firestore';
 import { secondsLeft as clockSecondsLeft, initialClock } from '../lib/clockLogic';
 import type { ClockState } from '../lib/clockLogic';
+import { queueClock } from '../lib/liveSyncQueue';
 import { startingStackOf } from '../lib/startingStack';
 import { autoTvScale, clampTvScale, TV_SCALE_MIN, TV_SCALE_MAX, TV_SCALE_STEP } from '../lib/tvScale';
 import { colorUpEvents } from '../lib/planning';
@@ -253,11 +254,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       remaining: secs,
       minutesPerLevel,
     };
-    import('../lib/liveSession').then(({ pushClock }) =>
-      pushClock(liveSessionCode, next).catch(() => {
-        /* transient network error — the next control action will retry */
-      }),
-    );
+    queueClock(liveSessionCode, next); // retried on failure; a command too old to be true is dropped
   };
 
   // Standalone → become the designated TV: App will re-mount this fullscreen and

@@ -1,7 +1,14 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useStore } from '../store';
 import { firebaseConfigured } from './firebaseConfig';
 import { liveSignature } from './liveData';
+import {
+  cancelLiveSync,
+  getLiveSyncState,
+  queueData,
+  subscribeLiveSync,
+  type LiveSyncState,
+} from './liveSyncQueue';
 
 /**
  * Mounted once at the app root. While this phone is the host of a Live Session
@@ -15,8 +22,10 @@ import { liveSignature } from './liveData';
  * silently never reached the TV (that was the "some changes don't get pushed" bug).
  * Keying off the whole slice means a new synced field can never be forgotten.
  *
- * The Firebase SDK is only dynamically imported once a session exists, so it costs
- * nothing for users who never pair a TV.
+ * The write itself goes through `liveSyncQueue`, which retries failures and exposes
+ * the outcome — a dropped push used to be swallowed and lost until an app reload.
+ * The Firebase SDK is only dynamically imported once there is something to send, so
+ * it costs nothing for users who never pair a TV.
  */
 export function useLiveHostSync() {
   const { state } = useStore();
@@ -32,16 +41,26 @@ export function useLiveHostSync() {
   useEffect(() => {
     if (!firebaseConfigured || liveSessionRole !== 'host' || !liveSessionCode) return;
     if (timer.current) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => {
-      import('./liveSession')
-        .then(({ hostPushData }) => hostPushData(liveSessionCode, stateRef.current))
-        .catch(() => {
-          /* offline or transient — the next change (or a manual Push) retries */
-        });
-    }, 150);
+    // The queue is handed a getter, not a snapshot, so a retry sends the state as
+    // it is at that moment rather than replaying whatever it was when this fired.
+    timer.current = window.setTimeout(() => queueData(liveSessionCode, () => stateRef.current), 150);
     return () => {
       if (timer.current) window.clearTimeout(timer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, liveSessionCode, liveSessionRole]);
+
+  // Left the session (or never in one): drop anything still queued, so a retry can
+  // never land on a session this device has walked away from. Keyed on the CODE, not
+  // the role — the TV writes the clock through the same queue, so cancelling merely
+  // because this device isn't the host would throw away its pending commands.
+  useEffect(() => {
+    if (liveSessionCode) return;
+    cancelLiveSync();
+  }, [liveSessionCode]);
+}
+
+/** Live view of the outbound queue — drives the sync line on the Table tab. */
+export function useLiveSyncStatus(): LiveSyncState {
+  return useSyncExternalStore(subscribeLiveSync, getLiveSyncState, getLiveSyncState);
 }
