@@ -18,19 +18,18 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (⚠️ **BEHIND `main` since 2026-08-23** — `main` and Pages carry the front-to-back
-  audit (`76c5790`, see "Recent work" below); the APK is still the build below.
-  Rebuild it to put those fixes on the phone.
-  **Built 2026-08-24 from `main` @ `f2d675a`**, 4.50 MB (4,496,889 B), run `32656415094`:
-  the whole UX pass (see "Recent work 2026-08-24"). Pages have moved on since — see the
-  warning above.
-  Download verified: `200`, `application/vnd.android.package-archive`, 4,496,889 B.
-  `npx cap sync` reported **2 Capacitor plugins for android** including
-  `@capacitor/local-notifications@6.1.3`, and the `:capacitor-local-notifications:*` Gradle tasks
-  ran, so the plugin IS compiled in. What is still unproven is the runtime: whether Android grants
-  `POST_NOTIFICATIONS` and whether the level-end notification actually fires. **That needs a person
-  with the APK on a phone** — switch on "Melden, wenn die Stufe endet" on the Table tab, start the
-  clock, lock the phone, wait for the level to run out.
+  (**CURRENT — rebuilt 2026-08-23 from `main` @ `35d20cb`**, 4.50 MB (4,498,271 B),
+  run `32659450346`: the front-to-back audit (see "Recent work 2026-08-23"). Pages run
+  `32658723307` green from the same code, so **APK / `main` / Pages are IN SYNC**.
+  Download verified: `200`, `application/vnd.android.package-archive`, 4,498,271 B.
+  `npx cap sync` again reported **2 Capacitor plugins for android** including
+  `@capacitor/local-notifications@6.1.3`, and the `:capacitor-local-notifications:*`
+  Gradle tasks ran — the plugin IS compiled in. Still unproven at RUNTIME: whether
+  Android grants `POST_NOTIFICATIONS` and whether the level-end notification fires.
+  **That needs a person with the APK on a phone** — switch on "Melden, wenn die Stufe
+  endet" on the Table tab, start the clock, lock the phone, wait for the level to run out.
+  Previous build: 2026-08-24 from `main` @ `f2d675a`, 4.50 MB (4,496,889 B), run
+  `32656415094`: the whole UX pass (see "Recent work 2026-08-24").
   Previous build: 2026-08-23 from `main` @ `4ef5919`, 4.43 MB, run `32626027488`:
   the sync-wedge fix (undefined payload), leader marked on the name, the reworked trend line + its
   toggle.
@@ -345,10 +344,9 @@ bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out o
 
 ### Recent work (2026-08-23 — front-to-back audit, commit `76c5790`, PUSHED)
 
-`main` and Pages are on `76c5790` (Pages run `32658723307` green). **The APK is
-older** — it is still the `f2d675a` build from 2026-08-24; rebuild it when the user
-wants these fixes on the phone. `npx tsc -b`, `oxlint`, `npm test` (12 files) and
-`npm run build` are clean.
+`main`, Pages and the APK all carry this (Pages run `32658723307`, APK run
+`32659450346` from `35d20cb`, both green). `npx tsc -b`, `oxlint`, `npm test`
+(12 files) and `npm run build` are clean.
 
 **THE BIG ONE: a setup is chips and blinds, not a device.** `Settings` is one flat
 object and three separate paths copied ALL of it — the CS1 share code, a saved
