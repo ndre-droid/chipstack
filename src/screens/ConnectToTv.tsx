@@ -70,6 +70,14 @@ export default function ConnectToTv() {
         (connected) => {
           if (!connected) setOnline(false);
         },
+        /* The big screen was switched off and took the session with it. This phone
+           used to sit on "● Live", fade to "TV offline" a minute later and go on
+           heartbeating into a document that no longer existed — which, being a merge
+           write, kept bringing it back. Say what happened and let go of the code. */
+        () => {
+          dispatch({ type: 'UPDATE_SETTINGS', patch: { liveSessionCode: null, liveSessionRole: null } });
+          setErr(t('connect.ended'));
+        },
       );
     }).catch(() => {
       /* the live-sync chunk is fetched on demand and deliberately not precached
@@ -80,6 +88,9 @@ export default function ConnectToTv() {
       cancelled = true;
       unsub?.();
     };
+    // `dispatch` and `t` are stable for the life of the screen; re-subscribing on
+    // every render of the Table tab would drop and re-open the listener constantly
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected, liveSessionCode]);
 
   // Re-evaluate liveness on a timer so a silent TV drop flips us to "offline".

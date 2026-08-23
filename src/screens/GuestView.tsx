@@ -31,6 +31,8 @@ export default function GuestView({ onLeave }: { onLeave: () => void }) {
   const [pickEmoji, setPickEmoji] = useState(false);
   const [sent, setSent] = useState(false);
   const [sendErr, setSendErr] = useState<string | null>(null);
+  /** the host's screen ended the night — the table is gone, not merely quiet */
+  const [ended, setEnded] = useState(false);
   const [votes, setVotes] = useState<MomentVotes>({});
   const [, setTick] = useState(0);
   useWakeLock(true);
@@ -52,6 +54,9 @@ export default function GuestView({ onLeave }: { onLeave: () => void }) {
         () => {
           /* the view simply keeps showing the last thing it saw */
         },
+        // the big screen ended the night: say so instead of leaving a frozen table
+        // on the guest's phone looking like it is still being played
+        () => setEnded(true),
       );
     }).catch(() => {
       /* offline before the live-sync chunk was ever cached — the empty-table
@@ -133,6 +138,8 @@ export default function GuestView({ onLeave }: { onLeave: () => void }) {
             {t('guest.title', { code })}
             <span className="hint">{t('guest.readOnly')}</span>
           </div>
+
+          {ended && <div className="card"><div className="empty">{t('guest.ended')}</div></div>}
 
           {/* Who am I — the only thing a guest can actually do */}
           <div className="card">

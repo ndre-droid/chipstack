@@ -3,6 +3,7 @@ import {
   doc,
   enableNetwork,
   setDoc,
+  updateDoc,
   deleteDoc,
   onSnapshot,
   getDoc,
@@ -161,7 +162,14 @@ export async function hostPushData(code: string, state: AppState): Promise<void>
  */
 export async function hostHeartbeat(code: string): Promise<void> {
   await ensureAuth();
-  await setDoc(sessionRef(code), { hostSeenAt: serverTimestamp(), ...stamps() }, { merge: true });
+  /* `updateDoc`, NOT a merge `setDoc`: a merge write CREATES the document when it
+     is missing, so a phone that had not yet noticed the big screen shut the session
+     down would quietly resurrect it — as a zombie holding nothing but a heartbeat,
+     alive until the TTL sweep 24 hours later, and (under the strict rules) owned by
+     nobody and therefore writable by anyone who guessed the code. A heartbeat has
+     nothing to say about a session that no longer exists; this one rejects with
+     `not-found` and the caller ignores it. */
+  await updateDoc(sessionRef(code), { hostSeenAt: serverTimestamp(), ...stamps() });
 }
 
 /**
@@ -376,11 +384,19 @@ const RESUBSCRIBE_BACKOFF_MS = [2000, 4000, 8000, 15000, 30000];
  * last received, with nothing on screen to say so. So an error re-opens the
  * listener on a backoff, and `onConnected` lets the caller show the truth in the
  * meantime.
+ *
+ * `onGone` is the other half of that honesty. A deleted document used to be
+ * swallowed — `if (snap.exists())` and nothing else — so when the big screen ended
+ * the session, the host phone never found out: it sat on "● Live", faded to "TV
+ * offline" a minute later, and went on heartbeating into a document that no longer
+ * existed. Now the screens that were watching are told, and can stop.
  */
 export function subscribeSession(
   code: string,
   onUpdate: (doc: LiveDoc) => void,
   onConnected?: (connected: boolean) => void,
+  /** the session we were watching has been DELETED — see below */
+  onGone?: () => void,
 ): Unsubscribe {
   const db = getDb();
   if (!db) return () => {};
@@ -393,6 +409,12 @@ export function subscribeSession(
   let inner: Unsubscribe | null = null;
   let retry: ReturnType<typeof setTimeout> | null = null;
   let attempts = 0;
+  /* A snapshot that says "no such document" means two completely different things
+     depending on when it arrives. Before the session has ever been seen it is just
+     the cached first read of a document the client does not know yet — harmless.
+     AFTER it has been seen, it means somebody deleted it, which is the big screen
+     ending the night. Only the second one is news, so `onGone` waits for it. */
+  let seenAlive = false;
 
   const open = () => {
     if (stopped) return;
@@ -401,7 +423,13 @@ export function subscribeSession(
       (snap) => {
         attempts = 0;
         onConnected?.(true);
-        if (snap.exists()) onUpdate(snap.data() as LiveDoc);
+        if (snap.exists()) {
+          seenAlive = true;
+          onUpdate(snap.data() as LiveDoc);
+        } else if (seenAlive) {
+          seenAlive = false;
+          onGone?.();
+        }
       },
       () => {
         onConnected?.(false);

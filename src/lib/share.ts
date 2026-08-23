@@ -1,5 +1,6 @@
 import type { AppState, Denomination, SessionConfig, Settings } from '../types';
-import { shareableSettings } from './settingsScope';
+// the .ts extension is what lets `node --experimental-strip-types` run share.test.ts
+import { shareableSettings } from './settingsScope.ts';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 

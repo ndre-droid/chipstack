@@ -166,6 +166,12 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const [staleTick, setStaleTick] = useState(0);
   const prevPaired = useRef(false);
   const tick = useRef<number | null>(null);
+  /* Bumped when the session document disappears, to make the pairing effect below
+     run again and put it back. */
+  const [pairSeq, setPairSeq] = useState(0);
+  /* The clock exactly as it stands, for the effects that must not depend on it.
+     Re-advertising mid-game has to restore THIS, not a fresh level 1. */
+  const clockRef = useRef<ClockState>(initialClock(minutesPerLevel));
 
   // This device is the TV: make sure a pairing code/doc exists and claim the 'tv'
   // role. Reuses the persisted code across reloads so it stays stable on screen.
@@ -174,7 +180,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     let cancelled = false;
     import('../lib/liveSession')
       .then(({ tvEnsurePairing }) =>
-        tvEnsurePairing(liveSessionRole === 'tv' ? liveSessionCode : null, initialClock(minutesPerLevel)),
+        tvEnsurePairing(liveSessionRole === 'tv' ? liveSessionCode : null, clockRef.current),
       )
       .then((code) => {
         if (cancelled) return;
@@ -188,8 +194,10 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     return () => {
       cancelled = true;
     };
+    // `pairSeq` is what re-runs this after the document was swept or deleted — the
+    // code is reused, so the same four digits stay on the wall
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deviceIsTv]);
+  }, [deviceIsTv, pairSeq]);
 
   // Subscribe to the shared session: mirror the clock always, and (as the TV)
   // apply the phone's data once it connects. Firebase is only imported here.
@@ -264,6 +272,16 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           }
         },
         (connected) => setLiveLost(!connected),
+        /* The document this screen is showing has been deleted — the TTL sweep found
+           an abandoned session, or another device ended it. A TV that owns the code
+           puts it straight back (same four digits, current clock) rather than
+           advertising a code nobody can connect to; a host previewing its own TV
+           just stops claiming the table is live. */
+        () => {
+          setPaired(false);
+          if (isTv) setPairSeq((n) => n + 1);
+          else setLiveLost(true);
+        },
       );
     }).catch(() => {
       /* the live-sync chunk is fetched on demand (see vite.config) — if it can't
@@ -322,6 +340,18 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTv, liveSessionCode]);
+
+  /* Keep the snapshot the pairing effect re-advertises from in step with what is
+     actually on screen. Written on render rather than in an effect so a re-advertise
+     triggered from a listener callback never sees a stale level. */
+  clockRef.current = {
+    levelIdx,
+    onBreak,
+    running,
+    periodEndsAt: deadline.current,
+    remaining: seconds,
+    minutesPerLevel,
+  };
 
   /** Start (or re-arm) the current period: the painted seconds and the deadline
    *  they are derived from always move together. */

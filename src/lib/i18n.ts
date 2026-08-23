@@ -774,6 +774,9 @@ const dict: Record<Lang, Record<string, string>> = {
     'settings.bgErrRead': 'Couldn\'t read that image — try a different file.',
     'settings.bgErrFile': 'Couldn\'t read that file.',
 
+    'connect.ended': 'The big screen ended the session — you\'ve been disconnected.',
+    'guest.ended': 'The session is over. Thanks for playing!',
+
   },
   de: {
     'nav.plan': 'Plan',
@@ -1539,6 +1542,9 @@ const dict: Record<Lang, Record<string, string>> = {
     'settings.bgErrProcess': 'Bild konnte nicht verarbeitet werden — anderes Foto versuchen.',
     'settings.bgErrRead': 'Bild konnte nicht gelesen werden — andere Datei versuchen.',
     'settings.bgErrFile': 'Datei konnte nicht gelesen werden.',
+
+    'connect.ended': 'Der Großbildschirm hat die Sitzung beendet — Verbindung getrennt.',
+    'guest.ended': 'Die Sitzung ist beendet. Danke fürs Mitspielen!',
 
   },
 };

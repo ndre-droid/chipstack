@@ -15,7 +15,7 @@ import { useT } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 import { useLocalClock, setLocalClock } from '../lib/localClock';
 import { useHostClock } from '../lib/useHostClock';
-import { goLevel as clockGoLevel, secondsLeft, setMinutesPerLevel, togglePlayPause } from '../lib/clockLogic';
+import { goLevel as clockGoLevel, resetPeriod as clockResetPeriod, secondsLeft, setMinutesPerLevel, togglePlayPause } from '../lib/clockLogic';
 import { useWakeLock } from '../lib/useWakeLock';
 import { useBackHandler } from '../lib/backHandler';
 import ClockFocus from '../components/ClockFocus';
@@ -133,7 +133,9 @@ export default function TableScreen() {
     send(setMinutesPerLevel(clock, n));
   };
 
-  const resetPeriod = () => send(setMinutesPerLevel(clock, clock.minutesPerLevel));
+  // ↺ puts the period back to its full length — a break included, which the old
+  // spelling (`setMinutesPerLevel` with the length it already had) could not do.
+  const resetPeriod = () => send(clockResetPeriod(clock, state.settings.breakMinutes ?? 5));
 
   const clockFace = (
     <div className="clock-face">
