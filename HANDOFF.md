@@ -18,16 +18,19 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-08-23 from `main` @ `35d20cb`**, 4.50 MB (4,498,271 B),
-  run `32659450346`: the front-to-back audit (see "Recent work 2026-08-23"). Pages run
-  `32658723307` green from the same code, so **APK / `main` / Pages are IN SYNC**.
-  Download verified: `200`, `application/vnd.android.package-archive`, 4,498,271 B.
+  (**CURRENT — rebuilt 2026-08-23 from `main` @ `13c1b70`**, 4.50 MB (4,498,713 B),
+  run `32660438449`: the session-gone signal + the clock-adjuster rework (see "Recent
+  work 2026-08-23 (2)"). Pages run `32660374730` green from the same commit, so
+  **APK / `main` / Pages are IN SYNC**.
+  Download verified: `200`, `application/vnd.android.package-archive`, 4,498,713 B.
   `npx cap sync` again reported **2 Capacitor plugins for android** including
   `@capacitor/local-notifications@6.1.3`, and the `:capacitor-local-notifications:*`
   Gradle tasks ran — the plugin IS compiled in. Still unproven at RUNTIME: whether
   Android grants `POST_NOTIFICATIONS` and whether the level-end notification fires.
   **That needs a person with the APK on a phone** — switch on "Melden, wenn die Stufe
   endet" on the Table tab, start the clock, lock the phone, wait for the level to run out.
+  Previous build: 2026-08-23 from `main` @ `35d20cb`, 4.50 MB (4,498,271 B), run
+  `32659450346`: the front-to-back audit.
   Previous build: 2026-08-24 from `main` @ `f2d675a`, 4.50 MB (4,496,889 B), run
   `32656415094`: the whole UX pass (see "Recent work 2026-08-24").
   Previous build: 2026-08-23 from `main` @ `4ef5919`, 4.43 MB, run `32626027488`:
@@ -341,6 +344,64 @@ RemoteControl (host, Table tab) still covers: clock, level length (±1/±10 + Tu
 break length + auto-break every N, blinds (edit/add/remove), players & pool (rename, buy-in, Rebuy,
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
+
+### Recent work (2026-08-23 (2) — session-gone signal, clock adjuster, time-shaped tests)
+
+Commit `13c1b70`. `main`, Pages (`32660374730`) and the APK (`32660438449`) all carry
+it. Everything below was verified against the LIVE Firestore project, not mocked.
+
+**A deleted session used to be swallowed in silence.** `subscribeSession` did
+`if (snap.exists()) onUpdate(...)` and nothing else, so when the big screen was
+switched off and took the pairing document with it, nobody watching found out. The
+host phone sat on "● Live", faded to "⚠ Handy offline" a minute later, and kept
+heartbeating into a document that no longer existed — and since that heartbeat was a
+merge `setDoc`, **it created it again**: a zombie session holding only a heartbeat,
+alive until the TTL sweep 24 h later, carrying no `tvUid` and therefore (under the
+strict rules) writable by anyone who guessed the four digits.
+
+- `subscribeSession(code, onUpdate, onConnected?, onGone?)`. **`onGone` only fires
+  once the document has been seen ALIVE** (`seenAlive`) — a "no such document"
+  snapshot before that is just the cached first read of a document the client does
+  not know yet, and firing on it would break every fresh pairing.
+- **The TV puts its own session straight back**: same four digits, and the CURRENT
+  clock, not a fresh level 1. A `clockRef` written on render feeds
+  `tvEnsurePairing`, and a `pairSeq` counter in the effect's deps is what re-runs it.
+  Verified: deleted `sessions/2258` over the REST API while the TV ran level 2 → it
+  re-advertised 2258 and re-created the doc with `levelIdx: 1, running: true`.
+- **The host disconnects and says so** (`connect.ended`). Verified: same delete → the
+  phone dropped role + code and returned to the code-entry card.
+- **A guest is told the night is over** (`guest.ended`) instead of staring at a
+  frozen table.
+- **`hostHeartbeat` is `updateDoc`, not a merge `setDoc`** — it can no longer
+  resurrect anything; it rejects `not-found` and the caller already ignores that.
+  Verified: the deleted session was still gone 50 s later, past a full beat interval.
+  `hostPushData` keeps its merge write on purpose (the documented self-heal).
+
+**"+1" now means "give this level one more minute".** `setMinutesPerLevel` reset the
+running period to the full new length, so with 4:12 on the clock one +1 tap jumped to
+21:00 and the level everybody was playing started again — and "we need a bit longer",
+the only reason anyone touches buttons under a running countdown, could not be
+expressed at all. It shifts the period by the delta now; the new length still applies
+in full from the next level (`goLevel`). Shortening **floors at 10 s** so −10 with
+4:12 left reads as "as short as I can make it" rather than silently putting the
+blinds up. Asking for the length you already have is now correctly a no-op.
+- That made ↺ a no-op, because it was spelled `setMinutesPerLevel(c,
+  c.minutesPerLevel)` and only worked as a side effect of the restart. **New
+  `resetPeriod(c, breakMinutes?)`** — it also restores a break, which the Table tab
+  never could.
+- Verified in the preview: 19:50 +1 → 20:49 · 20:41 −10 → 10:40 · ↺ → full length.
+
+**Tests for the time-shaped code** (12 → 16 files). Everything money-shaped was
+covered and nothing time-shaped was.
+- `clockLogic.test.ts` — 48 checks with **`Date.now` stubbed**; a deadline clock
+  tested against the wall clock is a test that fails on a slow machine. Covers the
+  long-freeze case a ticking counter gets wrong, and the new adjust/floor/no-op rules.
+- `payouts.test.ts` — every entrant count × pool adds up to the pot EXACTLY (the
+  €65-printed-as-€66 rounding bug), plus split normalisation and resizing.
+- `lateReg.test.ts`, and `share.test.ts` — a full CS1 round trip that also asserts
+  the code carries no device-local field and stays under 2.5 kB.
+- ⚠️ `share.ts` now imports `./settingsScope.ts` **with the extension** — that is what
+  lets `node --experimental-strip-types` run `share.test.ts`. Keep it.
 
 ### Recent work (2026-08-23 — front-to-back audit, commit `76c5790`, PUSHED)
 
