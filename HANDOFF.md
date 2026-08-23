@@ -18,9 +18,12 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-08-24 from `main` @ `f2d675a`**, 4.50 MB (4,496,889 B), run `32656415094`:
-  the whole UX pass (see "Recent work 2026-08-24"). Pages run `32656220963` green from the same
-  commit, so APK / `main` / Pages are IN SYNC.
+  (⚠️ **BEHIND `main` since 2026-08-23** — `main` and Pages carry the front-to-back
+  audit (`76c5790`, see "Recent work" below); the APK is still the build below.
+  Rebuild it to put those fixes on the phone.
+  **Built 2026-08-24 from `main` @ `f2d675a`**, 4.50 MB (4,496,889 B), run `32656415094`:
+  the whole UX pass (see "Recent work 2026-08-24"). Pages have moved on since — see the
+  warning above.
   Download verified: `200`, `application/vnd.android.package-archive`, 4,496,889 B.
   `npx cap sync` reported **2 Capacitor plugins for android** including
   `@capacitor/local-notifications@6.1.3`, and the `:capacitor-local-notifications:*` Gradle tasks
@@ -339,6 +342,80 @@ RemoteControl (host, Table tab) still covers: clock, level length (±1/±10 + Tu
 break length + auto-break every N, blinds (edit/add/remove), players & pool (rename, buy-in, Rebuy,
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
+
+### Recent work (2026-08-23 — front-to-back audit, commit `76c5790`, PUSHED)
+
+`main` and Pages are on `76c5790` (Pages run `32658723307` green). **The APK is
+older** — it is still the `f2d675a` build from 2026-08-24; rebuild it when the user
+wants these fixes on the phone. `npx tsc -b`, `oxlint`, `npm test` (12 files) and
+`npm run build` are clean.
+
+**THE BIG ONE: a setup is chips and blinds, not a device.** `Settings` is one flat
+object and three separate paths copied ALL of it — the CS1 share code, a saved
+preset, and a backup file. New **`lib/settingsScope.ts`** is now the single answer
+to "what may travel":
+
+- `DEVICE_LOCAL_SETTINGS` — `deviceIsTv`, `liveSessionCode`, `liveSessionRole`,
+  `guestName`, `guestEmoji`, `onboardedAt`, `tvScale`, `rosterSort`, `countMode`,
+  `levelAlerts`, `breakAt`, `tvBackground(+Focus/Tone)`.
+- `shareableSettings(s)` strips them on the way OUT (share code, preset).
+- `applySharedSettings(current, incoming)` pins them back from THIS device on the
+  way IN — so a payload written by an older build is stripped too. Old codes and
+  presets already in people's hands are therefore safe.
+- `pinned()` returns `Pick<Settings, DeviceLocalKey>`, so the list and the function
+  cannot drift: adding a key to one without the other is a type error.
+
+What it fixed, each verified in the dev preview:
+- the share code carried the sender's pairing code + guest name, and once a TV photo
+  had been picked, a few hundred kB of base64 — **which is why the share QR could not
+  be scanned**. 1936 chars now, none of those fields.
+- **loading a preset disconnected a running live session**, dropped the TV's zoom and
+  wiped the background photo. Session `4711`/host, zoom 1.4 and the photo all survive
+  a save + load now.
+- a backup taken on the big screen **booted the phone that restored it into TV mode**,
+  claiming the `tv` role of a dead session. `RESTORE_STATE` also runs the file through
+  `migrate()` now, so an older backup lands with every current field defaulted.
+- `Preset.settings` and the CS1 payload's `g` are typed `Partial<Settings>`.
+- `src/lib/settingsScope.test.ts` covers both directions + the legacy payload.
+
+**Live sync.**
+- `ConnectToTv`'s `HEARTBEAT_STALE_MS` was **30s against a 25s beat** (its comment
+  still claimed 12s, from before the interval was slowed) — so a perfectly healthy TV
+  flipped to "⚠ TV offline" between two beats. **70s** = two missed beats + the 5s
+  check granularity.
+- `tvEnsurePairing` used to give up after 8 taken codes and **`setDoc` over the last
+  one it tried** — landing on a session other people were in the middle of. It tries
+  16 and then throws; the caller already retries on the next mount.
+- **Nine `import('./liveSession').then(...)` chains had no `.catch`.** The chunk is
+  deliberately kept out of the precache (`globIgnores` in vite.config), so a phone
+  that is offline the first time it pairs cannot load it — every one of those was an
+  unhandled rejection and a silently dead feature. All degrade to "keep showing what
+  we have" now. Same for the IndexedDB photo store (unavailable in some private modes).
+- The guest's **"Sent — you'll appear once the host seats you" was printed whether or
+  not the write left the phone.** It now reports the failure (`connect.error`) and
+  lets them try again. `data.moments` is guarded — an older host build without the
+  field used to blank the guest screen.
+
+**i18n.** The Table tab's clock card printed `Level 1` / `Next: 25 / 50` /
+`min / level` in English under a German UI — the keys existed and `RemoteControl` was
+already using them. 19 new keys cover the rest: the dealer-draw empty state, "Add N
+players", the ladder hint, the ante, the three background-upload errors, and **13
+aria-labels that were hardcoded English** on the phone and the big screen (a German
+screen reader read "Previous level"). `en` and `de` are both at 712 keys, nothing
+used-but-undefined — check with a key-diff script if you touch it.
+
+**`theme-color` was nailed to `#0a0a0c` in index.html**, so the browser chrome above
+the app was a black stripe under the cream playful skin and in minimal's light mode.
+`App.tsx` now sets it from the live `--bg` (flat in every skin; `--app-bg` is a
+gradient in two). Verified `#faf9f6` light / `#0d0d10` dark.
+
+**Housekeeping.** The user's design reference photos next to the project
+(`Chips source pics and links/`, `koffer.png`, ~4 MB) are gitignored instead of
+sitting in `git status`. `.claude/launch.json` gained `chipstack-verify-c`
+(`autoPort`) so a second session can run its own dev server.
+
+⚠️ Two things were looked at and deliberately NOT changed: the Firestore rules are
+still undeployed by the user's decision (see below), and the wide-open rules stay.
 
 ### Recent work (2026-08-24 — the big UX pass: 45 items, all of them)
 
