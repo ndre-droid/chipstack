@@ -137,13 +137,15 @@ export default function TableScreen() {
 
   const clockFace = (
     <div className="clock-face">
-      <div className="clock-level">Level {levelIdx + 1}</div>
+      <div className="clock-level">{t('table.remoteLevel', { n: levelIdx + 1 })}</div>
       <div className="clock-blinds">
         {level ? `${level.smallBlind} / ${level.bigBlind}` : '—'}
-        {level?.ante ? <span className="clock-ante"> · ante {level.ante}</span> : null}
+        {level?.ante ? <span className="clock-ante"> · {t('common.ante')} {level.ante}</span> : null}
       </div>
       <div className={`clock-time ${running && seconds <= 30 ? 'urgent' : ''}`}>{fmt(seconds)}</div>
-      <div className="clock-next">{next ? `Next: ${next.smallBlind} / ${next.bigBlind}` : 'Final level'}</div>
+      <div className="clock-next">
+        {next ? t('tv.next', { blinds: `${next.smallBlind} / ${next.bigBlind}` }) : t('tv.finalLevel')}
+      </div>
     </div>
   );
 
@@ -223,7 +225,7 @@ export default function TableScreen() {
           <div className="card clock-card">
             {clockFace}
             <div className="clock-controls">
-              <button className="icon-btn" onClick={() => goLevel(levelIdx - 1)} aria-label="Previous level">
+              <button className="icon-btn" onClick={() => goLevel(levelIdx - 1)} aria-label={t('table.prevLevel')}>
                 <span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}>
                   <IconChevron size={20} />
                 </span>
@@ -231,13 +233,13 @@ export default function TableScreen() {
               <button className="clock-play" onClick={() => send(togglePlayPause(clock))}>
                 {running ? <IconPause size={26} /> : <IconPlay size={26} />}
               </button>
-              <button className="icon-btn" onClick={resetPeriod} aria-label="Reset timer">
+              <button className="icon-btn" onClick={resetPeriod} aria-label={t('table.resetTimer')}>
                 <IconReset size={19} />
               </button>
-              <button className="icon-btn" onClick={() => goLevel(levelIdx + 1)} aria-label="Next level">
+              <button className="icon-btn" onClick={() => goLevel(levelIdx + 1)} aria-label={t('table.nextLevelBtn')}>
                 <IconChevron size={20} />
               </button>
-              <button className="icon-btn" onClick={() => setTv(true)} aria-label="Big screen">
+              <button className="icon-btn" onClick={() => setTv(true)} aria-label={t('table.bigScreenShort')}>
                 <IconExpand size={18} />
               </button>
             </div>
@@ -278,7 +280,7 @@ export default function TableScreen() {
               <button className="adj1" onClick={() => setMins(mins - 1)}>−1</button>
               <div className="mpl-center">
                 <b>{mins}</b>
-                <small>min / level</small>
+                <small>{t('table.minPerLevel')}</small>
               </div>
               <button className="adj1" onClick={() => setMins(mins + 1)}>+1</button>
               <button className="adj10" onClick={() => setMins(mins + 10)}>+10</button>
@@ -307,7 +309,7 @@ export default function TableScreen() {
         <DealerAndSeats />
         {!isCash && (
           <p className="faint" style={{ fontSize: 12, textAlign: 'center', marginTop: 6 }}>
-            Set the ladder & starting level on the Plan tab; the clock plays through it.
+            {t('table.ladderHint')}
           </p>
         )}
       </SetupSection>
@@ -528,9 +530,9 @@ function DealerAndSeats() {
       <div className="card">
         {ledger.length === 0 ? (
           <div>
-            <div className="empty" style={{ paddingBottom: 12 }}>Add players to name them and spin the dealer button.</div>
+            <div className="empty" style={{ paddingBottom: 12 }}>{t('table.dealerEmpty')}</div>
             <button className="btn btn-ghost btn-block btn-sm" onClick={() => dispatch({ type: 'LEDGER_ADD_MANY', n: playerCount })}>
-              Add {playerCount} players
+              {t('table.addNPlayers', { n: playerCount })}
             </button>
           </div>
         ) : (

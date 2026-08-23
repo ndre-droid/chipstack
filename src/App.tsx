@@ -130,6 +130,16 @@ function AppShell() {
       if (custom) root.style.setProperty(key, custom[key]);
       else root.style.removeProperty(key);
     }
+    /* The browser paints its own chrome (Android's status bar, the PWA title bar)
+       in `theme-color`, and that was nailed to near-black in index.html. The
+       playful skin is cream and the minimal skin follows the light/dark setting,
+       so the bar above the app read as a black stripe that belonged to some other
+       app. Take the colour from the skin that is actually on screen — `--bg` is a
+       flat colour in every skin, which `--app-bg` (a gradient in two of them) is
+       not. */
+    const meta = document.querySelector('meta[name="theme-color"]');
+    const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
+    if (meta && bg) meta.setAttribute('content', bg);
   }, [activeSkin, activeAccent, appearance, customAccent]);
 
   /* Keep <html lang> honest: it drives how a screen reader pronounces the page and

@@ -426,7 +426,7 @@ export default function CountRound({
             <button
               className="cr-key"
               onClick={() => setCounts((c) => ({ ...c, [padDenom.id]: Math.floor((c[padDenom.id] || 0) / 10) }))}
-              aria-label="Backspace"
+              aria-label={t('count.backspace')}
             >
               ⌫
             </button>

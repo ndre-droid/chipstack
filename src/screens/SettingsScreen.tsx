@@ -288,7 +288,11 @@ export default function SettingsScreen() {
             e.target.value = '';
             if (!file) return;
             setBackupMsg(null);
-            void file.text().then((text) => {
+            void file.text().catch(() => null).then((text) => {
+              if (text === null) {
+                setBackupMsg(t('settings.importBad'));
+                return;
+              }
               const parsed = parseBackup(text);
               if (!parsed) {
                 setBackupMsg(t('settings.importBad'));

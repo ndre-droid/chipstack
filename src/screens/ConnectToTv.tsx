@@ -7,7 +7,11 @@ import { flushLiveSync, queueData } from '../lib/liveSyncQueue';
 import type { Unsubscribe } from 'firebase/firestore';
 
 const LEN = 4;
-const HEARTBEAT_STALE_MS = 30000; // TV beats every ~12s; allow one miss before "offline"
+/* The TV beats every 25s (see TvMode). This has to allow TWO missed beats plus the
+   5s granularity of the check below, or a perfectly healthy TV is declared offline
+   between two beats — which is what a 30s window did after the beat interval was
+   slowed from 12s to 25s. */
+const HEARTBEAT_STALE_MS = 70000;
 
 /**
  * Phone side of the live link, on the Table tab. The TV shows a short code; you
@@ -67,6 +71,10 @@ export default function ConnectToTv() {
           if (!connected) setOnline(false);
         },
       );
+    }).catch(() => {
+      /* the live-sync chunk is fetched on demand and deliberately not precached
+         (see vite.config); offline it simply doesn't arrive. The card then shows
+         "waiting for the TV", which is the truth. */
     });
     return () => {
       cancelled = true;
@@ -243,7 +251,7 @@ export default function ConnectToTv() {
                   onChange={(e) => setDigit(i, e.target.value)}
                   onKeyDown={(e) => onKeyDown(i, e)}
                   onPaste={onPaste}
-                  aria-label={`Code digit ${i + 1}`}
+                  aria-label={t('connect.digitLabel', { n: i + 1 })}
                 />
               ))}
             </div>

@@ -62,6 +62,18 @@ const QUIPS = [
 
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
+/**
+ * Split a ticking number into fixed-advance digit cells (see `.tv-d`). The skinned
+ * faces are not all tabular — the casino serif is proportional — so without this the
+ * centred clock jumps sideways on every tick.
+ */
+const digitCells = (text: string) =>
+  [...text].map((c, i) =>
+    c >= '0' && c <= '9'
+      ? <i className="tv-d" key={i}>{c}</i>
+      : <i className="tv-d-sep" key={i}>{c}</i>,
+  );
+
 /** Smallest roster row still worth reading across a room; matches the CSS clamp. */
 const ROW_MIN_FS = 11;
 
@@ -253,6 +265,10 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         },
         (connected) => setLiveLost(!connected),
       );
+    }).catch(() => {
+      /* the live-sync chunk is fetched on demand (see vite.config) — if it can't
+         be loaded the big screen keeps running on its own data instead of dying. */
+      setLiveLost(true);
     });
     return () => {
       cancelled = true;
@@ -273,6 +289,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       unsub = subscribeBackground(liveSessionCode, (image) => {
         dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: image } });
       });
+    }).catch(() => {
+      /* keep whatever background is already on screen */
     });
     return () => {
       cancelled = true;
@@ -1052,7 +1070,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
                       />
                     )}
                     {bountyMode && !isCash && p.knockouts > 0 && (
-                      <span className="tv-bounty" title="Bounties">🎯{p.knockouts}</span>
+                      <span className="tv-bounty" title={t('tv.bounties')}>🎯{p.knockouts}</span>
                     )}
                     {p.stackMoney !== null ? (
                       // still in, chips counted: what the stack is worth, with the
@@ -1097,7 +1115,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           </div>
           {showTimer && (
             <>
-              <div className={`tv-time ${running && seconds <= 30 ? 'urgent' : ''}`}>{fmtClock(seconds)}</div>
+              <div className={`tv-time ${running && seconds <= 30 ? 'urgent' : ''}`}>{digitCells(fmtClock(seconds))}</div>
               <div className="tv-progress"><i style={{ transform: `scaleX(${pct / 100})` }} /></div>
               <div className="tv-next">{onBreak ? '' : next ? t('tv.next', { blinds: `${next.smallBlind} / ${next.bigBlind}` }) : t('tv.finalLevel')}</div>
               {topMoment && (
@@ -1183,10 +1201,10 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         )}
         {showTimer && (
           <>
-            <button onClick={() => goLevel(levelIdx - 1)} aria-label="Previous level"><span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}><IconChevron size={22} /></span></button>
-            <button onClick={resetLevel} aria-label="Reset level"><IconReset size={20} /></button>
+            <button onClick={() => goLevel(levelIdx - 1)} aria-label={t('table.prevLevel')}><span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}><IconChevron size={22} /></span></button>
+            <button onClick={resetLevel} aria-label={t('tv.resetLevel')}><IconReset size={20} /></button>
             <button className="tv-play" onClick={togglePlay}>{running ? <IconPause size={30} /> : <IconPlay size={30} />}</button>
-            <button onClick={() => goLevel(levelIdx + 1)} aria-label="Next level"><IconChevron size={22} /></button>
+            <button onClick={() => goLevel(levelIdx + 1)} aria-label={t('table.nextLevelBtn')}><IconChevron size={22} /></button>
             {onBreak ? (
               <button className="tv-txt tv-exit" onClick={cancelBreak}>{t('tv.cancelBreak')}</button>
             ) : (
@@ -1217,7 +1235,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         <button
           className="tv-txt"
           onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { language: state.settings.language === 'en' ? 'de' : 'en' } })}
-          aria-label="Toggle language"
+          aria-label={t('tv.toggleLanguage')}
         >
           {state.settings.language === 'en' ? 'DE' : 'EN'}
         </button>
@@ -1228,7 +1246,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       {shot !== null && (
         <div className="tv-overlay" onClick={() => setShot(null)}>
           <div className="tv-overlay-label">{t('tv.shotClock')}</div>
-          <div className={`tv-overlay-num ${shot <= 5 ? 'urgent' : ''}`}>{Math.max(0, shot)}</div>
+          <div className={`tv-overlay-num ${shot <= 5 ? 'urgent' : ''}`}>{digitCells(String(Math.max(0, shot)))}</div>
           <div className="tv-overlay-hint">{t('tv.tapToDismiss')}</div>
         </div>
       )}

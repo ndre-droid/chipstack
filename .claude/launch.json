@@ -24,6 +24,13 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite", "preview", "--port", "5200", "--strictPort"],
       "port": 5200
+    },
+    {
+      "name": "chipstack-verify-c",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5217,
+      "autoPort": true
     }
   ]
 }

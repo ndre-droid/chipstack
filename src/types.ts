@@ -157,7 +157,9 @@ export interface Preset {
   name: string;
   denominations: Denomination[];
   session: SessionConfig;
-  settings: Settings;
+  /** Deliberately partial: a saved setup carries the shareable settings only —
+   *  never this device's identity or its live session (see lib/settingsScope). */
+  settings: Partial<Settings>;
 }
 
 /**

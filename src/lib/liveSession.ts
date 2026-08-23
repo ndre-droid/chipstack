@@ -121,7 +121,7 @@ export async function tvEnsurePairing(existingCode: string | null, clock: ClockS
      screen, so it is worth the extra round trip. */
   const db = getDb();
   if (!db) throw new Error('Firebase is not configured');
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 16; i++) {
     const code = genCode();
     const claimed = await runTransaction(db, async (tx) => {
       const ref = sessionRef(code);
@@ -132,11 +132,12 @@ export async function tvEnsurePairing(existingCode: string | null, clock: ClockS
     });
     if (claimed) return code;
   }
-  // 8 codes taken in a row: the collection is unusually busy, so take the last one
-  // rather than leaving the screen without a code to show.
-  const code = genCode();
-  await setDoc(sessionRef(code), { data: null, clock, ...owned, ...stamps() });
-  return code;
+  /* Sixteen taken codes in a row means something is wrong — 9000 codes and a home
+     game. Deliberately throwing rather than writing over the last one we tried:
+     that write would land on a session somebody else is in the middle of, and the
+     failure mode ("another table appeared on our screen") is far worse than a big
+     screen that says nothing for a moment. The caller retries. */
+  throw new Error('live-session: no free pairing code');
 }
 
 /**

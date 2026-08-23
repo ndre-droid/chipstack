@@ -30,6 +30,7 @@ export default function GuestView({ onLeave }: { onLeave: () => void }) {
   const [emoji, setEmoji] = useState(state.settings.guestEmoji ?? '🙂');
   const [pickEmoji, setPickEmoji] = useState(false);
   const [sent, setSent] = useState(false);
+  const [sendErr, setSendErr] = useState<string | null>(null);
   const [votes, setVotes] = useState<MomentVotes>({});
   const [, setTick] = useState(0);
   useWakeLock(true);
@@ -52,6 +53,9 @@ export default function GuestView({ onLeave }: { onLeave: () => void }) {
           /* the view simply keeps showing the last thing it saw */
         },
       );
+    }).catch(() => {
+      /* offline before the live-sync chunk was ever cached — the empty-table
+         message below is what the guest sees, and a reconnect retries. */
     });
     return () => {
       alive = false;
@@ -64,10 +68,14 @@ export default function GuestView({ onLeave }: { onLeave: () => void }) {
     if (!code) return;
     let alive = true;
     let stop: (() => void) | null = null;
-    void import('../lib/liveSession').then(({ subscribeVotes }) => {
-      if (!alive) return;
-      stop = subscribeVotes(code, setVotes);
-    });
+    void import('../lib/liveSession')
+      .then(({ subscribeVotes }) => {
+        if (!alive) return;
+        stop = subscribeVotes(code, setVotes);
+      })
+      .catch(() => {
+        /* no vote counts rather than a crashed screen */
+      });
     return () => {
       alive = false;
       stop?.();
@@ -93,12 +101,21 @@ export default function GuestView({ onLeave }: { onLeave: () => void }) {
   const level = clock ? data?.session.blindLevels[Math.min(clock.levelIdx, data.session.blindLevels.length - 1)] : null;
   const seconds = clock ? secondsLeft(clock) : 0;
 
+  /* A request that never left the phone must not read as one the host is sitting on:
+     "Sent — you'll appear once the host seats you" is the most misleading thing this
+     screen can say while the write is actually failing. */
   const send = () => {
     const clean = name.trim();
     if (!clean || !code) return;
     dispatch({ type: 'UPDATE_SETTINGS', patch: { guestName: clean, guestEmoji: emoji } });
-    void import('../lib/liveSession').then(({ requestSeat }) => requestSeat(code, clean, emoji));
+    setSendErr(null);
     setSent(true);
+    void import('../lib/liveSession')
+      .then(({ requestSeat }) => requestSeat(code, clean, emoji))
+      .catch(() => {
+        setSent(false);
+        setSendErr(t('connect.error'));
+      });
   };
 
   return (
@@ -146,6 +163,7 @@ export default function GuestView({ onLeave }: { onLeave: () => void }) {
                     onChange={(e) => {
                       setName(e.target.value);
                       setSent(false);
+                      setSendErr(null);
                     }}
                     onKeyDown={(e) => e.key === 'Enter' && send()}
                   />
@@ -165,6 +183,11 @@ export default function GuestView({ onLeave }: { onLeave: () => void }) {
                 {sent && (
                   <p className="faint" style={{ fontSize: 12.5, textAlign: 'center', marginTop: 8 }}>
                     {t('guest.waiting', { name: name.trim() })}
+                  </p>
+                )}
+                {sendErr && (
+                  <p style={{ color: 'var(--bad)', fontSize: 12.5, textAlign: 'center', marginTop: 8, lineHeight: 1.5 }}>
+                    {sendErr}
                   </p>
                 )}
               </>
@@ -199,14 +222,14 @@ export default function GuestView({ onLeave }: { onLeave: () => void }) {
 
           {/* The one other thing a guest gets to do: decide which hand was the best.
               The host logs the moments, the table votes. */}
-          {data && data.moments.length > 0 && (
+          {data && (data.moments ?? []).length > 0 && (
             <>
               <div className="section-label">
                 {t('vote.title')}
                 <span className="hint">{name.trim() ? t('vote.hint') : t('vote.needName')}</span>
               </div>
               <div className="card">
-                {data.moments.map((m) => {
+                {(data.moments ?? []).map((m) => {
                   const voters = votes[m.id] ?? [];
                   const mine = voters.some((v) => v.trim().toLowerCase() === name.trim().toLowerCase());
                   return (
@@ -215,7 +238,10 @@ export default function GuestView({ onLeave }: { onLeave: () => void }) {
                       className={`vote-row ${mine ? 'mine' : ''}`}
                       disabled={!name.trim()}
                       onClick={() =>
-                        void import('../lib/liveSession').then(({ castVote }) => castVote(code, m.id, name.trim()))
+                        void import('../lib/liveSession')
+                          .then(({ castVote }) => castVote(code, m.id, name.trim()))
+                          // the count simply doesn't move; tapping again retries
+                          .catch(() => {})
                       }
                     >
                       <span className="vote-txt">{m.text}</span>

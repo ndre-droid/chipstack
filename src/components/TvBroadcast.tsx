@@ -61,7 +61,8 @@ export default function TvBroadcast() {
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    void listPhotos().then((list) => alive && setPhotos(list));
+    // IndexedDB is unavailable in some private modes — no saved photos, no crash
+    void listPhotos().then((list) => alive && setPhotos(list)).catch(() => {});
     return () => {
       alive = false;
     };
@@ -131,21 +132,22 @@ export default function TvBroadcast() {
           dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: dataUrl, tvBackgroundFocus: focus, tvBackgroundTone: tone } });
           // keep it: picking the same photo again next week should not mean
           // hunting through the camera roll for it
-          void addPhoto({ url: dataUrl, tone, focus }).then(() => listPhotos()).then(setPhotos);
+          // the photo is already applied above; keeping it for next week is a bonus
+          void addPhoto({ url: dataUrl, tone, focus }).then(() => listPhotos()).then(setPhotos).catch(() => {});
         } catch {
-          setBgError('Could not process that image — try a different photo.');
+          setBgError(t('settings.bgErrProcess'));
         } finally {
           setBgBusy(false);
         }
       };
       img.onerror = () => {
-        setBgError('Could not read that image — try a different file.');
+        setBgError(t('settings.bgErrRead'));
         setBgBusy(false);
       };
       img.src = reader.result as string;
     };
     reader.onerror = () => {
-      setBgError('Could not read that file.');
+      setBgError(t('settings.bgErrFile'));
       setBgBusy(false);
     };
     reader.readAsDataURL(file);
@@ -268,7 +270,7 @@ export default function TvBroadcast() {
                         className="bg-fav-x"
                         aria-label={t('settings.removePhoto')}
                         onClick={() => {
-                          void deletePhoto(ph.id).then(() => setPhotos((l) => l.filter((x) => x.id !== ph.id)));
+                          void deletePhoto(ph.id).then(() => setPhotos((l) => l.filter((x) => x.id !== ph.id))).catch(() => {});
                           if (settings.tvBackground === ph.url)
                             dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: null, tvBackgroundFocus: null, tvBackgroundTone: null } });
                         }}

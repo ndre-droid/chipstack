@@ -1178,9 +1178,14 @@ input[type='color'] { cursor: pointer; }
   --tv-bg-base: #123a24;
   --tv-fg: #f1e9d4; --tv-dim: #c4d2c0; --tv-faint: #86a08c;
   --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
-  /* the whole board speaks serif; the countdown keeps monospaced digits */
+  /* The whole board speaks serif — figures and the countdown included. Playfair's
+     latin subset ships NO tabular figures (digit advances range 0.38em–0.65em), so
+     the clock would shuffle sideways every second; the fixed-advance .tv-d cells
+     below are what make a proportional face safe on a ticking number. */
   --tv-head: 'Playfair Display', Georgia, 'Times New Roman', serif;
   --tv-body: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --tv-num: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --tv-digits: 'Playfair Display', Georgia, 'Times New Roman', serif;
   --tv-panel: rgba(217, 178, 98, 0.07); --tv-line: rgba(217, 178, 98, 0.22); --on-acc: #14120b;
 }
 .tv[data-tv-skin='playful'] {
@@ -1190,6 +1195,8 @@ input[type='color'] { cursor: pointer; }
   --tv-head: 'Fredoka', var(--font);
   --tv-body: 'Fredoka', var(--font);
   --tv-num: 'Fredoka', var(--mono);
+  /* Fredoka's figures are already tabular, so the clock can wear it too */
+  --tv-digits: 'Fredoka', var(--mono);
   --tv-panel: rgba(32, 26, 18, 0.05); --tv-line: rgba(32, 26, 18, 0.15);
   --acc: var(--acc-deep); --on-acc: #ffffff;
 }
@@ -1200,12 +1207,16 @@ input[type='color'] { cursor: pointer; }
   --tv-panel: rgba(80, 140, 255, 0.06); --tv-line: rgba(80, 140, 255, 0.2); --on-acc: #04121a;
   --font-display: 'Orbitron', var(--font);
   /* Orbitron has even digit widths, so it can carry the clock too — which is the
-     whole reason to pick this skin. Prose stays in the system face: Orbitron is
-     hard work for a full sentence of quip. */
+     whole reason to pick this skin. It carries the names as well; only the quip
+     ticker drops back to the system face (see below), because Orbitron is hard
+     work for a full sentence read from four metres away. */
   --tv-head: 'Orbitron', var(--font);
+  --tv-body: 'Orbitron', var(--font);
   --tv-num: 'Orbitron', var(--mono);
   --tv-digits: 'Orbitron', var(--mono);
 }
+.tv[data-tv-skin='scifi'] .tv-quip,
+.tv[data-tv-skin='scifi'] .tv-topmoment-v { font-family: var(--font); }
 /* A skin change repaints the WHOLE big screen, not just the blinds: labels, names,
    figures and the clock each pick up the role token for that skin (see --tv-head /
    --tv-body / --tv-num / --tv-digits above). */
@@ -1333,6 +1344,15 @@ input[type='color'] { cursor: pointer; }
 .tv-blinds { font-family: var(--font-display); font-weight: 700; color: var(--acc); font-size: clamp(30px, 6vmin, 150px); letter-spacing: -0.01em; margin-top: clamp(2px, 0.6vmin, 8px); font-variant-numeric: tabular-nums; }
 .tv-ante { color: var(--tv-dim); font-size: 0.48em; }
 .tv-time { font-family: var(--tv-digits); font-weight: 700; font-size: clamp(72px, 19vmin, 480px); line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; margin: clamp(2px, 0.5vmin, 8px) 0; }
+/* Fixed-advance digit cell for the numbers that repaint every second (the level
+   countdown, the shot clock). `font-variant-numeric: tabular-nums` only helps when
+   the face actually ships tabular figures — the casino serif does not — so each
+   digit gets the width of a '0' (1ch, the widest digit in every face used here)
+   and centres inside it. On a tabular face 1ch is already the digit advance, so
+   this changes nothing; on a proportional one it stops the clock from shuffling
+   sideways on every tick. */
+.tv-d { display: inline-block; width: 1ch; text-align: center; font-style: normal; }
+.tv-d-sep { font-style: normal; }
 .tv-time.urgent { color: var(--bad); }
 .tv-progress { width: min(84%, 64vmin); height: clamp(6px, 1vmin, 12px); background: var(--tv-line); border-radius: 999px; overflow: hidden; }
 .tv-progress i { display: block; width: 100%; height: 100%; background: var(--acc); border-radius: 999px; transform-origin: left; transition: transform 1s linear; }
@@ -1449,7 +1469,7 @@ input[type='color'] { cursor: pointer; }
 .tv-pair-digit {
   min-width: clamp(30px, 4.4vmin, 68px); padding: clamp(4px, 0.8vmin, 12px) clamp(6px, 0.8vmin, 10px);
   text-align: center; background: var(--acc); color: var(--on-acc); border-radius: 10px;
-  font-family: var(--mono); font-weight: 800; font-variant-numeric: tabular-nums;
+  font-family: var(--tv-digits); font-weight: 800; font-variant-numeric: tabular-nums;
   font-size: clamp(24px, 4.6vmin, 66px); line-height: 1.05;
 }
 .tv-pair-qr {
@@ -1681,7 +1701,7 @@ input[type='color'] { cursor: pointer; }
 
 /* --- TV: colour-up alarm --- */
 .tv-colorup {
-  margin-top: clamp(6px, 1.2vmin, 18px); font-family: var(--mono); font-weight: 700;
+  margin-top: clamp(6px, 1.2vmin, 18px); font-family: var(--tv-head); font-weight: 700;
   color: var(--on-acc); background: var(--acc); border-radius: 999px;
   padding: clamp(5px, 0.9vmin, 12px) clamp(12px, 1.8vmin, 26px);
   font-size: clamp(12px, 1.7vmin, 34px); letter-spacing: 0.01em;

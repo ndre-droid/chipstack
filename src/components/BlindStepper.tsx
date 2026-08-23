@@ -36,7 +36,7 @@ export default function BlindStepper({ levels, levelIdx, onStep }: Props) {
           <div className="clock-level">{t('tv.level', { n: idx + 1 })}</div>
           <div className="clock-blinds">
             {level ? `${level.smallBlind} / ${level.bigBlind}` : '—'}
-            {level?.ante ? <span className="clock-ante"> · ante {level.ante}</span> : null}
+            {level?.ante ? <span className="clock-ante"> · {t('common.ante')} {level.ante}</span> : null}
           </div>
           <div className="clock-next">
             {next ? t('tv.next', { blinds: `${next.smallBlind} / ${next.bigBlind}` }) : t('tv.topLevel')}

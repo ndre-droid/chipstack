@@ -25,14 +25,19 @@ export function useHostClock(code: string | null, active: boolean): {
     if (!active || !code) return;
     let unsub: (() => void) | null = null;
     let cancelled = false;
-    import('./liveSession').then(({ subscribeSession }) => {
-      if (cancelled) return;
-      // The TV owns the clock; a doc may briefly exist with data but no clock (a
-      // stale or dead code). Never overwrite a valid clock with undefined.
-      unsub = subscribeSession(code, (doc) => {
-        if (doc.clock) setClock(doc.clock);
+    import('./liveSession')
+      .then(({ subscribeSession }) => {
+        if (cancelled) return;
+        // The TV owns the clock; a doc may briefly exist with data but no clock (a
+        // stale or dead code). Never overwrite a valid clock with undefined.
+        unsub = subscribeSession(code, (doc) => {
+          if (doc.clock) setClock(doc.clock);
+        });
+      })
+      .catch(() => {
+        /* offline, or the on-demand live-sync chunk didn't load — the phone keeps
+           showing the clock it last saw rather than crashing the Table tab. */
       });
-    });
     return () => {
       cancelled = true;
       unsub?.();

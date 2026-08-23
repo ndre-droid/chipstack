@@ -26,10 +26,16 @@ export default function JoinRequests() {
     }
     let alive = true;
     let stop: (() => void) | null = null;
-    void import('../lib/liveSession').then(({ subscribeJoins }) => {
-      if (!alive) return;
-      stop = subscribeJoins(code, setRequests);
-    });
+    void import('../lib/liveSession')
+      .then(({ subscribeJoins }) => {
+        if (!alive) return;
+        stop = subscribeJoins(code, setRequests);
+      })
+      .catch(() => {
+        /* the live-sync chunk is loaded on demand and deliberately not precached
+           (see vite.config), so an offline phone can fail to load it. The effect
+           runs again on the next mount; nothing here to recover. */
+      });
     return () => {
       alive = false;
       stop?.();
@@ -45,7 +51,8 @@ export default function JoinRequests() {
   if (!hosting || requests.length === 0) return null;
 
   const done = (id: string) => {
-    if (code) void import('../lib/liveSession').then(({ clearJoin }) => clearJoin(code, id));
+    // the request stays in the list if this fails — tapping again retries it
+    if (code) void import('../lib/liveSession').then(({ clearJoin }) => clearJoin(code, id)).catch(() => {});
   };
 
   /** Already at the table under that name? Then this is a duplicate, not a new seat. */

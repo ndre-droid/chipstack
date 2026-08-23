@@ -231,7 +231,7 @@ export default function ChipsScreen() {
                 label={`${d.value}`}
                 onChange={() => dispatch({ type: 'UPDATE_DENOM', id: d.id, patch: { enabled: !d.enabled } })}
               />
-              <button className="icon-btn danger" onClick={() => dispatch({ type: 'REMOVE_DENOM', id: d.id })} aria-label="Delete">
+              <button className="icon-btn danger" onClick={() => dispatch({ type: 'REMOVE_DENOM', id: d.id })} aria-label={t('common.delete')}>
                 <IconTrash size={17} />
               </button>
             </div>

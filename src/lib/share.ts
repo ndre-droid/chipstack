@@ -1,4 +1,5 @@
 import type { AppState, Denomination, SessionConfig, Settings } from '../types';
+import { shareableSettings } from './settingsScope';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -10,7 +11,12 @@ interface Payload {
   v: 1;
   d: [number, number, string, string, number, number, number][];
   s: SessionConfig;
-  g: Settings;
+  /* Partial on purpose: the code carries the SETUP — chips, blinds, money, looks —
+     and nothing that identifies the phone that made it. It used to carry the whole
+     `Settings` object, which meant a shared code contained the sender's live pairing
+     code and guest name, and (once a big-screen photo had been picked) a few hundred
+     kB of base64 that no QR reader on earth could scan. See lib/settingsScope. */
+  g: Partial<Settings>;
 }
 
 /** Compact, shareable code for the whole setup (chips + session + settings). */
@@ -27,13 +33,13 @@ export function encodeSetup(state: Pick<AppState, 'denominations' | 'session' | 
       Math.max(0, Math.floor(x.minPerPlayer ?? 0)),
     ]),
     s: state.session,
-    g: state.settings,
+    g: shareableSettings(state.settings),
   };
   return 'CS1:' + b64encode(JSON.stringify(payload));
 }
 
 export function decodeSetup(code: string):
-  | { denominations: Denomination[]; session: SessionConfig; settings: Settings }
+  | { denominations: Denomination[]; session: SessionConfig; settings: Partial<Settings> }
   | null {
   try {
     const raw = code.trim().replace(/^CS1:/, '');

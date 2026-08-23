@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useReducer, useState } from 'reac
 import type { ReactNode } from 'react';
 import type { AppState, CarryBalance, ChipSet, Denomination, TimelineEvent, BlindLevel, Preset, Settings, SessionConfig, LedgerPlayer, AccentId, Skin, ChipArt, LeagueGame, Moment, CountingProgress, Person } from './types';
 
+import { applySharedSettings, shareableSettings } from './lib/settingsScope';
+
 const uid = () => Math.random().toString(36).slice(2, 9);
 
 // SLOWPLAY Nash ceramic set — colours matched to the physical chips.
@@ -151,7 +153,7 @@ type Action =
   | { type: 'SAVE_PRESET'; name: string }
   | { type: 'LOAD_PRESET'; id: string }
   | { type: 'DELETE_PRESET'; id: string }
-  | { type: 'IMPORT_SETUP'; denominations: Denomination[]; session: SessionConfig; settings: Settings }
+  | { type: 'IMPORT_SETUP'; denominations: Denomination[]; session: SessionConfig; settings: Partial<Settings> }
   | {
       type: 'LIVE_APPLY_REMOTE';
       denominations: Denomination[];
@@ -364,7 +366,10 @@ function baseReducer(state: AppState, action: Action): AppState {
         name: action.name.trim() || `Preset ${state.presets.length + 1}`,
         denominations: JSON.parse(JSON.stringify(state.denominations)),
         session: JSON.parse(JSON.stringify(state.session)),
-        settings: JSON.parse(JSON.stringify(state.settings)),
+        // A saved setup is chips, blinds, money and looks — not who this device is
+        // or what it is connected to right now (see lib/settingsScope). It also
+        // keeps the big-screen photo out of localStorage once per preset.
+        settings: JSON.parse(JSON.stringify(shareableSettings(state.settings))),
       };
       // replace a preset with the same name, else append
       const existing = state.presets.findIndex((p) => p.name.toLowerCase() === preset.name.toLowerCase());
@@ -378,7 +383,10 @@ function baseReducer(state: AppState, action: Action): AppState {
         ...state,
         denominations: JSON.parse(JSON.stringify(p.denominations)),
         session: JSON.parse(JSON.stringify(p.session)),
-        settings: JSON.parse(JSON.stringify(p.settings)),
+        // Older presets were saved with the whole settings object, live session
+        // code and all — loading one used to disconnect a running session (or, on
+        // the big screen, walk it out of TV mode). Device-local fields are pinned.
+        settings: applySharedSettings(state.settings, JSON.parse(JSON.stringify(p.settings))),
       };
     }
     case 'DELETE_PRESET':
@@ -388,7 +396,10 @@ function baseReducer(state: AppState, action: Action): AppState {
         ...state,
         denominations: action.denominations,
         session: { ...defaultSession, ...action.session },
-        settings: { ...defaultSettings, ...action.settings },
+        /* A scanned setup code is somebody else's phone talking. It may not say who
+           this device is, and it certainly may not point it at a live session it
+           never joined — an old code still carries all of that (see settingsScope). */
+        settings: applySharedSettings(state.settings, { ...defaultSettings, ...action.settings }),
       };
     case 'LIVE_APPLY_REMOTE':
       return {
@@ -488,9 +499,17 @@ function baseReducer(state: AppState, action: Action): AppState {
         session: { ...state.session, stackOverride: null, excludedDenoms: [] },
       };
     }
-    case 'RESTORE_STATE':
-      // a whole backup, already validated by lib/backup.ts
-      return action.state;
+    case 'RESTORE_STATE': {
+      /* A backup file is another device's whole state. `lib/backup.ts` checks the
+         shape; this puts it through the SAME normalisation a localStorage load
+         gets, so a file written by an older version arrives with every field the
+         current app expects instead of `undefined` where a default belongs.
+         Device-local settings are then pinned back to this device: a backup taken
+         on the big screen used to boot the phone that restored it straight into TV
+         mode, claiming the 'tv' role of a session that ended weeks ago. */
+      const restored = migrate(JSON.stringify(action.state));
+      return { ...restored, settings: applySharedSettings(state.settings, restored.settings) };
+    }
     /* Carrying a night forward. Entries are MERGED by person (or by name when there
        is no profile): a regular who has been owed twice is one line, not two. */
     case 'CARRY_ADD': {

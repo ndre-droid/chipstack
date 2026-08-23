@@ -38,7 +38,7 @@ export default function ClockFocus({ levelIdx, level, next, seconds, running, on
       <div className="cf-level">{onBreak ? t('tv.break') : `${t('plan.level')} ${levelIdx + 1}`}</div>
       <div className="cf-blinds">
         {level ? `${level.smallBlind} / ${level.bigBlind}` : '—'}
-        {level?.ante ? <span className="cf-ante"> · ante {level.ante}</span> : null}
+        {level?.ante ? <span className="cf-ante"> · {t('common.ante')} {level.ante}</span> : null}
       </div>
       <div className={`cf-time ${running && seconds <= 30 ? 'urgent' : ''}`}>{fmt(seconds)}</div>
       <div className="cf-next">{next ? `${t('table.nextLevel')} ${next.smallBlind} / ${next.bigBlind}` : t('tv.finalLevel')}</div>

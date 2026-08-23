@@ -66,7 +66,7 @@ export default function RemoteControl({ clock, send }: { clock: ClockState; send
           <div className={`clock-time ${clock.running && secondsLeft(clock) <= 30 ? 'urgent' : ''}`}>{fmtClock(secondsLeft(clock))}</div>
         </div>
         <div className="clock-controls">
-          <button className="icon-btn" onClick={() => send(goLevel(clock, -1, maxIdx))} aria-label="Previous level">
+          <button className="icon-btn" onClick={() => send(goLevel(clock, -1, maxIdx))} aria-label={t('table.prevLevel')}>
             <span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}>
               <IconChevron size={20} />
             </span>
@@ -74,7 +74,7 @@ export default function RemoteControl({ clock, send }: { clock: ClockState; send
           <button className="clock-play" onClick={() => send(togglePlayPause(clock))}>
             {clock.running ? <IconPause size={26} /> : <IconPlay size={26} />}
           </button>
-          <button className="icon-btn" onClick={() => send(goLevel(clock, 1, maxIdx))} aria-label="Next level">
+          <button className="icon-btn" onClick={() => send(goLevel(clock, 1, maxIdx))} aria-label={t('table.nextLevelBtn')}>
             <IconChevron size={20} />
           </button>
           {clock.onBreak ? (
@@ -173,7 +173,7 @@ export default function RemoteControl({ clock, send }: { clock: ClockState; send
                 className="icon-btn danger"
                 style={{ width: 32, height: 32 }}
                 onClick={() => dispatch({ type: 'REMOVE_BLIND', id: b.id })}
-                aria-label="Remove level"
+                aria-label={t('table.removeLevel')}
               >
                 <IconTrash size={15} />
               </button>
@@ -224,7 +224,7 @@ export default function RemoteControl({ clock, send }: { clock: ClockState; send
             {state.moments.map((m) => (
               <div className="moment-row" key={m.id}>
                 <span className="moment-txt">📸 {m.text}</span>
-                <button className="icon-btn danger" style={{ width: 30, height: 30 }} onClick={() => dispatch({ type: 'MOMENT_REMOVE', id: m.id })} aria-label="Remove">
+                <button className="icon-btn danger" style={{ width: 30, height: 30 }} onClick={() => dispatch({ type: 'MOMENT_REMOVE', id: m.id })} aria-label={t('common.remove')}>
                   <IconTrash size={13} />
                 </button>
               </div>

@@ -41,3 +41,7 @@ android/app/src/main/res/xml/config.xml
 .capacitor/
 
 .superpowers/
+
+# design reference material kept beside the project, not part of the app
+Chips source pics and links/
+koffer.png

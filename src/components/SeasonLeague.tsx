@@ -101,7 +101,7 @@ export default function SeasonLeague() {
                     <div className="league-game" key={g.id}>
                       <div className="league-game-h">
                         <span>{fmtDate(g.date)} · {g.players.length} {t('cash.players').toLowerCase()} · {money(pot, g.currency)}</span>
-                        <button className="icon-btn danger" style={{ width: 28, height: 28 }} onClick={() => dispatch({ type: 'LEAGUE_DELETE_GAME', id: g.id })} aria-label="Delete">
+                        <button className="icon-btn danger" style={{ width: 28, height: 28 }} onClick={() => dispatch({ type: 'LEAGUE_DELETE_GAME', id: g.id })} aria-label={t('league.deleteNight')}>
                           <IconTrash size={13} />
                         </button>
                       </div>

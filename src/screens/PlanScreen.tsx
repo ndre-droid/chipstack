@@ -190,7 +190,7 @@ export default function PlanScreen() {
           {presets.map((p) => (
             <div className="preset-chip" key={p.id}>
               <button onClick={() => dispatch({ type: 'LOAD_PRESET', id: p.id })}>{p.name}</button>
-              <button className="preset-x" onClick={() => dispatch({ type: 'DELETE_PRESET', id: p.id })} aria-label="Delete preset">×</button>
+              <button className="preset-x" onClick={() => dispatch({ type: 'DELETE_PRESET', id: p.id })} aria-label={t('plan.deletePreset')}>×</button>
             </div>
           ))}
         </div>
@@ -234,7 +234,7 @@ export default function PlanScreen() {
             value={smallBias}
             style={{ ['--pct' as string]: `${smallBias * 100}%` }}
             onChange={(e) => dispatch({ type: 'UPDATE_SESSION', patch: { smallBias: +e.target.value } })}
-            aria-label="Small-chip emphasis"
+            aria-label={t('plan.smallEmphasis')}
           />
           <div className="slider-ends">
             <span>{t('plan.fewerBigger')}</span>
@@ -331,7 +331,7 @@ export default function PlanScreen() {
           const isLocked = locked.has(d.id);
           return (
             <div className={`adjust-row ${isLocked ? 'locked' : ''} ${c === 0 ? 'zero' : ''}`} key={d.id}>
-              <button className={`lock-btn ${isLocked ? 'on' : ''}`} onClick={() => toggleLock(d.id)} aria-label="Pin count">
+              <button className={`lock-btn ${isLocked ? 'on' : ''}`} onClick={() => toggleLock(d.id)} aria-label={t('plan.pinCount')}>
                 <IconLock size={14} />
               </button>
               <Chip value={d.value} color={d.color} accent={d.accent} size={28} shape={d.shape} />
@@ -554,7 +554,7 @@ export default function PlanScreen() {
                 value={b.bigBlind || ''}
                 onChange={(e) => dispatch({ type: 'UPDATE_BLIND', id: b.id, patch: { bigBlind: Math.max(0, +e.target.value) } })}
               />
-              {i === startIdx && <span className="badge-soft" style={{ marginLeft: 6 }}>start</span>}
+              {i === startIdx && <span className="badge-soft" style={{ marginLeft: 6 }}>{t('plan.startBadge')}</span>}
             </div>
             <button
               className="icon-btn danger"
