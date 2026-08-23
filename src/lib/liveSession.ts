@@ -1,5 +1,7 @@
 import {
+  disableNetwork,
   doc,
+  enableNetwork,
   setDoc,
   deleteDoc,
   onSnapshot,
@@ -9,7 +11,7 @@ import {
   Timestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
-import { ensureAuth, getDb, firebaseConfigured } from './firebase';
+import { ensureAuth, resetAuth, getDb, firebaseConfigured } from './firebase';
 import type { AppState } from '../types';
 import type { ClockState } from './clockLogic';
 import { dataOf, type LiveData } from './liveData';
@@ -43,6 +45,33 @@ export interface LiveDoc {
 }
 
 export { firebaseConfigured };
+
+/**
+ * Force the Firestore connection to be rebuilt.
+ *
+ * The failure this exists for: the SDK's write stream can get wedged — the phone
+ * changes network, Android freezes the tab, a hotspot drops mid-write — and from
+ * then on every `setDoc` is accepted locally and simply never acknowledged. The
+ * app looked exactly like this: "not sent yet — retrying (attempt 9)", climbing
+ * forever, with the Push button doing nothing, because retrying a write on a dead
+ * stream produces another dead write. Only reloading the app fixed it, and inside
+ * the installed APK there is no reload.
+ *
+ * Turning the network off and on again drops the stream and makes the SDK open a
+ * fresh one, taking everything still queued with it. Cheap, local, and safe to
+ * call while writes are pending — they are re-sent, not lost.
+ */
+export async function kickConnection(): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  resetAuth(); // a stale token is the other thing a fresh connection should shed
+  try {
+    await disableNetwork(db);
+  } catch {
+    /* already down — the re-enable below is what matters */
+  }
+  await enableNetwork(db);
+}
 
 /** Short 4-digit pairing code — big on the TV, quick to type on the phone. */
 export function genCode(): string {

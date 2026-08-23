@@ -190,10 +190,18 @@ export default function ConnectToTv() {
               <span className={`sync-dot ${syncTone}`} />
               <span>{syncLabel}</span>
             </div>
+            {stuck && sync.lastError && (
+              // The reason, verbatim from the SDK. Unglamorous, but a stuck sync used
+              // to say only "attempt 9" — with nothing to act on and nothing to report.
+              <div className="sync-why">{sync.lastError}</div>
+            )}
             <button
               className={`btn btn-block mt12 ${stuck ? 'btn-primary' : 'btn-ghost'}`}
               onClick={pushNow}
-              disabled={sync.status === 'syncing'}
+              // Only blocked during a HEALTHY send. While a push is stuck, the button
+              // is the thing that rebuilds the connection — disabling it then is
+              // exactly when the user needs it.
+              disabled={sync.status === 'syncing' && sync.attempts === 0}
             >
               {sync.status === 'syncing' ? t('table.sending') : stuck ? t('connect.retryNow') : t('connect.pushNow')}
             </button>

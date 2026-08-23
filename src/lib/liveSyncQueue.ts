@@ -37,6 +37,9 @@ export interface LiveSyncState {
   status: LiveSyncStatus;
   /** consecutive failures of the write that is currently stuck; 0 when healthy */
   attempts: number;
+  /** why the last attempt failed, in the SDK's own words — shown in the UI and
+   *  logged, because an invisible failure is one nobody can diagnose */
+  lastError: string | null;
   /** epoch ms of the last write the server acknowledged */
   lastSyncedAt: number | null;
   /** what the browser thinks about the network — turns "retrying" into "offline" in the UI */
@@ -48,6 +51,8 @@ export interface LiveTransport {
   pushData: (code: string, state: AppState) => Promise<void>;
   pushClock: (code: string, clock: ClockState) => Promise<void>;
   pushBackground: (code: string, image: string | null) => Promise<void>;
+  /** rebuild the underlying connection — see `kickConnection` in liveSession */
+  kick?: () => Promise<void>;
 }
 
 const DEFAULT_BACKOFF_MS = [800, 1600, 3200, 6400, 12000, 20000, 30000];
@@ -69,8 +74,8 @@ let transport: LiveTransport | null = null;
 
 async function getTransport(): Promise<LiveTransport> {
   if (!transport) {
-    const { hostPushData, pushClock, pushBackground } = await import('./liveSession');
-    transport = { pushData: hostPushData, pushClock, pushBackground };
+    const { hostPushData, pushClock, pushBackground, kickConnection } = await import('./liveSession');
+    transport = { pushData: hostPushData, pushClock, pushBackground, kick: kickConnection };
   }
   return transport;
 }
@@ -101,6 +106,9 @@ let pendingBackground: PendingBackground | null = null;
 let inFlight = false;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let attempts = 0;
+let lastError: string | null = null;
+/** set when the next attempt should rebuild the connection before it writes */
+let kickNext = false;
 let lastSyncedAt: number | null = null;
 /**
  * Bumped by `cancelLiveSync`. A write already in flight when the user disconnects
@@ -112,7 +120,21 @@ let generation = 0;
 // --- observable state -------------------------------------------------------
 
 const listeners = new Set<() => void>();
-let snapshot: LiveSyncState = { status: 'idle', attempts: 0, lastSyncedAt: null, online: true };
+let snapshot: LiveSyncState = { status: 'idle', attempts: 0, lastError: null, lastSyncedAt: null, online: true };
+
+/**
+ * After this many consecutive failures the connection itself is suspect, not the
+ * write. Two is deliberate: one failure is a blip, two in a row on a link the
+ * browser still calls "online" is the wedged-stream case.
+ */
+const KICK_AFTER_ATTEMPTS = 2;
+
+/** The SDK's error, flattened to something short enough to put on screen. */
+function errText(e: unknown): string {
+  const code = (e as { code?: string } | null)?.code;
+  const msg = e instanceof Error ? e.message : String(e);
+  return code ? `${code}: ${msg}` : msg;
+}
 
 function isOnline(): boolean {
   return typeof navigator === 'undefined' ? true : navigator.onLine !== false;
@@ -133,12 +155,14 @@ function emit(): void {
   const next: LiveSyncState = {
     status: currentStatus(),
     attempts,
+    lastError,
     lastSyncedAt,
     online: isOnline(),
   };
   if (
     next.status === snapshot.status &&
     next.attempts === snapshot.attempts &&
+    next.lastError === snapshot.lastError &&
     next.lastSyncedAt === snapshot.lastSyncedAt &&
     next.online === snapshot.online
   ) {
@@ -197,6 +221,19 @@ async function run(): Promise<void> {
   try {
     const tr = await getTransport();
 
+    /* Stuck? Rebuild the connection before writing anything. A wedged Firestore
+       stream accepts writes and never acknowledges them, so retrying on it just
+       produces more never-acknowledged writes — that is the "retrying (attempt 9)"
+       that never resolved on its own. */
+    if (kickNext || attempts >= KICK_AFTER_ATTEMPTS) {
+      kickNext = false;
+      try {
+        await tr.kick?.();
+      } catch {
+        /* the write below reports the real problem */
+      }
+    }
+
     // Clock first — it is the time-sensitive one.
     const clock = pendingClock;
     if (clock) {
@@ -229,16 +266,21 @@ async function run(): Promise<void> {
       return;
     }
     attempts = 0;
+    lastError = null;
     lastSyncedAt = Date.now();
     emit();
     if (pendingData || pendingClock || pendingBackground) void run();
-  } catch {
+  } catch (e) {
     inFlight = false;
     if (gen !== generation) {
       emit();
       return;
     }
     attempts++;
+    lastError = errText(e);
+    // Loud on purpose: this used to fail completely silently, which left the only
+    // symptom a rising attempt counter and nothing to go on.
+    console.warn(`[live-sync] push failed (attempt ${attempts}): ${lastError}`);
     emit();
     scheduleRetry();
   }
@@ -283,6 +325,10 @@ export function flushLiveSync(): void {
     clearTimeout(retryTimer);
     retryTimer = null;
   }
+  // A manual retry means the automatic ones are not working: rebuild the connection
+  // rather than sending the same write down the same dead stream again. Resetting
+  // `attempts` alone would only hide the problem behind a fresh-looking counter.
+  if (attempts > 0) kickNext = true;
   attempts = 0;
   emit();
   void run();
@@ -298,6 +344,8 @@ export function cancelLiveSync(): void {
   pendingClock = null;
   pendingBackground = null;
   attempts = 0;
+  lastError = null;
+  kickNext = false;
   lastSyncedAt = null;
   generation++;
   emit();

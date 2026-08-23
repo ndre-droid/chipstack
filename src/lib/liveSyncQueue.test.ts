@@ -36,6 +36,7 @@ interface Recorder {
   backgrounds: { code: string; image: string | null }[];
   fails: number;
   hangs: number;
+  kicks: number;
 }
 
 function transportThat(rec: Recorder) {
@@ -60,6 +61,9 @@ function transportThat(rec: Recorder) {
       }
       rec.clocks.push({ code, levelIdx: clock.levelIdx });
     },
+    kick: async () => {
+      rec.kicks++;
+    },
     pushBackground: async (code: string, image: string | null) => {
       if (rec.fails > 0) {
         rec.fails--;
@@ -80,7 +84,7 @@ function setup(rec: Recorder, opts: { timeout?: number; clockMaxAge?: number; ba
   });
 }
 
-const fresh = (): Recorder => ({ data: [], clocks: [], backgrounds: [], fails: 0, hangs: 0 });
+const fresh = (): Recorder => ({ data: [], clocks: [], backgrounds: [], fails: 0, hangs: 0, kicks: 0 });
 
 let failures = 0;
 function check(label: string, ok: boolean, detail = '') {
@@ -115,6 +119,34 @@ async function testRetriesUntilItLands() {
   await sleep(120);
   check('write eventually landed', rec.data.length === 1, `got ${rec.data.length}`);
   check('back to synced', getLiveSyncState().status === 'synced', getLiveSyncState().status);
+}
+
+async function testStuckWriteRebuildsTheConnection() {
+  console.log('\na stuck write rebuilds the connection instead of looping');
+  const rec = fresh();
+  setup(rec);
+  rec.fails = 3;
+  queueData('1234', () => stateWith('a'));
+  await sleep(15);
+  check('the reason is captured, not swallowed', !!getLiveSyncState().lastError, String(getLiveSyncState().lastError));
+  await sleep(120);
+  check('the connection was kicked', rec.kicks >= 1, `${rec.kicks} kick(s)`);
+  check('write landed', rec.data.length === 1, `got ${rec.data.length}`);
+  check('the error cleared on success', getLiveSyncState().lastError === null, String(getLiveSyncState().lastError));
+}
+
+async function testManualRetryKicks() {
+  console.log('\nthe manual retry button rebuilds the connection too');
+  const rec = fresh();
+  setup(rec, { backoff: [5000] }); // stuck behind a long backoff, as it is in the app
+  rec.fails = 1;
+  queueData('1234', () => stateWith('a'));
+  await sleep(20);
+  check('stuck, waiting out the backoff', rec.data.length === 0);
+  flushLiveSync();
+  await sleep(40);
+  check('the manual push kicked the connection', rec.kicks >= 1, `${rec.kicks} kick(s)`);
+  check('and the write got through', rec.data.length === 1, `got ${rec.data.length}`);
 }
 
 async function testRetrySendsCurrentState() {
@@ -243,6 +275,8 @@ async function testClearingTheBackgroundSyncs() {
 async function main() {
   await testHappyPath();
   await testRetriesUntilItLands();
+  await testStuckWriteRebuildsTheConnection();
+  await testManualRetryKicks();
   await testRetrySendsCurrentState();
   await testCoalescing();
   await testHangingWriteIsRetried();
