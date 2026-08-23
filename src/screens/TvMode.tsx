@@ -66,7 +66,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const t = useT();
   const { money, num } = useFmt();
   const { blindLevels } = state.session;
-  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvRosterSort, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack, bountyMode, bountyAmount, customAccent, tvPenalties, tvHouseRules } = state.settings;
+  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvRosterSort, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack, bountyMode, bountyAmount, customAccent, tvPenalties, tvHouseRules, showTrend } = state.settings;
 
   /* Display size. Per-device and deliberately NOT part of LiveData: the laptop
      acting as the big screen needs its own zoom, and a phone must not shrink it.
@@ -216,6 +216,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               chipArt: doc.data.chipArt,
               bountyMode: doc.data.bountyMode,
               bountyAmount: doc.data.bountyAmount,
+              showTrend: doc.data.showTrend ?? true,
               customAccent: doc.data.customAccent,
               tvPenalties: doc.data.tvPenalties,
               tvHouseRules: doc.data.tvHouseRules,
@@ -661,10 +662,12 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               emoji: p.emoji || '',
               chips,
               trail: (p.chipHistory ?? []).map((h) => h.chips),
+              // break-even in chip units — the dotted line the trend is read against
+              trailBase: unitValue > 0 ? Math.round(Math.max(0, (p.buyIn || 0) - (p.cashOut || 0)) / unitValue) : 0,
               knockouts: p.knockouts || 0,
             };
           })
-        : Array.from({ length: playerCount }, (_, i) => ({ id: String(i), name: `Seat ${i + 1}`, amount: buyIn, out: false, net: null as number | null, stackMoney: null as number | null, emoji: '', chips: 0, trail: [] as number[], knockouts: 0 })),
+        : Array.from({ length: playerCount }, (_, i) => ({ id: String(i), name: `Seat ${i + 1}`, amount: buyIn, out: false, net: null as number | null, stackMoney: null as number | null, emoji: '', chips: 0, trail: [] as number[], trailBase: 0, knockouts: 0 })),
     [ledger, playerCount, buyIn, unitValue],
   );
 
@@ -752,7 +755,9 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   // a counted stack to value.
   const rosterAmountLabel = roster.some((p) => p.stackMoney !== null) ? t('tv.stack') : t('tv.buyIn');
 
-  // chip-leader crown: the still-in player with the most (host-entered) chips
+  // the chip leader: the still-in player with the most (host-entered) chips. Marked
+  // by the weight + colour of their NAME — a crown beside it sat next to the player's
+  // own emoji and read as one more emoji, and it shifted every leader's name across.
   const chipLeaderId = useMemo(() => {
     let best: string | null = null;
     let bestChips = 0;
@@ -1041,14 +1046,14 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
                 {sortedRoster.map((p) => (
                   <div className={`tv-players-row ${p.out ? 'out' : ''}`} key={p.id}>
                     {p.emoji && <span className="tv-players-emoji">{p.emoji}</span>}
-                    {p.id === chipLeaderId && <span className="tv-crown" title="Chip leader">👑</span>}
-                    <span className="tv-players-name">{p.name}</span>
-                    {!p.out && p.trail.length > 1 && (
+                    <span className={`tv-players-name${p.id === chipLeaderId ? ' leader' : ''}`}>{p.name}</span>
+                    {showTrend !== false && !p.out && p.trail.length > 1 && (
                       // sized off the fitted row so the trail can never be the thing
                       // that makes a row too tall to fit
                       <Sparkline
                         className="tv-spark"
                         points={p.trail}
+                        baseline={p.trailBase}
                         width={Math.round((rowFs || 19) * 3.3)}
                         height={Math.round((rowFs || 19) * 1.05)}
                       />

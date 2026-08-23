@@ -67,6 +67,7 @@ const defaultSettings: Settings = {
   tvShowStartStack: false,
   bountyMode: false,
   bountyAmount: 5,
+  showTrend: true,
   customAccent: null,
   tvPenalties: [],
   tvHouseRules: [],
@@ -159,6 +160,7 @@ type Action =
       chipArt?: ChipArt;
       bountyMode?: boolean;
       bountyAmount?: number;
+      showTrend?: boolean;
       customAccent?: string | null;
       tvPenalties?: string[];
       tvHouseRules?: string[];
@@ -310,6 +312,7 @@ function reducer(state: AppState, action: Action): AppState {
           ...(action.chipArt !== undefined ? { chipArt: action.chipArt } : {}),
           ...(action.bountyMode !== undefined ? { bountyMode: action.bountyMode } : {}),
           ...(action.bountyAmount !== undefined ? { bountyAmount: action.bountyAmount } : {}),
+          ...(action.showTrend !== undefined ? { showTrend: action.showTrend } : {}),
           ...(action.customAccent !== undefined ? { customAccent: action.customAccent } : {}),
           ...(action.tvPenalties !== undefined ? { tvPenalties: action.tvPenalties } : {}),
           ...(action.tvHouseRules !== undefined ? { tvHouseRules: action.tvHouseRules } : {}),
@@ -338,18 +341,23 @@ function reducer(state: AppState, action: Action): AppState {
       // a whole counting round commits in ONE dispatch → one render, one TV push
       const byId = new Map(action.entries.map((e) => [e.id, e.chips]));
       const at = Date.now();
+      /* Every still-playing player gets a point, not only the ones in `entries` —
+         somebody whose stack was typed on its own would otherwise build up a longer
+         trail than the rest, and the trend lines stopped being comparable (the
+         "why does only half the table have a graph?" bug). An uncounted player
+         carries their last known stack forward, which is exactly what is believed
+         about them at that moment. Players who are out keep their trail frozen. */
       return {
         ...state,
-        ledger: state.ledger.map((p) =>
-          byId.has(p.id)
-            ? {
-                ...p,
-                chips: byId.get(p.id),
-                // keep a short trail so the stack sparkline has something to draw
-                chipHistory: [...(p.chipHistory ?? []), { at, chips: byId.get(p.id) ?? 0 }].slice(-HISTORY_MAX),
-              }
-            : p,
-        ),
+        ledger: state.ledger.map((p) => {
+          if (p.out || (p.cashOut || 0) > 0) return p;
+          const chips = byId.has(p.id) ? byId.get(p.id) : p.chips;
+          return {
+            ...p,
+            chips,
+            chipHistory: [...(p.chipHistory ?? []), { at, chips: chips ?? 0 }].slice(-HISTORY_MAX),
+          };
+        }),
       };
     }
     case 'LEDGER_RESTORE_CHIPS': {
@@ -518,6 +526,7 @@ function migrate(raw: string | null): AppState {
   if (typeof settings.tvShowStartStack !== 'boolean') settings.tvShowStartStack = false;
   if (typeof settings.bountyMode !== 'boolean') settings.bountyMode = false;
   if (typeof settings.bountyAmount !== 'number' || settings.bountyAmount < 0) settings.bountyAmount = 5;
+  if (typeof settings.showTrend !== 'boolean') settings.showTrend = true;
   if (typeof settings.customAccent !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(settings.customAccent)) settings.customAccent = null;
   settings.tvPenalties = Array.isArray(settings.tvPenalties) ? settings.tvPenalties.filter((q): q is string => typeof q === 'string') : [];
   settings.tvHouseRules = Array.isArray(settings.tvHouseRules) ? settings.tvHouseRules.filter((q): q is string => typeof q === 'string') : [];

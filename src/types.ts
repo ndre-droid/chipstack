@@ -68,6 +68,9 @@ export interface Settings {
    *  buy-in; whoever eliminates them collects it. */
   bountyMode: boolean;
   bountyAmount: number;
+  /** Show the little profit/loss trend line next to a player, on the phone roster
+   *  and on the TV. One counting round is one point; off hides it everywhere. */
+  showTrend: boolean;
   /** Optional free custom accent colour (hex). Overrides the 8 presets when set. */
   customAccent: string | null;
   /** Custom entries added to the "who drinks?" penalty spinner + break house rules. */

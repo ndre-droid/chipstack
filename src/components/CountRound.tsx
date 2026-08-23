@@ -127,7 +127,7 @@ export default function CountRound({
 
   /** Single-player mode (tapped one stack in the roster): save straight away. */
   const saveOnly = () => {
-    onUndoable?.([{ id: player!.id, chips: player!.chips, chipHistory: player!.chipHistory }]);
+    onUndoable?.(ledger.map((p) => ({ id: p.id, chips: p.chips, chipHistory: p.chipHistory })));
     dispatch({ type: 'LEDGER_SET_CHIPS_MANY', entries: [{ id: player!.id, chips: currentUnits }] });
     onClose();
   };
@@ -174,12 +174,9 @@ export default function CountRound({
   const commit = () => {
     const entries = Object.entries(results).map(([id, chips]) => ({ id, chips: chips > 0 ? chips : undefined }));
     if (entries.length) {
-      onUndoable?.(
-        entries.map(({ id }) => {
-          const p = ledger.find((x) => x.id === id)!;
-          return { id, chips: p.chips, chipHistory: p.chipHistory };
-        }),
-      );
+      // the whole ledger, not just the counted rows: a round appends a trail point
+      // to every player still in play, so undo has to be able to take them all back
+      onUndoable?.(ledger.map((p) => ({ id: p.id, chips: p.chips, chipHistory: p.chipHistory })));
       dispatch({ type: 'LEDGER_SET_CHIPS_MANY', entries });
     }
     onClose();

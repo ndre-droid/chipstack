@@ -43,6 +43,8 @@ export interface LiveData {
   /** knockout bounty (tournament) — earnings shown on the TV roster */
   bountyMode: boolean;
   bountyAmount: number;
+  /** the profit/loss trend line — the TV follows the phone's choice */
+  showTrend: boolean;
   /** free custom accent colour (hex) — overrides the presets on the TV too */
   customAccent: string | null;
   /** custom penalty spinner entries + break house rules */
@@ -82,6 +84,7 @@ export function dataOf(state: AppState): LiveData {
     chipArt: state.settings.chipArt ?? 'deco',
     bountyMode: state.settings.bountyMode ?? false,
     bountyAmount: state.settings.bountyAmount ?? 5,
+    showTrend: state.settings.showTrend ?? true,
     customAccent: state.settings.customAccent ?? null,
     tvPenalties: state.settings.tvPenalties ?? [],
     tvHouseRules: state.settings.tvHouseRules ?? [],

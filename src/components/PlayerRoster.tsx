@@ -170,7 +170,8 @@ export default function PlayerRoster() {
     const p = ledger.find((x) => x.id === id);
     if (!p) return;
     const units = moneyToUnits(Math.max(0, amount), unitValue);
-    offerUndo([{ id, chips: p.chips, chipHistory: p.chipHistory }]);
+    // same reason as the counting round: the trail point lands on every in-play row
+    offerUndo(ledger.map((x) => ({ id: x.id, chips: x.chips, chipHistory: x.chipHistory })));
     dispatch({ type: 'LEDGER_SET_CHIPS_MANY', entries: [{ id, chips: units > 0 ? units : undefined }] });
     setStackId(null);
   };
@@ -235,12 +236,15 @@ export default function PlayerRoster() {
                       ) : (
                         <button
                           type="button"
-                          className="pr-name-btn"
+                          // the chip leader is marked ON the name (weight + accent), not with a
+                          // crown beside it: that shifted the name sideways and read as just
+                          // another player emoji
+                          className={`pr-name-btn${leaderId === p.id && contested ? ' leader' : ''}`}
                           onClick={() => setNameId(p.id)}
                           aria-label={t('roster.editName')}
+                          title={leaderId === p.id && contested ? t('roster.leader') : undefined}
                         >
                           {p.name || t('roster.name')}
-                          {leaderId === p.id && contested && <span className="pr-crown" title={t('roster.leader')}> 👑</span>}
                         </button>
                       )}
                       {bountyMode && (p.knockouts || 0) > 0 && <span className="pr-ko">🎯{p.knockouts}</span>}
@@ -291,8 +295,12 @@ export default function PlayerRoster() {
                             <IconPlus size={13} /> {money(session.buyIn, currency)}
                           </button>
                           <div className="spacer" />
-                          {(p.chipHistory?.length ?? 0) > 1 && (
-                            <Sparkline className="pr-spark" points={p.chipHistory!.map((h) => h.chips)} />
+                          {settings.showTrend !== false && (p.chipHistory?.length ?? 0) > 1 && (
+                            <Sparkline
+                              className="pr-spark"
+                              points={p.chipHistory!.map((h) => h.chips)}
+                              baseline={moneyToUnits(Math.max(0, (p.buyIn || 0) - (p.cashOut || 0)), unitValue)}
+                            />
                           )}
                           {(p.chips || 0) > 0 && (
                             <span className={`pr-net ${netNow(p) >= 0 ? 'pos' : 'neg'}`}>
@@ -493,6 +501,15 @@ export default function PlayerRoster() {
                   }}
                 >
                   ↺ {t('roster.resetTable')}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    dispatch({ type: 'UPDATE_SETTINGS', patch: { showTrend: settings.showTrend === false } });
+                    setTableMenu(false);
+                  }}
+                >
+                  {settings.showTrend !== false ? '✓ ' : ''}{t('roster.trendLine')}
                 </button>
                 <button
                   className="btn btn-ghost btn-sm danger-text"
