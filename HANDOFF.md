@@ -18,11 +18,19 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-08-23 from `main` @ `4ef5919`**, 4.43 MB (4,434,304 B), run `32626027488`:
+  (**CURRENT — rebuilt 2026-08-24 from `main` @ `f2d675a`**, 4.50 MB (4,496,889 B), run `32656415094`:
+  the whole UX pass (see "Recent work 2026-08-24"). Pages run `32656220963` green from the same
+  commit, so APK / `main` / Pages are IN SYNC.
+  Download verified: `200`, `application/vnd.android.package-archive`, 4,496,889 B.
+  `npx cap sync` reported **2 Capacitor plugins for android** including
+  `@capacitor/local-notifications@6.1.3`, and the `:capacitor-local-notifications:*` Gradle tasks
+  ran, so the plugin IS compiled in. What is still unproven is the runtime: whether Android grants
+  `POST_NOTIFICATIONS` and whether the level-end notification actually fires. **That needs a person
+  with the APK on a phone** — switch on "Melden, wenn die Stufe endet" on the Table tab, start the
+  clock, lock the phone, wait for the level to run out.
+  Previous build: 2026-08-23 from `main` @ `4ef5919`, 4.43 MB, run `32626027488`:
   the sync-wedge fix (undefined payload), leader marked on the name, the reworked trend line + its
-  toggle. Pages run `32626023321` green from the same commit, so APK / `main` / Pages are IN SYNC
-  (`main` is one commit further at `326d2dc` — this handoff, no code).
-  Download verified: `200`, `application/vnd.android.package-archive`, full length.
+  toggle.
   ℹ️ The rewritten `firestore.rules` are deliberately NOT deployed — the user chose to keep the
   wide-open rules (see STATE RIGHT NOW). Do not deploy them unprompted.
   Previous build: 2026-08-22 from `main` @ `d776a25`, 4.43 MB, run `32584988724`: stack typed in
