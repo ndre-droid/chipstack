@@ -20,7 +20,8 @@ sound would hijack the user's Sonos).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
   (**CURRENT — rebuilt 2026-08-23 from `main` @ `4ef5919`**, 4.43 MB (4,434,304 B), run `32626027488`:
   the sync-wedge fix (undefined payload), leader marked on the name, the reworked trend line + its
-  toggle. Pages run `32626023321` green from the same commit, so APK / `main` / Pages are IN SYNC.
+  toggle. Pages run `32626023321` green from the same commit, so APK / `main` / Pages are IN SYNC
+  (`main` is one commit further at `326d2dc` — this handoff, no code).
   Download verified: `200`, `application/vnd.android.package-archive`, full length.
   ℹ️ The rewritten `firestore.rules` are deliberately NOT deployed — the user chose to keep the
   wide-open rules (see STATE RIGHT NOW). Do not deploy them unprompted.
@@ -788,7 +789,7 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 
 ### STATE RIGHT NOW (2026-08-23)
 Everything in the repo is shipped and green. Local branch **`feat/chip-photo-count` == `main` ==
-`4ef5919`**, Pages and the APK both built from it. Nothing is half-finished in the working tree; the
+`326d2dc`** (docs); the last CODE commit is `4ef5919` and Pages + the APK are both built from it. Nothing is half-finished in the working tree; the
 only untracked things are the user's own `koffer.png` and `Chips source pics and links/`, deliberately
 not committed.
 
