@@ -18,11 +18,15 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-08-22 from `main` @ `d776a25`**, 4.43 MB, run `32584988724`: stack typed in
-  euros, shared clock, in-app confirms, session ownership. Pages run `32584985820` green from the same
-  commit, so APK / `main` / Pages are IN SYNC. ⚠️ The rewritten `firestore.rules` are still NOT deployed
-  — enable Anonymous auth in the Firebase console FIRST, then `firebase deploy --only firestore:rules`.
-  Previous build: rebuilt 2026-08-15 from `main` @ `5b3bbe4`, 4.39 MB, run `31877174344`: single player roster +
+  (**CURRENT — rebuilt 2026-08-23 from `main` @ `4ef5919`**, 4.43 MB (4,434,304 B), run `32626027488`:
+  the sync-wedge fix (undefined payload), leader marked on the name, the reworked trend line + its
+  toggle. Pages run `32626023321` green from the same commit, so APK / `main` / Pages are IN SYNC.
+  Download verified: `200`, `application/vnd.android.package-archive`, full length.
+  ℹ️ The rewritten `firestore.rules` are deliberately NOT deployed — the user chose to keep the
+  wide-open rules (see STATE RIGHT NOW). Do not deploy them unprompted.
+  Previous build: 2026-08-22 from `main` @ `d776a25`, 4.43 MB, run `32584988724`: stack typed in
+  euros, shared clock, in-app confirms, session ownership.
+  Older build: rebuilt 2026-08-15 from `main` @ `5b3bbe4`, 4.39 MB, run `31877174344`: single player roster +
   counting round, photo chip-count removed. Stable key unchanged → installs over the top, data kept.
   Pages run `31877169320` green from the same commit, so APK / `main` / Pages are IN SYNC.
   Historical build note: rebuilt 2026-08-11 from `main` @ `5a4f2ae`, 4.37 MB; AI chip count was a deliberate **ASSIST**:
@@ -51,11 +55,15 @@ sound would hijack the user's Sonos).
   `GH="/c/Program Files/GitHub CLI/gh.exe"`). Authed as `ndre-droid`, scopes `repo, workflow`.
   - `gh api` paths: **omit the leading slash** in Git Bash (`gh api repos/ndre-droid/chipstack/...`)
     or Git Bash rewrites `/repos/...` into a filesystem path.
-- **Dev server / preview:** `.claude/launch.json` in the SESSION cwd (`C:\Users\ndrex\Downloads\
-  HomeFlow-debug-apk (4)`) has config `chipstack` (npm run dev, :5173), `chipstack-3d`
-  (npm run dev, :5188) and `chipstack-pwa` (vite preview, :4173). Start with
-  `preview_start {name:"chipstack"}`. If another chat already holds :5173, use `chipstack-3d`
-  (:5188) instead — that's why it exists.
+- **Dev server / preview:** `.claude/launch.json` **in the project root** has `chipstack-dev`
+  (npm run dev, :5173), `chipstack-verify` (:5199), `chipstack-verify-b` (:5211, for two-device live
+  tests) and `chipstack-prod` (vite preview, :5200). Start with `preview_start {name:"chipstack-verify"}`
+  so a chat holding :5173 doesn't collide.
+- **Never send `undefined` to Firestore.** `setDoc()` rejects it outright and the queue then retries
+  the same invalid payload forever ("Wiederholung (Versuch 9)"). `lib/firebase.ts` sets
+  `ignoreUndefinedProperties: true` for exactly this reason — the ledger genuinely holds
+  `chips: undefined` after a reset. Keep the flag, and keep `getDb()` the ONLY place a Firestore
+  instance is created (`initializeFirestore` throws if `getFirestore` ran on that app first).
 - **In-app Browser pane is usable this session** (screenshots + `javascript_tool` both work), but
   can go flaky — `computer{screenshot}` sometimes times out if the pane is hidden; fall back to
   `read_page` / `javascript_tool` / `read_console_messages`.
@@ -145,12 +153,15 @@ src/
     settle.ts        settleUp() minimal-transfer
     share.ts         encode/decodeSetup (CS1: code), renderStackImage
     money.ts, i18n.ts (t() hook + en/de dict), clockLogic.ts (pure ClockState transitions),
-    firebaseConfig.ts (the pasted chipstack-live web config), firebase.ts (lazy Firestore +
+    firebaseConfig.ts (the pasted chipstack-live web config), firebase.ts (lazy Firestore via
+      initializeFirestore with ignoreUndefinedProperties:true — LOAD-BEARING, see gotchas;
       ensureAuth() — anonymous sign-in, firebase/auth dynamically imported, resolves to null on
-      failure so writes still work against the old rules),
+      failure so writes still work against the old rules, and only caches a failure 5 min;
+      resetAuth()),
     liveData.ts (NEW — LiveData type + dataOf + liveSignature; FIREBASE-FREE on purpose so the
       host-sync hook can import it statically without bloating the main bundle),
-    liveSession.ts (Firestore session doc read/write/subscribe + tvHeartbeat — DYNAMICALLY
+    liveSession.ts (Firestore session doc read/write/subscribe + tvHeartbeat + kickConnection()
+      [disableNetwork+enableNetwork, un-wedges a dead write stream] — DYNAMICALLY
       imported only when a live session is used, so Firebase code-splits out of the main bundle;
       re-exports LiveData from liveData.ts),
     color.ts (NEW — darken() + customAccentVars() for the free custom-accent hex picker),
@@ -297,6 +308,57 @@ break length + auto-break every N, blinds (edit/add/remove), players & pool (ren
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
 
+### Recent work (2026-08-23 — the sync-wedge bug, leader marking, the trend line)
+
+**THE live-sync bug is fixed, and it was not what the retry UI suggested.** Symptom: the TV stopped
+updating after the user reset the table, and the Table tab sat on *"Noch nicht gesendet — Wiederholung
+(Versuch 9)"* with the Push button doing nothing. Cause: the app models "no stack / never busted" as
+`chips: undefined`, `outAt: undefined`, `chipHistory: undefined` — exactly what `LEDGER_RESET_ALL`
+("Tisch zurücksetzen"), a cash-out and `LEDGER_CLEAR_CHIPS` write into every ledger row. **`setDoc()`
+rejects an undefined value outright** (`invalid-argument: Unsupported field value: undefined`), so from
+that dispatch on every push threw before it left the phone and each retry hit the same invalid payload.
+It looked intermittent because `liveSignature`'s `JSON.stringify` and localStorage BOTH drop undefined
+keys — so the change still registered as a change, and a reload cleaned the state up.
+Reproduced + verified against the live project with a throwaway node script: the plain client throws,
+`initializeFirestore(app, { ignoreUndefinedProperties: true })` writes. That option is now set in
+`lib/firebase.ts` and is **load-bearing — do not "tidy" it away**.
+
+Hardening added around it (the failure was invisible, which is half of why it took a session to find):
+- `liveSyncQueue` keeps `lastError` (SDK code + message) instead of swallowing the catch; it is shown
+  under the sync line on the Table tab (`.sync-why`) and `console.warn`ed.
+- Two consecutive failures — or pressing Push while stuck — call the new `kickConnection()`
+  (`disableNetwork` + `enableNetwork` + `resetAuth`, in `lib/liveSession.ts`). A wedged Firestore write
+  stream accepts writes and never acknowledges them, and the installed APK has no reload to fall back on.
+- The Push button is no longer `disabled` while a push is stuck — that was exactly when it was needed.
+- `ensureAuth()` remembers a FAILED sign-in for 5 minutes, not forever (it used to cache the failure for
+  the life of the app, so one offline moment meant signed-out until a force-quit).
+- Two new checks in `liveSyncQueue.test.ts` cover the kick (automatic + manual). All tests green.
+
+**Backend probe, 2026-08-23 (unchanged since):** the strict rules are still NOT deployed
+(unauthenticated REST read of `sessions/0000` → `200`), and **Firebase Authentication is not
+initialised in the project at all** — `accounts:signUp` → `400 CONFIGURATION_NOT_FOUND`, so
+`signInAnonymously` can never succeed today. **The user has decided to leave it that way** ("niemand
+wird versuchen den code zu knacken") — a home game, four digits is enough of a lock. Do not deploy the
+rules without enabling Anonymous auth first; doing so locks everyone out, including the user.
+
+**The crown is gone.** It sat between the player's own emoji and their name, so it read as a second
+emoji and shoved every leader's name sideways. The chip leader is now marked on the NAME: weight 800,
+accent colour, hairline accent underline — `.pr-name-btn.leader` on the phone,
+`.tv-players-name.leader` on the TV. Same rule both places.
+
+**The stack trend line was perfected and made optional.**
+- It appeared for only two players out of six because `LEDGER_SET_CHIPS_MANY` appended a trail point
+  only to the rows in that dispatch — so typing ONE player's stack gave that player a longer history
+  than everyone else. Now a counting round appends a point to **every player still in play**; an
+  uncounted one carries their last known stack forward. Undo snapshots the whole ledger to match (both
+  call sites in `CountRound.tsx` and `PlayerRoster.tsx`).
+- What it means is now drawn: `Sparkline` takes a `baseline` (break-even = buy-in − cash-out, in chip
+  units) and draws it as a dotted line; the path takes its colour from where it ENDS — `var(--good)`
+  above, `var(--bad)` below. Two points is still the minimum.
+- Switchable: Table menu (`↺`) → **"Trendlinie anzeigen"**, `Settings.showTrend` (default on), synced
+  to the TV like the other display choices (3 spots: `LiveData`, `dataOf`, the TV's `LIVE_APPLY_REMOTE`
+  block — plus the action type + `migrate()` in the store).
+
 ### Recent work (2026-08-22 — stacks are typed in euros; app-wide audit fixes)
 Two things: the stack-entry rework the user asked for, then the whole list of problems the
 audit turned up. **NOT deployed** — see the ⚠️ Firebase steps at the end.
@@ -329,8 +391,9 @@ clock** — opening the big screen continues the same countdown instead of forki
 while you scroll the roster; game mode, TV broadcast and dealer/seats are folded into a `Tisch-Setup`
 disclosure once anybody has sat down.
 
-**Roster.** Names are read-only until tapped (a stray scroll-tap used to rename people), 👑 marks the
-chip leader, and each still-playing row shows its live net.
+**Roster.** Names are read-only until tapped (a stray scroll-tap used to rename people), the chip
+leader is marked (👑 then; the NAME itself since 2026-08-23), and each still-playing row shows its
+live net.
 
 **`window.confirm` is gone** (6 uses) — `components/Confirm.tsx` + `useConfirm()`. The native dialog
 blocked the JS thread, so the live-sync queue and the clock stopped while it was open.
@@ -723,25 +786,30 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 
 ## ⚠️ Open items / next steps
 
-### STATE RIGHT NOW (2026-08-22)
+### STATE RIGHT NOW (2026-08-23)
 Everything in the repo is shipped and green. Local branch **`feat/chip-photo-count` == `main` ==
-`7abf182`**, Pages and the APK both built from it. Nothing is half-finished in the working tree; the
+`4ef5919`**, Pages and the APK both built from it. Nothing is half-finished in the working tree; the
 only untracked things are the user's own `koffer.png` and `Chips source pics and links/`, deliberately
 not committed.
 
-**THE ONE THING OUTSTANDING — the Firestore rules are written but NOT deployed.** `firestore.rules`
-now requires anonymous auth and session ownership (see the 2026-08-22 entry above for why). Deploying
-it out of order takes live sync down for everyone, so do it in exactly this order:
-1. Firebase console → Authentication → Sign-in method → **enable Anonymous**. Without it,
-   `signInAnonymously` fails and every client is rejected.
-2. Already done: `main`, Pages and the APK all carry the signing-in client (`7abf182`). If more
-   time has passed, re-check that the installed APK is current — an old APK loses live sync at step 3.
+**The Firestore rules are written but NOT deployed — and that is now a DECISION, not a to-do.** On
+2026-08-23 the user was walked through what anonymous auth buys (a per-device id so the rules can say
+"only the screen that opened this session and the phone that claimed it may write") and chose to leave
+it: home game, the four digits are lock enough. So `firestore.rules` stays in the repo, unshipped, and
+the app keeps running against the OLD wide-open rules. `ensureAuth()` failing is harmless there — it
+resolves to `null` and the write goes out anyway. **Do not deploy the rules on your own initiative.**
+
+If the user ever changes their mind, the order is still binding — out of order takes live sync down
+for everyone, including them:
+1. Firebase console → Authentication → Sign-in method → **enable Anonymous**. Today Authentication is
+   not set up in the project AT ALL (`accounts:signUp` → `400 CONFIGURATION_NOT_FOUND`), so every
+   client is currently sign-in-less.
+2. Re-check that `main`, Pages and the installed APK all carry the signing-in client. An old APK on the
+   phone loses live sync the moment step 3 lands.
 3. `firebase deploy --only firestore:rules`
 
-Until step 3 the app runs against the OLD, wide-open rules and works normally — `ensureAuth()`
-resolves to `null` on failure and the write is attempted anyway. After step 3, reading a session over
-the plain REST API with the public web key no longer works; that used to be the debugging trick, so
-drive the app instead. The TTL policy is still a separate one-off:
+After step 3, reading a session over the plain REST API with the public web key stops working; that
+used to be the debugging trick, so drive the app instead. The TTL policy is a separate one-off:
 `gcloud firestore fields ttls update expiresAt --collection-group=sessions --enable-ttl`.
 
 **Nothing else is pending from the audit** — every item raised on 2026-08-22 was fixed and verified in
