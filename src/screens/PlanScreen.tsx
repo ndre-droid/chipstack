@@ -3,7 +3,7 @@ import { useStore } from '../store';
 import { computeStack, moneyToUnits, rebalance } from '../lib/distribution';
 import type { StackResult } from '../lib/distribution';
 import { autoStartingStack, activeOverride, excludedSetOf, stackBasisKey, stacksNeededOf } from '../lib/startingStack';
-import { suggestBlindLadder, colorUpEvents } from '../lib/planning';
+import { suggestBlindLadder, colorUpEvents, ladderForDuration } from '../lib/planning';
 import type { ColorUpEvent } from '../lib/planning';
 import type { Denomination, BlindLevel } from '../types';
 import Chip from '../components/Chip';
@@ -30,6 +30,7 @@ export default function PlanScreen() {
   const [showChips, setShowChips] = useState(false);
   const [showLater, setShowLater] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [durationPick, setDurationPick] = useState<number | null>(null);
 
   const unit = settings.unitValue;
   const cur = settings.currency;
@@ -38,6 +39,7 @@ export default function PlanScreen() {
   const buyInUnits = moneyToUnits(buyIn, unit);
   const lateRebuyUnits = moneyToUnits(lateRebuyAmount || buyIn, unit);
   const numPlayers = playerCount;
+  const rosterSeated = state.ledger.length > 0;
   // early rebuys happen at the starting blinds, so the small chips must stretch to cover them too
   const startingStacks = stacksNeededOf(session);
 
@@ -130,6 +132,20 @@ export default function PlanScreen() {
     () => colorUpEvents(displayCounts, denominations, blindLevels, startIdx, numPlayers),
     [displayCounts, denominations, blindLevels, startIdx, numPlayers],
   );
+
+  /* The other way round: say how long the night should run and let the app pick both
+     the ladder and the level length. The onboarding asks this once; this is where it
+     lives afterwards, because "we have until midnight" is a thing that changes. */
+  const applyDuration = (hours: number) => {
+    const plan = ladderForDuration(denominations, buyInUnits, hours * 60, {
+      breakMinutes: settings.breakMinutes,
+      breakEvery: settings.breakEvery,
+    });
+    if (!plan.levels.length) return;
+    dispatch({ type: 'UPDATE_SESSION', patch: { blindLevels: plan.levels, startLevelIdx: 0, stackOverride: null } });
+    dispatch({ type: 'UPDATE_SETTINGS', patch: { minutesPerLevel: plan.minutesPerLevel } });
+    setDurationPick(hours);
+  };
 
   const applySuggestedLadder = () => {
     const ladder = suggestBlindLadder(denominations, buyInUnits, {
@@ -256,6 +272,30 @@ export default function PlanScreen() {
       </div>
 
       {/* feasibility */}
+      {/* Not "you can't do this" but "here is the shopping list" — the number of
+          chips to buy is a question the app can answer and the user cannot. */}
+      {!starting.feasible && starting.shortfall.length > 0 && (
+        <div className="card missing-card">
+          <div className="section-label" style={{ margin: '0 0 8px' }}>
+            {t('plan.missing')}
+            <span className="hint">{t('plan.missingHint', { n: startingStacks })}</span>
+          </div>
+          {starting.shortfall.map((sf) => {
+            const d = denominations.find((x) => x.id === sf.denomId);
+            return (
+              <div className="missing-row" key={sf.denomId}>
+                {d && <Chip value={d.value} color={d.color} accent={d.accent} shape={d.shape} size={26} />}
+                <span className="missing-txt">{t('plan.missingRow', { n: sf.missing, value: num(sf.value) })}</span>
+                <span className="missing-have">{sf.have} / {sf.needed}</span>
+              </div>
+            );
+          })}
+          <p className="faint" style={{ fontSize: 12, margin: '10px 2px 0' }}>
+            {t('plan.missingBuy', { n: starting.shortfall.reduce((s2, sf) => s2 + sf.missing, 0) })}
+          </p>
+        </div>
+      )}
+
       {starting.feasible ? (
         <div className="feas ok">
           <IconCheck size={18} /> {t('plan.enoughChips', { n: startingStacks })}
@@ -416,14 +456,25 @@ export default function PlanScreen() {
         <div className="row">
           <div>
             <div style={{ fontWeight: 600 }}>{t('plan.playersAtTable')}</div>
-            <div className="faint" style={{ fontSize: 12.5 }}>{t('plan.playersDesc')}</div>
+            <div className="faint" style={{ fontSize: 12.5 }}>
+              {rosterSeated ? t('plan.playersFromRoster') : t('plan.playersDesc')}
+            </div>
           </div>
           <div className="spacer" />
-          <div className="stepper">
-            <button onClick={() => dispatch({ type: 'SET_PLAYER_COUNT', n: numPlayers - 1 })}>−</button>
-            <span className="val">{numPlayers}</span>
-            <button onClick={() => dispatch({ type: 'SET_PLAYER_COUNT', n: numPlayers + 1 })}>+</button>
-          </div>
+          {/* Once people are actually seated the roster owns this number — two places
+              to edit it meant planning chips for four while six played. */}
+          {rosterSeated ? (
+            <div className="plan-count-locked">
+              <b>{numPlayers}</b>
+              <span>{t('plan.atTable')}</span>
+            </div>
+          ) : (
+            <div className="stepper">
+              <button onClick={() => dispatch({ type: 'SET_PLAYER_COUNT', n: numPlayers - 1 })}>−</button>
+              <span className="val">{numPlayers}</span>
+              <button onClick={() => dispatch({ type: 'SET_PLAYER_COUNT', n: numPlayers + 1 })}>+</button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -517,6 +568,35 @@ export default function PlanScreen() {
             </button>
           </div>
         ))}
+        {/* Length-first: the question a host actually has an answer to. */}
+        {!isCash && (
+          <div className="dur-row">
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{t('plan.forDuration')}</div>
+              <div className="faint" style={{ fontSize: 12 }}>
+                {durationPick
+                  ? t('plan.durationResult', {
+                      levels: blindLevels.length,
+                      mins: settings.minutesPerLevel,
+                      total: t('onboard.hours', { n: durationPick }),
+                    })
+                  : t('plan.forDurationHint')}
+              </div>
+            </div>
+            <div className="spacer" />
+            <div className="dur-picks">
+              {[2, 3, 4, 5].map((h) => (
+                <button
+                  key={h}
+                  className={`dur-pick ${durationPick === h ? 'active' : ''}`}
+                  onClick={() => applyDuration(h)}
+                >
+                  {t('onboard.hours', { n: h })}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="row mt8" style={{ gap: 8 }}>
           <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={applySuggestedLadder}>
             <IconSpark size={15} /> {t('plan.suggest')}

@@ -14,8 +14,12 @@ import { getLocalClock, setLocalClock } from '../lib/localClock';
 import { startingStackOf } from '../lib/startingStack';
 import { autoTvScale, clampTvScale, TV_SCALE_MIN, TV_SCALE_MAX, TV_SCALE_STEP } from '../lib/tvScale';
 import { colorUpEvents } from '../lib/planning';
+import { payoutsFor } from '../lib/payouts';
+import { lateRegState } from '../lib/lateReg';
+import type { MomentVotes } from '../lib/liveSession';
 import { customAccentVars } from '../lib/color';
 import Sparkline from '../components/Sparkline';
+import { useWakeLock } from '../lib/useWakeLock';
 
 const PENALTIES = [
   'downs a shot', 'buys the next round', 'shuffles for a whole level',
@@ -217,6 +221,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               bountyMode: doc.data.bountyMode,
               bountyAmount: doc.data.bountyAmount,
               showTrend: doc.data.showTrend ?? true,
+              payoutSplit: doc.data.payoutSplit ?? null,
+              lateRegLevels: doc.data.lateRegLevels ?? 0,
               customAccent: doc.data.customAccent,
               tvPenalties: doc.data.tvPenalties,
               tvHouseRules: doc.data.tvHouseRules,
@@ -348,47 +354,10 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   void staleTick;
   const hostStale = isTv && paired && hostSeenLocal !== null && Date.now() - hostSeenLocal > 90_000;
 
-  /* Keep the screen awake while the big screen is showing.
-     A wake lock is NOT permanent: the browser releases it the moment the document
-     is hidden — switching apps on the TV stick, another tab on the laptop — and it
-     is never handed back on return. Without the re-request below the screen went to
-     sleep mid-game, which is exactly when nobody is touching the device. */
-  useEffect(() => {
-    type Sentinel = { release: () => Promise<void> | void };
-    let lock: Sentinel | null = null;
-    let stopped = false;
-    const req = async () => {
-      if (stopped || document.hidden || lock) return;
-      try {
-        const api = (navigator as unknown as { wakeLock?: { request: (t: string) => Promise<Sentinel> } }).wakeLock;
-        lock = (await api?.request('screen')) ?? null;
-        // the browser can drop it on its own; forget ours so the next wake re-asks
-        (lock as unknown as { addEventListener?: (t: string, f: () => void) => void })?.addEventListener?.(
-          'release',
-          () => {
-            lock = null;
-          },
-        );
-      } catch {
-        /* not supported, or refused while hidden */
-      }
-    };
-    const onVisible = () => {
-      if (document.hidden) lock = null;
-      else void req();
-    };
-    void req();
-    document.addEventListener('visibilitychange', onVisible);
-    return () => {
-      stopped = true;
-      document.removeEventListener('visibilitychange', onVisible);
-      try {
-        void lock?.release();
-      } catch {
-        /* ignore */
-      }
-    };
-  }, []);
+  // Keep the big screen awake for the whole session (see lib/useWakeLock.ts —
+  // the browser hands the lock back only if you ask again after every hide).
+  useWakeLock(true);
+
 
   // main clock — read off the deadline every tick, so a slow or skipped timer can
   // cost at most one repaint instead of accumulating into real drift. Also
@@ -522,6 +491,31 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     }
     if (!paired) prevPaired.current = false;
   }, [paired]);
+
+  /* The table votes from their own phones (see GuestView); the big screen is where
+     the result belongs. Only shown once somebody has actually voted. */
+  const [votes, setVotes] = useState<MomentVotes>({});
+  useEffect(() => {
+    if (!liveSessionCode || !firebaseConfigured) return;
+    let alive = true;
+    let stop: (() => void) | null = null;
+    void import('../lib/liveSession').then(({ subscribeVotes }) => {
+      if (!alive) return;
+      stop = subscribeVotes(liveSessionCode, setVotes);
+    });
+    return () => {
+      alive = false;
+      stop?.();
+    };
+  }, [liveSessionCode]);
+
+  const topMoment = useMemo(() => {
+    const entries = Object.entries(votes).filter(([, v]) => v.length > 0);
+    if (!entries.length) return null;
+    const [id, voters] = entries.sort((a, b) => b[1].length - a[1].length)[0];
+    const moment = (state.moments ?? []).find((m) => m.id === id);
+    return moment ? { text: moment.text, count: voters.length } : null;
+  }, [votes, state.moments]);
 
   // the rotation = logged hand-of-the-night moments (📸) first, then the user's own
   // sayings, then the built-ins
@@ -792,20 +786,16 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   }, [isCash, showTimer, levelIdx, denominations, blindLevels, playerCount, startStack]);
 
   // prize-pool payout split (auto structure by entrant count)
-  const payouts = useMemo(() => {
-    const entrants = ledger.length || playerCount;
-    const pct =
-      entrants <= 3 ? [1] : entrants <= 5 ? [0.65, 0.35] : entrants <= 8 ? [0.5, 0.3, 0.2] : [0.45, 0.27, 0.18, 0.1];
-    const places = ['1st', '2nd', '3rd', '4th'];
-    /* Round the lower places and give first place the remainder, so the split
-       always adds up to the pool on screen. Rounding each share on its own left a
-       euro unaccounted for at the table (€55 as 25/17/13 = €55, but €65 as
-       33/20/13 = €66), and the person holding the pot is the one who has to explain
-       the difference. */
-    const rest = pct.slice(1).map((p) => Math.round(poolMoney * p));
-    const first = poolMoney - rest.reduce((sum, amount) => sum + amount, 0);
-    return [first, ...rest].map((amount, i) => ({ place: places[i], amount }));
-  }, [ledger.length, playerCount, poolMoney]);
+  // Shared with the phone's payout card (lib/payouts.ts) so the two can never
+  // disagree about who gets what — the split is editable now.
+  const payouts = useMemo(
+    () =>
+      payoutsFor(poolMoney, ledger.length || playerCount, state.settings.payoutSplit).map((p) => ({
+        place: ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'][p.place - 1] ?? `${p.place}.`,
+        amount: p.amount,
+      })),
+    [ledger.length, playerCount, poolMoney, state.settings.payoutSplit],
+  );
 
   // knocked-out / finish order — later busts finish higher
   const bustOrder = useMemo(() => {
@@ -878,6 +868,9 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   }, [onBreak, houseRules.length]);
 
   const pct = Math.max(0, Math.min(100, (seconds / ((onBreak ? breakMins : minutesPerLevel) * 60)) * 100));
+
+  // "Can I still buy in?" — the same answer the phone shows, on the wall.
+  const lateReg = lateRegState(isCash ? 0 : state.settings.lateRegLevels ?? 0, levelIdx, seconds, minutesPerLevel);
 
   // custom accent overrides the preset hue on the TV too
   const accentStyle = customAccent && /^#[0-9a-fA-F]{6}$/.test(customAccent) ? customAccentVars(customAccent) : null;
@@ -1107,6 +1100,17 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               <div className={`tv-time ${running && seconds <= 30 ? 'urgent' : ''}`}>{fmtClock(seconds)}</div>
               <div className="tv-progress"><i style={{ transform: `scaleX(${pct / 100})` }} /></div>
               <div className="tv-next">{onBreak ? '' : next ? t('tv.next', { blinds: `${next.smallBlind} / ${next.bigBlind}` }) : t('tv.finalLevel')}</div>
+              {topMoment && (
+                <div className="tv-topmoment">
+                  <span className="tv-topmoment-k">🏅 {t('vote.winner')}</span>
+                  <span className="tv-topmoment-v">{topMoment.text}</span>
+                </div>
+              )}
+              {lateReg.enabled && lateReg.open && (
+                <div className="tv-latereg">
+                  {lateReg.lastLevel ? t('table.lateRegLast') : t('table.lateRegOpen', { mins: lateReg.minutesLeft ?? 0 })}
+                </div>
+              )}
               {!onBreak && colorUpNow && (
                 <div className="tv-colorup">
                   🎨 {t('tv.colorUpNow', { from: colorUpNow.from.join(', '), to: colorUpNow.to })}

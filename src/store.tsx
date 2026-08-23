@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useReducer, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AppState, Denomination, BlindLevel, Preset, Settings, SessionConfig, LedgerPlayer, AccentId, Skin, ChipArt, LeagueGame, Moment, CountingProgress } from './types';
+import type { AppState, CarryBalance, ChipSet, Denomination, TimelineEvent, BlindLevel, Preset, Settings, SessionConfig, LedgerPlayer, AccentId, Skin, ChipArt, LeagueGame, Moment, CountingProgress, Person } from './types';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -51,9 +51,12 @@ const defaultSettings: Settings = {
   tvCustomQuips: [],
   tvShowPlayers: true,
   tvRosterSort: 'seat',
+  rosterSort: 'seat',
   tvShowPayouts: false,
   tvShowBustOrder: false,
   breakMinutes: 5,
+  breakAt: null,
+  levelAlerts: false,
   breakEvery: 0,
   tvBackground: null,
   tvBackgroundFocus: null,
@@ -68,6 +71,8 @@ const defaultSettings: Settings = {
   bountyMode: false,
   bountyAmount: 5,
   showTrend: true,
+  lateRegLevels: 0,
+  payoutSplit: null,
   customAccent: null,
   tvPenalties: [],
   tvHouseRules: [],
@@ -75,6 +80,9 @@ const defaultSettings: Settings = {
   tvScale: null,
   liveSessionCode: null,
   liveSessionRole: null,
+  guestName: null,
+  guestEmoji: null,
+  onboardedAt: null,
 };
 
 const SKINS = ['minimal', 'casino', 'playful', 'scifi'];
@@ -97,6 +105,9 @@ const defaultSession: SessionConfig = {
 /** how many counting rounds a player's stack trail keeps (sparkline length) */
 const HISTORY_MAX = 12;
 
+/** how many of tonight's events the timeline keeps — a long night, not a database */
+const TIMELINE_MAX = 200;
+
 /**
  * A player who just bought in is physically holding chips worth what they paid, so
  * that's where their live stack starts — no counting round needed to see a sane
@@ -107,8 +118,17 @@ const freshChips = (state: AppState): number | undefined => {
   return units > 0 ? units : undefined;
 };
 
+const DEFAULT_SET_ID = 'set-default';
+
+const initialDenoms = defaultDenoms();
 const initialState: AppState = {
-  denominations: defaultDenoms(),
+  denominations: initialDenoms,
+  chipSets: [{ id: DEFAULT_SET_ID, name: 'My chips', denominations: initialDenoms }],
+  activeChipSetId: DEFAULT_SET_ID,
+  people: [],
+  lastLineup: [],
+  carry: [],
+  timeline: [],
   settings: defaultSettings,
   session: defaultSession,
   presets: [],
@@ -161,23 +181,38 @@ type Action =
       bountyMode?: boolean;
       bountyAmount?: number;
       showTrend?: boolean;
+      payoutSplit?: number[] | null;
+      lateRegLevels?: number;
       customAccent?: string | null;
       tvPenalties?: string[];
       tvHouseRules?: string[];
       moments?: Moment[];
       counting?: CountingProgress | null;
     }
-  | { type: 'LEDGER_ADD'; name?: string }
+  | { type: 'CHIPSET_SELECT'; id: string }
+  | { type: 'CHIPSET_ADD'; name: string; copyActive?: boolean; denominations?: Denomination[] }
+  | { type: 'CHIPSET_RENAME'; id: string; name: string }
+  | { type: 'CHIPSET_REMOVE'; id: string }
+  | { type: 'RESTORE_STATE'; state: AppState }
+  | { type: 'CARRY_ADD'; entries: { name: string; personId?: string; amount: number }[] }
+  | { type: 'CARRY_SETTLE'; id: string }
+  | { type: 'CARRY_CLEAR' }
+  | { type: 'PERSON_SAVE'; person: { id?: string; name: string; emoji?: string; payment?: string } }
+  | { type: 'PERSON_REMOVE'; id: string }
+  | { type: 'LEDGER_SEAT_PEOPLE'; ids: string[] }
+  | { type: 'LEDGER_SEAT_LINEUP' }
+  | { type: 'LEDGER_ADD'; name?: string; emoji?: string }
   | { type: 'LEDGER_ADD_MANY'; n: number }
   | { type: 'LEDGER_UPDATE'; id: string; patch: Partial<LedgerPlayer> }
   | { type: 'LEDGER_SET_ALL_CHIPS'; chips?: number }
   | { type: 'LEDGER_SET_CHIPS_MANY'; entries: { id: string; chips?: number }[] }
-  | { type: 'LEDGER_RESTORE_CHIPS'; players: { id: string; chips?: number; chipHistory?: { at: number; chips: number }[] }[] }
+  | { type: 'LEDGER_RESTORE'; ledger: LedgerPlayer[] }
   | { type: 'COUNTING_SET'; progress: CountingProgress | null }
   | { type: 'LEDGER_RESET_PLAYER'; id: string }
   | { type: 'LEDGER_RESET_ALL' }
   | { type: 'LEDGER_CLEAR_CHIPS' }
   | { type: 'LEDGER_REMOVE'; id: string }
+  | { type: 'LEDGER_SETTLE_ALL' }
   | { type: 'LEDGER_CLEAR' }
   | { type: 'LEAGUE_SAVE_GAME' }
   | { type: 'LEAGUE_DELETE_GAME'; id: string }
@@ -186,7 +221,75 @@ type Action =
   | { type: 'MOMENT_REMOVE'; id: string }
   | { type: 'RESET' };
 
+/**
+ * The Plan tab deals starting stacks for `session.playerCount`. Once people are
+ * actually at the table that number stops being a guess — it IS the roster, and
+ * letting the two drift meant planning chips for four while six played. So the
+ * roster wins whenever it isn't empty, decided HERE rather than at every call site
+ * (deleting somebody from the player sheet used to miss it).
+ */
 function reducer(state: AppState, action: Action): AppState {
+  let next = baseReducer(state, action);
+  if (next.ledger === state.ledger) return next;
+
+  next = withTimeline(state, next, action);
+
+  const n = Math.min(30, next.ledger.length);
+  if (n === 0 || n === next.session.playerCount) return next;
+  return { ...next, session: { ...next.session, playerCount: n } };
+}
+
+/** Actions whose ledger change is not something that "happened" at the table. */
+const UNLOGGED = new Set(['LIVE_APPLY_REMOTE', 'RESTORE_STATE', 'LEDGER_CLEAR', 'LEDGER_RESET_PLAYER', 'LEDGER_RESET_ALL', 'LEDGER_CLEAR_CHIPS']);
+
+/**
+ * Record what just happened, by DIFFING the ledger rather than by asking each call
+ * site to remember. Every path that moves money — the roster, the player sheet, the
+ * counting round, a settle-all — goes through the reducer, so this is the one place
+ * that cannot be forgotten when a new one is added.
+ */
+function withTimeline(prev: AppState, next: AppState, action: Action): AppState {
+  if (UNLOGGED.has(action.type)) return next;
+
+  // Undo takes the last thing off the list, which is what it just took back.
+  if (action.type === 'LEDGER_RESTORE') {
+    return next.timeline.length ? { ...next, timeline: next.timeline.slice(0, -1) } : next;
+  }
+
+  const before = new Map(prev.ledger.map((p) => [p.id, p]));
+  const events: TimelineEvent[] = [];
+  const at = Date.now();
+  const ev = (e: Omit<TimelineEvent, 'id' | 'at'>) => events.push({ id: uid(), at, ...e });
+
+  let countedTotal = 0;
+  let countedPlayers = 0;
+
+  for (const p of next.ledger) {
+    const old = before.get(p.id);
+    const who = { name: p.name || 'Player', emoji: p.emoji };
+    if (!old) {
+      ev({ kind: 'join', ...who, amount: p.buyIn || 0 });
+      continue;
+    }
+    const boughtMore = (p.buyIn || 0) - (old.buyIn || 0);
+    if (boughtMore > 0.005) ev({ kind: 'buyin', ...who, amount: Math.round(boughtMore * 100) / 100 });
+    const cashedMore = (p.cashOut || 0) - (old.cashOut || 0);
+    if (cashedMore > 0.005) ev({ kind: 'cashout', ...who, amount: Math.round(cashedMore * 100) / 100 });
+    else if (p.out && !old.out) ev({ kind: 'bust', ...who });
+    if (action.type === 'LEDGER_SET_CHIPS_MANY' && p.chips !== old.chips) {
+      countedPlayers++;
+      countedTotal += p.chips || 0;
+    }
+  }
+
+  // a counting round is ONE line in the story, not one per player
+  if (countedPlayers > 0) events.push({ id: uid(), at, kind: 'count', amount: countedTotal });
+
+  if (!events.length) return next;
+  return { ...next, timeline: [...next.timeline, ...events].slice(-TIMELINE_MAX) };
+}
+
+function baseReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'ADD_DENOM': {
       const next: Denomination = {
@@ -208,8 +311,20 @@ function reducer(state: AppState, action: Action): AppState {
       };
     case 'REMOVE_DENOM':
       return { ...state, denominations: state.denominations.filter((d) => d.id !== action.id) };
-    case 'UPDATE_SETTINGS':
-      return { ...state, settings: { ...state.settings, ...action.patch } };
+    case 'UPDATE_SETTINGS': {
+      /* Picking a style means "give me that look". A free custom accent set under the
+         previous style overrides --acc for every skin, so it used to follow you into
+         the new one and quietly cancel the thing you just chose. Switching styles
+         therefore hands the accent back to the style (each skin keeps its own hue in
+         `accents`); picking a custom colour again afterwards still sticks. */
+      const switchingStyle =
+        (action.patch.skin !== undefined && action.patch.skin !== state.settings.skin) ||
+        (action.patch.tvSkin !== undefined && action.patch.tvSkin !== state.settings.tvSkin);
+      const patch = switchingStyle && action.patch.customAccent === undefined
+        ? { ...action.patch, customAccent: null }
+        : action.patch;
+      return { ...state, settings: { ...state.settings, ...patch } };
+    }
     case 'UPDATE_SESSION':
       return { ...state, session: { ...state.session, ...action.patch } };
     case 'SET_PLAYER_COUNT': {
@@ -313,17 +428,165 @@ function reducer(state: AppState, action: Action): AppState {
           ...(action.bountyMode !== undefined ? { bountyMode: action.bountyMode } : {}),
           ...(action.bountyAmount !== undefined ? { bountyAmount: action.bountyAmount } : {}),
           ...(action.showTrend !== undefined ? { showTrend: action.showTrend } : {}),
+          ...(action.payoutSplit !== undefined ? { payoutSplit: action.payoutSplit } : {}),
+          ...(action.lateRegLevels !== undefined ? { lateRegLevels: action.lateRegLevels } : {}),
           ...(action.customAccent !== undefined ? { customAccent: action.customAccent } : {}),
           ...(action.tvPenalties !== undefined ? { tvPenalties: action.tvPenalties } : {}),
           ...(action.tvHouseRules !== undefined ? { tvHouseRules: action.tvHouseRules } : {}),
         },
       };
+    /* Chip sets. `denominations` stays THE active box of chips that the rest of the
+       app reads; switching parks the current chips back in their set first, so an
+       edit made just before switching is never lost. */
+    case 'CHIPSET_SELECT': {
+      const target = state.chipSets.find((c) => c.id === action.id);
+      if (!target || action.id === state.activeChipSetId) return state;
+      return {
+        ...state,
+        chipSets: state.chipSets.map((c) =>
+          c.id === state.activeChipSetId ? { ...c, denominations: state.denominations } : c,
+        ),
+        denominations: target.denominations,
+        activeChipSetId: target.id,
+        // a stack tuned for the old box means nothing for the new one
+        session: { ...state.session, stackOverride: null, excludedDenoms: [] },
+      };
+    }
+    case 'CHIPSET_ADD': {
+      const denominations = action.denominations
+        ? action.denominations
+        : action.copyActive
+          ? state.denominations.map((d) => ({ ...d, id: uid() }))
+          : defaultDenoms();
+      const set: ChipSet = { id: uid(), name: action.name.trim() || 'Chips', denominations };
+      return {
+        ...state,
+        chipSets: [
+          ...state.chipSets.map((c) => (c.id === state.activeChipSetId ? { ...c, denominations: state.denominations } : c)),
+          set,
+        ],
+        denominations,
+        activeChipSetId: set.id,
+        session: { ...state.session, stackOverride: null, excludedDenoms: [] },
+      };
+    }
+    case 'CHIPSET_RENAME':
+      return {
+        ...state,
+        chipSets: state.chipSets.map((c) => (c.id === action.id ? { ...c, name: action.name.trim() || c.name } : c)),
+      };
+    case 'CHIPSET_REMOVE': {
+      if (state.chipSets.length <= 1) return state; // never leave the app without chips
+      const rest = state.chipSets.filter((c) => c.id !== action.id);
+      if (action.id !== state.activeChipSetId) return { ...state, chipSets: rest };
+      const next = rest[0];
+      return {
+        ...state,
+        chipSets: rest,
+        denominations: next.denominations,
+        activeChipSetId: next.id,
+        session: { ...state.session, stackOverride: null, excludedDenoms: [] },
+      };
+    }
+    case 'RESTORE_STATE':
+      // a whole backup, already validated by lib/backup.ts
+      return action.state;
+    /* Carrying a night forward. Entries are MERGED by person (or by name when there
+       is no profile): a regular who has been owed twice is one line, not two. */
+    case 'CARRY_ADD': {
+      const at = Date.now();
+      const next = [...state.carry];
+      for (const e of action.entries) {
+        if (Math.abs(e.amount) < 0.005) continue;
+        const key = (c: CarryBalance) =>
+          e.personId ? c.personId === e.personId : !c.personId && c.name.toLowerCase() === e.name.toLowerCase();
+        const i = next.findIndex(key);
+        if (i >= 0) {
+          const merged = Math.round((next[i].amount + e.amount) * 100) / 100;
+          if (Math.abs(merged) < 0.005) next.splice(i, 1);
+          else next[i] = { ...next[i], amount: merged };
+        } else {
+          next.push({ id: uid(), name: e.name, personId: e.personId, amount: Math.round(e.amount * 100) / 100, since: at });
+        }
+      }
+      return { ...state, carry: next };
+    }
+    case 'CARRY_SETTLE':
+      return { ...state, carry: state.carry.filter((c) => c.id !== action.id) };
+    case 'CARRY_CLEAR':
+      return { ...state, carry: [] };
+    case 'PERSON_SAVE': {
+      const { id, name, emoji, payment } = action.person;
+      const clean = name.trim();
+      if (!clean) return state;
+      const existing = id
+        ? state.people.find((p) => p.id === id)
+        : // same name typed again is the same person, not a second one
+          state.people.find((p) => p.name.toLowerCase() === clean.toLowerCase());
+      if (existing) {
+        return {
+          ...state,
+          people: state.people.map((p) =>
+            p.id === existing.id ? { ...p, name: clean, emoji: emoji ?? p.emoji, payment: payment ?? p.payment } : p,
+          ),
+        };
+      }
+      return { ...state, people: [...state.people, { id: uid(), name: clean, emoji, payment }] };
+    }
+    case 'PERSON_REMOVE':
+      return { ...state, people: state.people.filter((p) => p.id !== action.id) };
+    case 'LEDGER_SEAT_PEOPLE': {
+      // seat saved people, skipping anybody already at the table
+      const seated = new Set(state.ledger.map((p) => p.personId).filter(Boolean));
+      const now = Date.now();
+      const add = state.people
+        .filter((p) => action.ids.includes(p.id) && !seated.has(p.id))
+        .map<LedgerPlayer>((p) => ({
+          id: uid(),
+          personId: p.id,
+          name: p.name,
+          emoji: p.emoji,
+          buyIn: state.session.buyIn,
+          cashOut: 0,
+          chips: freshChips(state),
+        }));
+      if (!add.length) return state;
+      return {
+        ...state,
+        ledger: [...state.ledger, ...add],
+        people: state.people.map((p) => (action.ids.includes(p.id) ? { ...p, lastPlayedAt: now } : p)),
+      };
+    }
+    case 'LEDGER_SEAT_LINEUP': {
+      // "same as last time" — by person where we still have one, by name otherwise
+      const seatedNames = new Set(state.ledger.map((p) => p.name.toLowerCase()));
+      const add = state.lastLineup
+        .filter((l) => !seatedNames.has(l.name.toLowerCase()))
+        .map<LedgerPlayer>((l) => ({
+          id: uid(),
+          personId: l.personId,
+          name: l.name,
+          emoji: l.emoji,
+          buyIn: state.session.buyIn,
+          cashOut: 0,
+          chips: freshChips(state),
+        }));
+      if (!add.length) return state;
+      return { ...state, ledger: [...state.ledger, ...add] };
+    }
     case 'LEDGER_ADD':
       return {
         ...state,
         ledger: [
           ...state.ledger,
-          { id: uid(), name: action.name || `Player ${state.ledger.length + 1}`, buyIn: state.session.buyIn, cashOut: 0, chips: freshChips(state) },
+          {
+            id: uid(),
+            name: action.name || `Player ${state.ledger.length + 1}`,
+            emoji: action.emoji,
+            buyIn: state.session.buyIn,
+            cashOut: 0,
+            chips: freshChips(state),
+          },
         ],
       };
     case 'LEDGER_ADD_MANY': {
@@ -332,8 +595,21 @@ function reducer(state: AppState, action: Action): AppState {
         add.push({ id: uid(), name: `Player ${state.ledger.length + add.length + 1}`, buyIn: state.session.buyIn, cashOut: 0, chips: freshChips(state) });
       return { ...state, ledger: [...state.ledger, ...add] };
     }
-    case 'LEDGER_UPDATE':
-      return { ...state, ledger: state.ledger.map((p) => (p.id === action.id ? { ...p, ...action.patch } : p)) };
+    case 'LEDGER_UPDATE': {
+      const ledger = state.ledger.map((p) => (p.id === action.id ? { ...p, ...action.patch } : p));
+      // Correcting a regular's name or avatar at the table is meant to stick: without
+      // this it reverted the moment they were seated again next week.
+      const row = ledger.find((p) => p.id === action.id);
+      const touchesProfile = action.patch.name !== undefined || action.patch.emoji !== undefined;
+      if (!row?.personId || !touchesProfile) return { ...state, ledger };
+      return {
+        ...state,
+        ledger,
+        people: state.people.map((p) =>
+          p.id === row.personId ? { ...p, name: row.name || p.name, emoji: row.emoji ?? p.emoji } : p,
+        ),
+      };
+    }
     case 'LEDGER_SET_ALL_CHIPS':
       // one-tap "everyone starts with X" — fill every player's live stack at once
       return { ...state, ledger: state.ledger.map((p) => ({ ...p, chips: action.chips })) };
@@ -360,17 +636,11 @@ function reducer(state: AppState, action: Action): AppState {
         }),
       };
     }
-    case 'LEDGER_RESTORE_CHIPS': {
-      // undo a counting round: put back exactly the chips + trail we replaced
-      const byId = new Map(action.players.map((e) => [e.id, e]));
-      return {
-        ...state,
-        ledger: state.ledger.map((p) => {
-          const prev = byId.get(p.id);
-          return prev ? { ...p, chips: prev.chips, chipHistory: prev.chipHistory } : p;
-        }),
-      };
-    }
+    case 'LEDGER_RESTORE':
+      // Undo, for anything that touched the money: the ledger exactly as it stood
+      // before. One shape covers a counting round, a rebuy, a cash-out, a bust and
+      // a removal — each of which is one mistap away from being wrong out loud.
+      return { ...state, ledger: action.ledger };
     case 'COUNTING_SET':
       return { ...state, counting: action.progress };
     case 'LEDGER_RESET_PLAYER':
@@ -404,9 +674,39 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, ledger: state.ledger.map((p) => ({ ...p, chips: undefined, chipHistory: undefined })) };
     case 'LEDGER_REMOVE':
       return { ...state, ledger: state.ledger.filter((p) => p.id !== action.id) };
+    case 'LEDGER_SETTLE_ALL': {
+      // Close the night in one go: whatever is still in front of a player becomes
+      // their cash-out, exactly as the provisional settle-up on the Cash tab was
+      // already showing it. Cumulative, like every other cash-out.
+      const at = Date.now();
+      const unit = state.settings.unitValue || 0.01;
+      return {
+        ...state,
+        ledger: state.ledger.map((p) =>
+          p.out
+            ? p
+            : {
+                ...p,
+                cashOut: Math.round(((p.cashOut || 0) + (p.chips || 0) * unit) * 100) / 100,
+                out: true,
+                outAt: at,
+                chips: undefined,
+              },
+        ),
+      };
+    }
     case 'LEDGER_CLEAR':
-      // a fresh game night: clear players AND the night's logged moments
-      return { ...state, ledger: [], moments: [], counting: null };
+      // a fresh game night: clear players AND the night's logged moments. Who was
+      // here is remembered so the next night can be seated in one tap.
+      return {
+        ...state,
+        lastLineup: state.ledger.length
+          ? state.ledger.map((p) => ({ personId: p.personId, name: p.name, emoji: p.emoji }))
+          : state.lastLineup,
+        ledger: [],
+        moments: [],
+        counting: null,
+      };
     case 'LEAGUE_SAVE_GAME': {
       const players = state.ledger
         .filter((p) => (p.buyIn || 0) > 0 || (p.cashOut || 0) > 0)
@@ -434,9 +734,18 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'MOMENT_REMOVE':
       return { ...state, moments: state.moments.filter((m) => m.id !== action.id) };
-    case 'RESET':
+    case 'RESET': {
+      const fresh = defaultDenoms();
       return {
-        denominations: defaultDenoms(),
+        denominations: fresh,
+        chipSets: [{ id: DEFAULT_SET_ID, name: 'My chips', denominations: fresh }],
+        activeChipSetId: DEFAULT_SET_ID,
+        // the regulars are address-book data, not game data — a factory reset of the
+        // chips and settings has no business deleting the people
+        people: state.people,
+        lastLineup: state.lastLineup,
+        carry: state.carry,
+        timeline: [],
         settings: { ...defaultSettings },
         session: { ...defaultSession, blindLevels: defaultBlinds(10, 20) },
         presets: state.presets,
@@ -445,6 +754,7 @@ function reducer(state: AppState, action: Action): AppState {
         league: state.league,
         moments: [],
       };
+    }
     default:
       return state;
   }
@@ -457,8 +767,18 @@ const KEY = 'chipstack.state.v1';
  * survive app updates, and any field added in a newer version gets a sensible
  * default. Also migrates old shapes (players[] -> playerCount, rebuy -> rebuys).
  */
+/** German phone, German app — the language picker in Settings still overrides it. */
+function detectLanguage(): 'en' | 'de' {
+  try {
+    const langs = navigator.languages?.length ? navigator.languages : [navigator.language];
+    return langs.some((l) => /^de/i.test(l ?? '')) ? 'de' : 'en';
+  } catch {
+    return 'en';
+  }
+}
+
 function migrate(raw: string | null): AppState {
-  if (!raw) return initialState;
+  if (!raw) return { ...initialState, settings: { ...defaultSettings, language: detectLanguage() } };
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(raw);
@@ -506,6 +826,10 @@ function migrate(raw: string | null): AppState {
   else settings.tvCustomQuips = settings.tvCustomQuips.filter((q): q is string => typeof q === 'string');
   if (typeof settings.tvShowPlayers !== 'boolean') settings.tvShowPlayers = true;
   if (!['seat', 'chips', 'profit'].includes(settings.tvRosterSort)) settings.tvRosterSort = 'seat';
+  if (!['seat', 'chips', 'profit'].includes(settings.rosterSort)) settings.rosterSort = 'seat';
+  // An existing install has already made all these decisions — never greet it with
+  // the first-run wizard just because the field is new.
+  if (typeof settings.onboardedAt !== 'number') settings.onboardedAt = 0;
   if (typeof settings.tvShowPayouts !== 'boolean') settings.tvShowPayouts = false;
   if (typeof settings.tvShowBustOrder !== 'boolean') settings.tvShowBustOrder = false;
   if (typeof settings.breakMinutes !== 'number' || settings.breakMinutes < 1) settings.breakMinutes = 5;
@@ -527,6 +851,10 @@ function migrate(raw: string | null): AppState {
   if (typeof settings.bountyMode !== 'boolean') settings.bountyMode = false;
   if (typeof settings.bountyAmount !== 'number' || settings.bountyAmount < 0) settings.bountyAmount = 5;
   if (typeof settings.showTrend !== 'boolean') settings.showTrend = true;
+  if (!Array.isArray(settings.payoutSplit) || !settings.payoutSplit.length) settings.payoutSplit = null;
+  settings.lateRegLevels = Math.max(0, Math.min(20, Math.floor(settings.lateRegLevels) || 0));
+  if (typeof settings.breakAt !== 'string' || !/^\d{2}:\d{2}$/.test(settings.breakAt)) settings.breakAt = null;
+  if (typeof settings.levelAlerts !== 'boolean') settings.levelAlerts = false;
   if (typeof settings.customAccent !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(settings.customAccent)) settings.customAccent = null;
   settings.tvPenalties = Array.isArray(settings.tvPenalties) ? settings.tvPenalties.filter((q): q is string => typeof q === 'string') : [];
   settings.tvHouseRules = Array.isArray(settings.tvHouseRules) ? settings.tvHouseRules.filter((q): q is string => typeof q === 'string') : [];
@@ -543,7 +871,9 @@ function migrate(raw: string | null): AppState {
     settings.liveSessionCode = null;
     settings.liveSessionRole = null;
   }
-  if (settings.liveSessionRole !== 'host' && settings.liveSessionRole !== 'tv') settings.liveSessionRole = null;
+  if (!['host', 'tv', 'guest'].includes(settings.liveSessionRole as string)) settings.liveSessionRole = null;
+  if (typeof settings.guestName !== 'string') settings.guestName = null;
+  if (typeof settings.guestEmoji !== 'string') settings.guestEmoji = null;
   const validAppear = ['system', 'light', 'dark'];
   if (!validAppear.includes(settings.appearance)) settings.appearance = 'dark';
   const validArt = ['deco', 'classic', 'diamond', 'sunburst'];
@@ -577,8 +907,33 @@ function migrate(raw: string | null): AppState {
   const league = Array.isArray(parsed.league) ? (parsed.league as LeagueGame[]) : [];
   const moments = Array.isArray(parsed.moments) ? (parsed.moments as Moment[]) : [];
 
+  // A saved state from before the roster drove the player count can hold both a
+  // roster of six and a planning count of four. The roster is the truth.
+  if (ledger.length > 0) session.playerCount = Math.min(30, ledger.length);
+
+  /* Chip sets arrived after the single `denominations` list. An older save has one
+     box of chips and no sets, so it becomes the first set. */
+  const savedSets = Array.isArray(parsed.chipSets) ? (parsed.chipSets as ChipSet[]) : [];
+  const chipSets: ChipSet[] = savedSets.filter((c) => c && typeof c.id === 'string' && Array.isArray(c.denominations));
+  let activeChipSetId = typeof parsed.activeChipSetId === 'string' ? parsed.activeChipSetId : null;
+  if (!chipSets.length) {
+    chipSets.push({ id: DEFAULT_SET_ID, name: 'My chips', denominations });
+    activeChipSetId = DEFAULT_SET_ID;
+  }
+  if (!chipSets.some((c) => c.id === activeChipSetId)) activeChipSetId = chipSets[0].id;
+  // the active set and `denominations` are two views of one thing — keep them equal
+  const activeSet = chipSets.find((c) => c.id === activeChipSetId)!;
+  activeSet.denominations = denominations;
+
+  const people = Array.isArray(parsed.people) ? (parsed.people as Person[]) : [];
+  const lastLineup = Array.isArray(parsed.lastLineup) ? (parsed.lastLineup as AppState['lastLineup']) : [];
+  const timeline = Array.isArray(parsed.timeline) ? (parsed.timeline as TimelineEvent[]).slice(-TIMELINE_MAX) : [];
+  const carry = Array.isArray(parsed.carry)
+    ? (parsed.carry as CarryBalance[]).filter((c) => c && typeof c.name === 'string' && typeof c.amount === 'number')
+    : [];
+
   // a counting round never survives a reload — it only means "someone is mid-round right now"
-  return { denominations, settings, session, presets, ledger, counting: null, league, moments };
+  return { denominations, chipSets, activeChipSetId, settings, session, presets, ledger, counting: null, league, moments, people, lastLineup, carry, timeline };
 }
 
 const StoreContext = createContext<{

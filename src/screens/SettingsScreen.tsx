@@ -1,9 +1,11 @@
+import { useRef, useState } from 'react';
 import { useStore } from '../store';
 import Chip from '../components/Chip';
 import { useT, useFmt } from '../lib/i18n';
 import type { Appearance, AccentId, Skin, ChipArt } from '../types';
 import { useConfirm } from '../components/Confirm';
 import MoneyInput from '../components/MoneyInput';
+import { buildBackup, downloadBackup, parseBackup, restorePhotos } from '../lib/backup';
 
 const CURRENCIES = ['€', '$', '£', 'zł', 'Fr'];
 const UNIT_PRESETS = [
@@ -49,6 +51,8 @@ export default function SettingsScreen() {
   const t = useT();
   const { money: fmtMoney } = useFmt();
   const confirm = useConfirm();
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [backupMsg, setBackupMsg] = useState<string | null>(null);
 
   const activeStyle = STYLES.find((s) => s.id === settings.skin) ?? STYLES[0];
   const accentColor = (id: AccentId) => ACCENTS.find((a) => a.id === id)?.color ?? '#f0b429';
@@ -255,6 +259,60 @@ export default function SettingsScreen() {
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="section-label">{t('settings.backup')}</div>
+      <div className="card">
+        <p className="faint" style={{ fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.6 }}>{t('settings.backupDesc')}</p>
+        <div className="row" style={{ gap: 8 }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ flex: 1 }}
+            onClick={() => {
+              void buildBackup(state).then((b) => setBackupMsg(downloadBackup(b) ? null : t('settings.exportFailed')));
+            }}
+          >
+            ⬇ {t('settings.export')}
+          </button>
+          <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => fileRef.current?.click()}>
+            ⬆ {t('settings.import')}
+          </button>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (!file) return;
+            setBackupMsg(null);
+            void file.text().then((text) => {
+              const parsed = parseBackup(text);
+              if (!parsed) {
+                setBackupMsg(t('settings.importBad'));
+                return;
+              }
+              confirm.ask({
+                text: t('settings.importConfirm', {
+                  chips: parsed.summary.chips,
+                  sets: parsed.summary.sets,
+                  people: parsed.summary.people,
+                  nights: parsed.summary.nights,
+                }),
+                confirmLabel: t('settings.import'),
+                danger: true,
+                onYes: () => {
+                  dispatch({ type: 'RESTORE_STATE', state: parsed.state });
+                  void restorePhotos(parsed.photos);
+                  setBackupMsg(t('settings.importDone'));
+                },
+              });
+            });
+          }}
+        />
+        {backupMsg && <p className="faint" style={{ fontSize: 12.5, margin: '10px 2px 0' }}>{backupMsg}</p>}
       </div>
 
       <div className="section-label">{t('settings.data')}</div>

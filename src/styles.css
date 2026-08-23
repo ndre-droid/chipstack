@@ -25,7 +25,11 @@
   --line-soft: #efece5;
   --text: #1a1a1e;
   --text-dim: #6b6a72;
-  --text-faint: #9a988f;
+  /* Every --text-faint below is set to clear 4.5:1 against its own surface,
+     surface-2 and bg. It carries labels, hints and timestamps at 10-12px, which is
+     exactly the size where contrast matters most, and it used to sit at 2.6-2.9:1
+     in the minimal skins — legible on a desk, not on a phone on a lit poker table. */
+  --text-faint: #716f66;
   --good: #1f9d55;
   --bad: #d0402c;
   --info: #2563c9;
@@ -61,7 +65,7 @@
     --line-soft: #1e1e24;
     --text: #f2f1ee;
     --text-dim: #9a99a1;
-    --text-faint: #5f5e66;
+    --text-faint: #84838b;
     --good: #34c76a;
     --bad: #f0604d;
     --info: #5aa2ff;
@@ -79,7 +83,7 @@
   --line-soft: #1e1e24;
   --text: #f2f1ee;
   --text-dim: #9a99a1;
-  --text-faint: #5f5e66;
+  --text-faint: #84838b;
   --good: #34c76a;
   --bad: #f0604d;
   --info: #5aa2ff;
@@ -99,7 +103,7 @@
   --line-soft: #21402f;
   --text: #f1e9d4;
   --text-dim: #c4d2c0;
-  --text-faint: #86a08c;
+  --text-faint: #88a28e;
   --good: #86d493;
   --bad: #f0958a;
   --info: #a7c6e6;
@@ -122,7 +126,7 @@
   --line-soft: #efe0bc;
   --text: #201a12;
   --text-dim: #6d5d3d;
-  --text-faint: #a58c5c;
+  --text-faint: #7d6434;
   --good: #1f8a4c;
   --bad: #c0142a;
   --info: #2f6bd0;
@@ -147,7 +151,7 @@
   --line-soft: #162041;
   --text: #e7f1ff;
   --text-dim: #90a6d6;
-  --text-faint: #52659c;
+  --text-faint: #6c7fb6;
   --good: #3ef2c8;
   --bad: #ff5d8a;
   --info: #6b8cff;
@@ -1003,8 +1007,12 @@ input[type='color'] { cursor: pointer; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideup { from { transform: translateY(24px); opacity: 0.4; } to { transform: translateY(0); opacity: 1; } }
 
-/* screen enter */
-.screen > div { animation: screen-in .26s ease-out; }
+/* screen enter — only the visible screen animates. Every screen the user has
+   opened stays mounted (see App.tsx) so tab switching keeps its state; the
+   inactive ones are simply not displayed. */
+.screen { display: none; }
+.screen.is-active { display: block; }
+.screen.is-active > div { animation: screen-in .26s ease-out; }
 @keyframes screen-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 .chip-svg { display: block; }
@@ -1076,8 +1084,18 @@ input[type='color'] { cursor: pointer; }
   --acc: var(--acc-bright);
   --on-acc: #0c0c10;
   /* TV is themed independently of the phone's <html> skin, so it carries its OWN
-     display font (per data-tv-skin below) rather than inheriting :root's. */
+     type ramp (per data-tv-skin below) rather than inheriting :root's. Four roles,
+     because one font can't do all of them on a screen seen from four metres away:
+       --tv-head  labels, eyebrows, section headers — carries the theme's voice
+       --tv-body  names and prose — has to stay readable at a glance
+       --tv-num   figures that sit still (stacks, pot, payouts)
+       --tv-digits the countdown, which repaints every second: needs even digit
+                  widths or the whole screen twitches. */
   --font-display: var(--font);
+  --tv-head: var(--font);
+  --tv-body: var(--font);
+  --tv-num: var(--mono);
+  --tv-digits: var(--mono);
   /* Display size. Everything below is sized in vmin, which is tuned for a TV seen
      from across the room. On a laptop standing in for the TV the same numbers are
      physically tiny, so the whole screen is laid out on a canvas of
@@ -1092,6 +1110,7 @@ input[type='color'] { cursor: pointer; }
   height: calc(100% / var(--tv-scale));
   transform: scale(var(--tv-scale));
   transform-origin: 0 0;
+  font-family: var(--tv-body);
   display: flex; flex-direction: column;
   /* The quip ticker used to sit flush against the buttons below it (and a long,
      wrapping quip or a control row that wraps ran right into them). */
@@ -1159,12 +1178,18 @@ input[type='color'] { cursor: pointer; }
   --tv-bg-base: #123a24;
   --tv-fg: #f1e9d4; --tv-dim: #c4d2c0; --tv-faint: #86a08c;
   --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  /* the whole board speaks serif; the countdown keeps monospaced digits */
+  --tv-head: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --tv-body: 'Playfair Display', Georgia, 'Times New Roman', serif;
   --tv-panel: rgba(217, 178, 98, 0.07); --tv-line: rgba(217, 178, 98, 0.22); --on-acc: #14120b;
 }
 .tv[data-tv-skin='playful'] {
   --tv-bg: #fbe9c8; --tv-bg-base: #fbe9c8;
   --tv-fg: #201a12; --tv-dim: #6d5d3d; --tv-faint: #a58c5c;
   --font-display: 'Fredoka', var(--font);
+  --tv-head: 'Fredoka', var(--font);
+  --tv-body: 'Fredoka', var(--font);
+  --tv-num: 'Fredoka', var(--mono);
   --tv-panel: rgba(32, 26, 18, 0.05); --tv-line: rgba(32, 26, 18, 0.15);
   --acc: var(--acc-deep); --on-acc: #ffffff;
 }
@@ -1174,15 +1199,19 @@ input[type='color'] { cursor: pointer; }
   --tv-fg: #e7f1ff; --tv-dim: #90a6d6; --tv-faint: #52659c;
   --tv-panel: rgba(80, 140, 255, 0.06); --tv-line: rgba(80, 140, 255, 0.2); --on-acc: #04121a;
   --font-display: 'Orbitron', var(--font);
+  /* Orbitron has even digit widths, so it can carry the clock too — which is the
+     whole reason to pick this skin. Prose stays in the system face: Orbitron is
+     hard work for a full sentence of quip. */
+  --tv-head: 'Orbitron', var(--font);
+  --tv-num: 'Orbitron', var(--mono);
+  --tv-digits: 'Orbitron', var(--mono);
 }
-/* The TV's display font (per skin) drives the headline text so a skin change is
-   visible on the big screen (see .tv-blinds / .tv-level / .tv-flash below too).
-   The countdown stays monospace for tabular digits, except sci-fi (below). */
+/* A skin change repaints the WHOLE big screen, not just the blinds: labels, names,
+   figures and the clock each pick up the role token for that skin (see --tv-head /
+   --tv-body / --tv-num / --tv-digits above). */
 .tv-pair-title,
 .tv-startstack-total { font-family: var(--font-display); }
 
-.tv[data-tv-skin='scifi'] .tv-time,
-.tv[data-tv-skin='scifi'] .tv-blinds,
 .tv[data-tv-skin='scifi'] .tv-level { font-family: var(--font-display); }
 .tv[data-tv-skin='scifi'] .tv-time { letter-spacing: 0; }
 .tv[data-tv-skin='scifi'] .tv-time,
@@ -1239,8 +1268,8 @@ input[type='color'] { cursor: pointer; }
   padding: clamp(10px, 1.8vmin, 22px);
   display: flex; flex-direction: column; gap: 3px;
 }
-.tv-stat-k { font-family: var(--mono); font-size: clamp(10px, 1.4vmin, 24px); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tv-dim); }
-.tv-stat-v { font-family: var(--mono); font-weight: 700; font-size: clamp(22px, 4vmin, 82px); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.tv-stat-k { font-family: var(--tv-head); font-size: clamp(10px, 1.4vmin, 24px); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tv-dim); }
+.tv-stat-v { font-family: var(--tv-num); font-weight: 700; font-size: clamp(22px, 4vmin, 82px); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .tv-stat-v small { font-size: 0.48em; color: var(--tv-dim); font-weight: 600; }
 
 /* live players roster on the TV (names + amounts, mirrored from the host) */
@@ -1252,7 +1281,7 @@ input[type='color'] { cursor: pointer; }
   display: flex; flex-direction: column; gap: clamp(4px, 0.8vmin, 10px);
   min-height: 0;
 }
-.tv-players-h { display: flex; align-items: baseline; justify-content: space-between; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--tv-dim); font-size: clamp(10px, 1.4vmin, 24px); }
+.tv-players-h { display: flex; align-items: baseline; justify-content: space-between; font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.08em; color: var(--tv-dim); font-size: clamp(10px, 1.4vmin, 24px); }
 .tv-players-h-sub { color: var(--tv-faint); letter-spacing: 0.06em; }
 
 .resync-row { display: flex; align-items: center; gap: 10px; }
@@ -1266,7 +1295,7 @@ input[type='color'] { cursor: pointer; }
 .tv-players-row { display: flex; align-items: baseline; gap: clamp(6px, 1.2vmin, 18px); min-width: 0; }
 .tv-players-row.out { opacity: 0.42; text-decoration: line-through; }
 .tv-players-name { font-weight: 600; font-size: clamp(13px, 1.8vmin, 40px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tv-players-amt { margin-left: auto; font-family: var(--mono); color: var(--tv-dim); font-size: clamp(12px, 1.6vmin, 34px); }
+.tv-players-amt { margin-left: auto; font-family: var(--tv-num); color: var(--tv-dim); font-size: clamp(12px, 1.6vmin, 34px); }
 
 /* ---- Roster density -------------------------------------------------------
    The players list is the one panel that MUST show all of its rows: nobody can
@@ -1296,26 +1325,26 @@ input[type='color'] { cursor: pointer; }
 
 .tv-break-cue {
   margin-top: clamp(6px, 1.2vmin, 18px);
-  font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em;
+  font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--acc); font-size: clamp(12px, 1.6vmin, 34px); font-weight: 700;
 }
 .tv-clock { text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .tv-level { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.18em; color: var(--tv-dim); font-size: clamp(14px, 2.3vmin, 46px); }
 .tv-blinds { font-family: var(--font-display); font-weight: 700; color: var(--acc); font-size: clamp(30px, 6vmin, 150px); letter-spacing: -0.01em; margin-top: clamp(2px, 0.6vmin, 8px); font-variant-numeric: tabular-nums; }
 .tv-ante { color: var(--tv-dim); font-size: 0.48em; }
-.tv-time { font-family: var(--mono); font-weight: 700; font-size: clamp(72px, 19vmin, 480px); line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; margin: clamp(2px, 0.5vmin, 8px) 0; }
+.tv-time { font-family: var(--tv-digits); font-weight: 700; font-size: clamp(72px, 19vmin, 480px); line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; margin: clamp(2px, 0.5vmin, 8px) 0; }
 .tv-time.urgent { color: var(--bad); }
 .tv-progress { width: min(84%, 64vmin); height: clamp(6px, 1vmin, 12px); background: var(--tv-line); border-radius: 999px; overflow: hidden; }
 .tv-progress i { display: block; width: 100%; height: 100%; background: var(--acc); border-radius: 999px; transform-origin: left; transition: transform 1s linear; }
-.tv-next { font-family: var(--mono); color: var(--tv-faint); font-size: clamp(13px, 1.8vmin, 40px); margin-top: clamp(6px, 1.2vmin, 16px); }
+.tv-next { font-family: var(--tv-body); color: var(--tv-faint); font-size: clamp(13px, 1.8vmin, 40px); margin-top: clamp(6px, 1.2vmin, 16px); }
 /* Cash game, timer off: no countdown — make the fixed blinds the hero instead. */
 .tv-clock-static .tv-blinds { font-size: clamp(56px, 15vmin, 360px); margin-top: clamp(6px, 1.4vmin, 20px); }
 
-.tv-legend-h { font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--tv-dim); font-size: clamp(10px, 1.4vmin, 24px); margin-bottom: 6px; }
+.tv-legend-h { font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.08em; color: var(--tv-dim); font-size: clamp(10px, 1.4vmin, 24px); margin-bottom: 6px; }
 .tv-legend-row { display: flex; align-items: center; gap: clamp(7px, 1.3vmin, 22px); padding: clamp(3px, 0.7vmin, 12px) 0; }
 .tv-legend-row .chip-svg { width: clamp(28px, 3.6vmin, 88px); height: clamp(28px, 3.6vmin, 88px); flex-shrink: 0; }
-.tv-legend-v { font-family: var(--mono); font-weight: 700; font-size: clamp(14px, 2vmin, 44px); min-width: 2.6em; }
-.tv-legend-m { margin-left: auto; font-family: var(--mono); color: var(--tv-dim); font-size: clamp(12px, 1.6vmin, 36px); }
+.tv-legend-v { font-family: var(--tv-num); font-weight: 700; font-size: clamp(14px, 2vmin, 44px); min-width: 2.6em; }
+.tv-legend-m { margin-left: auto; font-family: var(--tv-num); color: var(--tv-dim); font-size: clamp(12px, 1.6vmin, 36px); }
 
 .tv-quip { flex-shrink: 0; text-align: center; font-style: italic; color: var(--tv-faint); font-size: clamp(13px, 1.9vmin, 42px); padding: clamp(4px, 0.9vmin, 18px) 0; animation: quip-in 0.5s ease; }
 @keyframes quip-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -1337,7 +1366,7 @@ input[type='color'] { cursor: pointer; }
 }
 .tv-controls .tv-blindstep button:disabled { opacity: 0.3; }
 .tv-blindstep-v {
-  font-family: var(--mono); font-weight: 700; color: var(--acc);
+  font-family: var(--tv-num); font-weight: 700; color: var(--acc);
   font-size: clamp(13px, 1.7vmin, 32px); min-width: 7ch; text-align: center;
 }
 
@@ -1356,19 +1385,19 @@ input[type='color'] { cursor: pointer; }
 .tv-zoom button:disabled { opacity: 0.35; }
 .tv-zoom button sup { font-size: 0.8em; }
 .tv-zoom-v {
-  font-family: var(--mono); color: var(--tv-dim);
+  font-family: var(--tv-body); color: var(--tv-dim);
   font-size: clamp(11px, 1.4vmin, 26px); min-width: 4ch; text-align: center;
 }
 .tv-controls .tv-exit { color: #f0604d; }
 
 .tv-flash { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; background: color-mix(in srgb, var(--acc) 90%, #000); color: var(--on-acc); animation: tv-flash 0.4s ease; }
 .tv-flash > div:first-child { font-family: var(--font-display); font-size: clamp(44px, 12vmin, 320px); font-weight: 800; letter-spacing: -0.03em; }
-.tv-flash-sub { font-family: var(--mono); font-size: clamp(22px, 5vmin, 130px); font-weight: 700; }
+.tv-flash-sub { font-family: var(--tv-num); font-size: clamp(22px, 5vmin, 130px); font-weight: 700; }
 @keyframes tv-flash { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: none; } }
 
 .tv-overlay { position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(8px, 2vmin, 24px); background: rgba(0, 0, 0, 0.86); backdrop-filter: blur(4px); }
-.tv-overlay-label { font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.14em; color: var(--tv-dim); font-size: clamp(16px, 3vmin, 60px); }
-.tv-overlay-num { font-family: var(--mono); font-weight: 800; font-size: clamp(110px, 30vmin, 640px); line-height: 1; color: var(--acc); font-variant-numeric: tabular-nums; }
+.tv-overlay-label { font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.14em; color: var(--tv-dim); font-size: clamp(16px, 3vmin, 60px); }
+.tv-overlay-num { font-family: var(--tv-num); font-weight: 800; font-size: clamp(110px, 30vmin, 640px); line-height: 1; color: var(--acc); font-variant-numeric: tabular-nums; }
 .tv-overlay-num.urgent { color: #f0604d; }
 .tv-overlay-name { font-weight: 800; font-size: clamp(40px, 10vmin, 260px); letter-spacing: -0.03em; text-align: center; }
 .tv-overlay-name.won { color: var(--acc); animation: tv-pop 0.4s ease; }
@@ -1378,7 +1407,7 @@ input[type='color'] { cursor: pointer; }
 /* ---- live-session connect pill + join keypad ---- */
 .tv-connect-pill {
   position: absolute; top: clamp(10px, 2vmin, 28px); right: clamp(10px, 2vmin, 28px); z-index: 3;
-  font-family: var(--mono); font-size: clamp(11px, 1.4vmin, 20px); font-weight: 600;
+  font-family: var(--tv-head); font-size: clamp(11px, 1.4vmin, 20px); font-weight: 600;
   color: var(--tv-dim); background: var(--tv-panel); border: 1px solid var(--tv-line);
   padding: clamp(6px, 1vmin, 12px) clamp(12px, 1.6vmin, 20px); border-radius: 999px;
 }
@@ -1389,14 +1418,14 @@ input[type='color'] { cursor: pointer; }
 .tv-connect-pill.lost { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
 .tv-join-hint { color: var(--tv-dim); font-size: clamp(12px, 1.6vmin, 22px); margin: 6px 0 0; text-align: center; max-width: 60vmin; }
 .tv-join-display {
-  font-family: var(--mono); font-weight: 700; letter-spacing: 0.3em;
+  font-family: var(--tv-num); font-weight: 700; letter-spacing: 0.3em;
   font-size: clamp(28px, 6vmin, 70px); color: var(--acc); margin: clamp(10px, 2vmin, 24px) 0;
 }
 .tv-join-error { color: var(--bad); font-size: clamp(12px, 1.6vmin, 20px); margin-bottom: 10px; }
 .tv-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(8px, 1.4vmin, 16px); width: min(88vmin, 420px); }
 .tv-key {
   aspect-ratio: 1.6; border-radius: 14px; background: var(--tv-panel); border: 1px solid var(--tv-line);
-  color: var(--tv-fg); font-family: var(--mono); font-weight: 700; font-size: clamp(18px, 3vmin, 36px);
+  color: var(--tv-fg); font-family: var(--tv-num); font-weight: 700; font-size: clamp(18px, 3vmin, 36px);
   display: grid; place-items: center; transition: background 0.15s;
 }
 .tv-key:hover { background: var(--tv-line); }
@@ -1572,8 +1601,8 @@ input[type='color'] { cursor: pointer; }
   gap: clamp(14px, 3.4vmin, 56px); margin: clamp(14px, 3vmin, 46px) 0;
 }
 .tv-startstack-col { display: flex; flex-direction: column; align-items: center; gap: clamp(4px, 0.8vmin, 12px); }
-.tv-startstack-count { font-family: var(--mono); font-weight: 700; font-size: clamp(20px, 3vmin, 52px); color: var(--tv-fg); }
-.tv-startstack-total { font-family: var(--mono); font-weight: 700; font-size: clamp(15px, 2.1vmin, 40px); color: var(--acc); }
+.tv-startstack-count { font-family: var(--tv-num); font-weight: 700; font-size: clamp(20px, 3vmin, 52px); color: var(--tv-fg); }
+.tv-startstack-total { font-family: var(--tv-num); font-weight: 700; font-size: clamp(15px, 2.1vmin, 40px); color: var(--acc); }
 
 /* TV background preset swatches (Table → TV broadcast) */
 .bg-preset-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
@@ -1666,7 +1695,7 @@ input[type='color'] { cursor: pointer; }
   background: var(--tv-panel); border: 1px solid var(--tv-line); border-radius: 16px;
   padding: clamp(10px, 1.8vmin, 24px) clamp(14px, 2.4vmin, 34px);
 }
-.tv-houserule-k { display: block; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--acc); font-size: clamp(11px, 1.4vmin, 24px); margin-bottom: 4px; }
+.tv-houserule-k { display: block; font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.1em; color: var(--acc); font-size: clamp(11px, 1.4vmin, 24px); margin-bottom: 4px; }
 .tv-houserule-v { font-size: clamp(15px, 2.2vmin, 46px); font-weight: 600; line-height: 1.3; }
 
 /* --- TV: roster crown / emoji / bounty --- */
@@ -1677,7 +1706,7 @@ input[type='color'] { cursor: pointer; }
   text-decoration: underline; text-decoration-thickness: 0.1em; text-underline-offset: 0.18em;
   text-decoration-color: color-mix(in srgb, var(--acc) 40%, transparent);
 }
-.tv-bounty { flex-shrink: 0; font-family: var(--mono); color: var(--acc); font-size: clamp(11px, 1.5vmin, 30px); margin-left: 6px; }
+.tv-bounty { flex-shrink: 0; font-family: var(--tv-num); color: var(--acc); font-size: clamp(11px, 1.5vmin, 30px); margin-left: 6px; }
 
 /* --- TV: elimination flash --- */
 .tv-elim {
@@ -1686,7 +1715,7 @@ input[type='color'] { cursor: pointer; }
   background: color-mix(in srgb, var(--bad) 82%, #000); color: #fff;
   animation: tv-flash 0.4s ease;
 }
-.tv-elim-lead { font-family: var(--mono); letter-spacing: 0.16em; font-size: clamp(18px, 3vmin, 70px); opacity: 0.9; }
+.tv-elim-lead { font-family: var(--tv-head); letter-spacing: 0.16em; font-size: clamp(18px, 3vmin, 70px); opacity: 0.9; }
 .tv-elim-name { font-family: var(--font-display); font-weight: 800; font-size: clamp(44px, 11vmin, 300px); letter-spacing: -0.02em; text-align: center; }
 .tv-elim-place { font-size: clamp(18px, 3vmin, 70px); font-weight: 700; opacity: 0.92; }
 
@@ -1694,7 +1723,7 @@ input[type='color'] { cursor: pointer; }
 .tv-celebrate { gap: clamp(6px, 1.4vmin, 20px); }
 .tv-champ-cup { font-size: clamp(70px, 16vmin, 420px); line-height: 1; animation: tv-pop 0.6s ease; }
 .tv-champ-name { font-family: var(--font-display); font-weight: 800; font-size: clamp(40px, 10vmin, 280px); letter-spacing: -0.02em; color: var(--acc); text-align: center; }
-.tv-champ-sub { font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.14em; color: var(--tv-dim); font-size: clamp(16px, 2.6vmin, 60px); }
+.tv-champ-sub { font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.14em; color: var(--tv-dim); font-size: clamp(16px, 2.6vmin, 60px); }
 .tv-confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: -1; }
 .tv-confetti i {
   position: absolute; top: -12vh; left: calc(var(--i) * 1.66%);
@@ -1934,3 +1963,372 @@ input[type='color'] { cursor: pointer; }
   text-decoration-color: color-mix(in srgb, var(--acc) 40%, transparent);
 }
 .pr-net { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* --- Settle-up: the provisional note under "who pays whom" --- */
+.settle-note { font-size: 12px; line-height: 1.45; margin: 10px 2px; }
+.settle-note.center { text-align: center; margin-bottom: 0; }
+
+/* the app-level "press back again" hint reuses the snackbar, centred and text-only */
+.app-toast { justify-content: center; padding: 9px 16px; }
+
+/* the two between-hands figures in the sticky bar: how deep, how many left */
+.ts-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+  font-size: 10.5px; line-height: 1.25; color: var(--text-faint);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* roster sort cycle (only once the table is big enough to need it) */
+.pr-sort { background: none; border: none; padding: 2px 0 2px 8px; font: inherit;
+  color: var(--text-faint); cursor: pointer; }
+.pr-sort:hover { color: var(--text-dim); }
+
+/* Fiddly little controls keep their look but get a real 44px target. */
+.pr-more, .pr-emoji, .preset-x { position: relative; }
+/* .cr-x is already absolutely positioned in the sheet header — it is its own
+   containing block, so it must NOT be turned relative here. */
+.pr-more::after, .pr-emoji::after, .preset-x::after, .cr-x::after {
+  content: ''; position: absolute; top: 50%; left: 50%;
+  width: 44px; height: 44px; transform: translate(-50%, -50%);
+}
+.pr-stack { min-height: 34px; padding: 6px 10px; }
+
+/* how long ago the last push actually landed — "synced" alone hides a stale link */
+.sync-age { margin-left: auto; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
+/* ---- Full-screen clock: the phone lying in the middle of the table ---- */
+.clock-focus {
+  position: fixed; inset: 0; z-index: 90;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: clamp(4px, 1.2vmin, 14px);
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  background: var(--app-bg); color: var(--text);
+  animation: screen-in .2s ease-out;
+}
+.cf-close { position: absolute; top: max(12px, env(safe-area-inset-top)); right: 12px; }
+.cf-level { font-size: clamp(12px, 2.4vmin, 20px); letter-spacing: .14em;
+  text-transform: uppercase; color: var(--text-faint); }
+.cf-blinds { font-size: clamp(28px, 9vmin, 76px); font-weight: 800; letter-spacing: -.02em;
+  font-family: var(--font-display); font-variant-numeric: tabular-nums; color: var(--acc); }
+.cf-ante { font-size: .45em; font-weight: 600; color: var(--text-dim); letter-spacing: 0; }
+.cf-time { font-size: clamp(64px, 26vmin, 260px); font-weight: 800; line-height: .95;
+  font-family: var(--font-display); font-variant-numeric: tabular-nums; letter-spacing: -.04em; }
+.cf-time.urgent { color: var(--bad); }
+.cf-next { font-size: clamp(13px, 2.6vmin, 24px); color: var(--text-dim);
+  font-variant-numeric: tabular-nums; }
+.cf-controls { display: flex; align-items: center; gap: 18px; margin-top: clamp(10px, 3vmin, 34px); }
+.cf-play { width: clamp(58px, 13vmin, 96px); aspect-ratio: 1; border-radius: 50%; border: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--acc); color: var(--on-acc); }
+.cf-play:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; }
+/* the sticky-bar time is the way in, so it has to look pressable */
+.ts-time-btn { background: none; border: none; padding: 0 2px; font: inherit; color: inherit; cursor: pointer; }
+
+/* ---- Landscape on a phone: the chrome gets out of the way ---- */
+@media (orientation: landscape) and (max-height: 540px) {
+  :root { --header-h: 44px; --nav-h: 50px; }
+  .app { max-width: 820px; }
+  .screen { padding: 12px 14px calc(var(--nav-h) + var(--safe-b) + 18px); }
+  .app-header .header-sub { display: none; }
+  .nav-item { flex-direction: row; gap: 7px; font-size: 12px; }
+  .table-sticky { margin: -12px -14px 10px; padding: 7px 14px; }
+}
+
+/* the player count when the roster owns it: a figure, not a control */
+.plan-count-locked { display: inline-flex; align-items: baseline; gap: 6px; }
+.plan-count-locked b { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.plan-count-locked span { font-size: 12px; color: var(--text-faint); }
+
+/* --- TV background picker: the ones drawn for this style, then your own photos --- */
+.bg-preset.matches { outline: 1px solid var(--acc-line); outline-offset: -1px; }
+.bg-fav-head { display: flex; flex-direction: column; gap: 2px; margin: 14px 2px 8px;
+  font-size: 13px; font-weight: 600; }
+.bg-fav-head .faint { font-size: 11.5px; font-weight: 400; }
+.bg-fav-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.bg-fav { position: relative; flex: none; }
+.bg-fav-pick { width: 84px; height: 50px; border-radius: var(--r-sm); border: 1px solid var(--line);
+  background-size: cover; background-position: center; display: block; }
+.bg-fav.active .bg-fav-pick { border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc) inset; }
+.bg-fav-x { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 13px; line-height: 1;
+  background: var(--surface-3); border: 1px solid var(--line); color: var(--text-dim); }
+.bg-fav-x:hover { color: var(--bad); }
+
+/* --- People picker: seat the regulars --- */
+.cr-foot { padding: 12px 16px calc(12px + var(--safe-b)); border-top: 1px solid var(--line);
+  background: var(--surface); }
+.pp-list { margin-top: 14px; }
+.pp-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+.pp-row.is-seated { opacity: .5; }
+.pp-emoji { font-size: 22px; line-height: 1; background: none; border: none; padding: 2px; }
+.pp-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+  background: none; border: none; padding: 6px 0; font: inherit; color: inherit; text-align: left; }
+.pp-name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-tag { font-size: 11.5px; color: var(--text-faint); }
+.pp-check { margin-left: auto; color: var(--acc); font-weight: 800; }
+.pp-row.is-on { background: var(--acc-wash); border-radius: var(--r-sm); }
+.pp-edit { flex-basis: 100%; padding: 10px 0 4px; display: flex; flex-direction: column; gap: 10px; }
+
+/* "same as last time" carries the names so you can see who you are about to seat */
+.pr-lineup-names { display: block; margin-top: 3px; font-size: 11.5px; font-weight: 500;
+  opacity: .75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+
+/* --- Chip sets: which box of chips is on the table tonight --- */
+.set-bar { margin-bottom: 12px; }
+.set-list { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 6px; }
+.set-chip { flex: none; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--text-dim); }
+.set-chip.active { background: var(--acc-wash); border-color: var(--acc-line); color: var(--acc); }
+.set-chip.add { display: inline-flex; align-items: center; gap: 5px; color: var(--text-faint); }
+.set-actions { display: flex; gap: 6px; align-items: center; }
+.set-rename { flex: 1; font-size: 14px; }
+
+/* --- First run: three questions, then get out of the way --- */
+.onb { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column;
+  background: var(--app-bg); color: var(--text);
+  padding: max(14px, var(--safe-t)) 16px max(14px, var(--safe-b)); }
+.onb-top { display: flex; align-items: center; }
+.onb-step { font-size: 11.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--text-faint); }
+.onb-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; justify-content: center; }
+.onb-h { font-size: 27px; font-weight: 800; letter-spacing: -.03em; font-family: var(--font-display); }
+.onb-p { color: var(--text-dim); font-size: 14px; margin: 6px 0 26px; }
+.onb-field { animation: screen-in .22s ease-out; }
+.onb-q { font-size: 19px; font-weight: 700; }
+.onb-sub { font-size: 13px; margin: 4px 0 16px; }
+.onb-money .input { font-size: 30px; font-weight: 800; padding: 12px 12px 12px 4px; font-variant-numeric: tabular-nums; }
+.onb-money .affix { font-size: 24px; }
+.onb-quick { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.onb-players, .onb-hours { display: flex; flex-wrap: wrap; gap: 9px; }
+.onb-num { min-width: 54px; padding: 14px 10px; border-radius: var(--r-sm); font-size: 18px; font-weight: 700;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--text);
+  font-variant-numeric: tabular-nums; }
+.onb-num.wide { flex: 1; min-width: 74px; }
+.onb-num.active { background: var(--acc-wash); border-color: var(--acc); color: var(--acc); }
+.onb-plan { margin-top: 18px; padding: 12px 14px; border-radius: var(--r-sm);
+  background: var(--surface-2); border: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums; }
+.onb-plan b { font-size: 16px; }
+.onb-plan span { font-size: 12.5px; color: var(--text-dim); }
+.onb-foot { display: flex; align-items: center; gap: 10px; padding-top: 14px; }
+
+/* --- Table tools: side pots + colouring up --- */
+.tt-row { display: flex; align-items: center; gap: 9px; padding: 7px 0;
+  border-bottom: 1px solid var(--line-soft); }
+.tt-emoji { font-size: 19px; line-height: 1; }
+.tt-name { flex: 1; min-width: 0; font-weight: 600; font-size: 14px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-fold { padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--text-faint); }
+.tt-fold.on { background: color-mix(in srgb, var(--bad) 14%, transparent);
+  border-color: var(--bad); color: var(--bad); }
+.tt-amount { width: 108px; flex: none; }
+.tt-amount .input { text-align: right; font-variant-numeric: tabular-nums; }
+.tt-step { flex: none; }
+.tt-count { width: 44px; text-align: center; background: none; border: none; color: inherit;
+  font: inherit; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tt-out { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.tt-pot { padding: 9px 0; border-bottom: 1px solid var(--line-soft); }
+.tt-pot-h { display: flex; align-items: baseline; gap: 10px; }
+.tt-pot-amt { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums;
+  font-family: var(--font-display); color: var(--acc); }
+.tt-pot-who { margin-top: 2px; font-size: 12.5px; color: var(--text-dim); }
+.tt-total { margin-top: 12px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tt-note { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; margin: 10px 2px; }
+.tt-pick { display: flex; gap: 14px; flex-wrap: wrap; }
+.tt-pick-col { flex: 1; min-width: 140px; }
+.tt-pick-col label { display: block; font-size: 11.5px; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--text-faint); margin-bottom: 6px; }
+.tt-chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.tt-chip { flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 5px 7px; border-radius: var(--r-sm); background: var(--surface-2);
+  border: 1px solid var(--line); font-size: 11px; font-weight: 700;
+  font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.tt-chip.active { border-color: var(--acc); color: var(--acc); background: var(--acc-wash); }
+.tt-race-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 7px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
+.tt-race-get { font-variant-numeric: tabular-nums; }
+.tt-race-left { margin-left: auto; font-size: 12px; color: var(--text-faint);
+  font-variant-numeric: tabular-nums; }
+
+.tools-btn { margin-top: 10px; }
+
+/* --- Payout split on the phone --- */
+.payout-list { margin-top: 12px; }
+.payout-row { display: flex; align-items: baseline; gap: 10px; padding: 7px 0;
+  border-bottom: 1px solid var(--line-soft); font-variant-numeric: tabular-nums; }
+.payout-place { font-weight: 800; min-width: 2.2em; font-family: var(--font-display); }
+.payout-pct { font-size: 12px; color: var(--text-faint); }
+.payout-amt { margin-left: auto; font-weight: 700; color: var(--acc); }
+.payout-note { font-size: 12.5px; margin: 10px 2px; }
+
+/* --- Carried-over balances --- */
+.carry-row { display: flex; align-items: center; gap: 10px; padding: 8px 0;
+  border-bottom: 1px solid var(--line-soft); }
+.carry-name { flex: 1; min-width: 0; font-weight: 600; font-size: 14px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.carry-amt { font-weight: 700; font-variant-numeric: tabular-nums; }
+.cash-carried { flex-basis: 100%; font-size: 11.5px; color: var(--text-faint);
+  font-variant-numeric: tabular-nums; }
+.t-pay { margin-left: 8px; padding: 3px 9px; border-radius: 999px; font-size: 11.5px;
+  font-weight: 600; background: var(--acc-wash); border: 1px solid var(--acc-line); color: var(--acc); }
+
+/* "can I still buy in?" — answered in the bar everybody already looks at */
+.ts-latereg { font-size: 10.5px; font-weight: 700; letter-spacing: .02em;
+  padding: 3px 8px; border-radius: 999px; white-space: nowrap;
+  background: var(--acc-wash); border: 1px solid var(--acc-line); color: var(--acc); }
+.ts-latereg.closed { background: var(--surface-2); border-color: var(--line); color: var(--text-faint); }
+
+/* late-reg window on the big screen */
+.tv-latereg { margin-top: clamp(6px, 1.1vmin, 16px); font-family: var(--tv-head);
+  text-transform: uppercase; letter-spacing: .1em; font-weight: 700; color: var(--acc);
+  font-size: clamp(11px, 1.5vmin, 30px); }
+
+/* --- Chip-set presets: start from a box that exists --- */
+.preset-sets { margin-bottom: 12px; }
+.preset-set-row { display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 9px 0; border: none; border-bottom: 1px solid var(--line-soft);
+  background: none; color: inherit; text-align: left; }
+.preset-set-swatches { display: inline-flex; }
+.preset-set-swatches i { width: 17px; height: 17px; border-radius: 50%; border: 1.5px solid;
+  margin-right: -6px; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.preset-set-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.preset-set-text b { font-size: 14px; }
+.preset-set-text span { font-size: 12px; color: var(--text-faint); }
+
+/* --- "What you are short of": a shopping list, not just a red warning --- */
+.missing-card { border-color: var(--warn-line, var(--line)); margin-top: 12px; }
+.missing-row { display: flex; align-items: center; gap: 10px; padding: 6px 0;
+  border-bottom: 1px solid var(--line-soft); }
+.missing-txt { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; }
+.missing-have { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
+/* --- Tonight, in order --- */
+.tl-list { display: flex; flex-direction: column; }
+.tl-row { display: flex; align-items: baseline; gap: 9px; padding: 6px 0;
+  border-bottom: 1px solid var(--line-soft); font-size: 13px; }
+.tl-row:last-child { border-bottom: none; }
+.tl-time { font-variant-numeric: tabular-nums; color: var(--text-faint); font-size: 11.5px;
+  min-width: 3.4em; }
+.tl-icon { font-size: 13px; }
+.tl-txt { flex: 1; min-width: 0; }
+
+/* --- Season stats: the part people argue about --- */
+.ss-badges { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.ss-badge { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.ss-badge-k { font-size: 12.5px; color: var(--text-dim); }
+.ss-badge-v { margin-left: auto; font-size: 13px; font-weight: 700;
+  font-variant-numeric: tabular-nums; }
+.ss-h2h-head { display: flex; align-items: baseline; gap: 10px; font-weight: 600; font-size: 14px; }
+.ss-h2h-head .faint { margin-left: auto; font-size: 11.5px; font-weight: 400; }
+.ss-names { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.ss-name { padding: 5px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--text-dim); }
+.ss-name.a, .ss-name.b { background: var(--acc-wash); border-color: var(--acc-line); color: var(--acc); }
+.ss-h2h { margin-top: 12px; padding: 10px 12px; border-radius: var(--r-sm);
+  background: var(--surface-2); border: 1px solid var(--line); }
+.ss-h2h-line { font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ss-h2h-swing { margin-top: 3px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.ss-players { display: flex; flex-direction: column; }
+.ss-player { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 7px 0;
+  border-bottom: 1px solid var(--line-soft); }
+.ss-player:last-child { border-bottom: none; }
+.ss-player-name { font-weight: 600; font-size: 13.5px; }
+.ss-player-meta { font-size: 11.5px; color: var(--text-faint); }
+.ss-player-avg { margin-left: auto; font-size: 13px; font-weight: 700;
+  font-variant-numeric: tabular-nums; }
+.ss-player-avg i { font-style: normal; font-weight: 400; font-size: 11px; color: var(--text-faint); }
+
+/* --- Which phone is this? --- */
+.role-choice .onb-body { gap: 12px; }
+.role-opt { display: flex; align-items: flex-start; gap: 14px; width: 100%; text-align: left;
+  padding: 16px; border-radius: var(--r); background: var(--surface); border: 1px solid var(--line);
+  color: inherit; margin-top: 12px; }
+.role-opt:hover { border-color: var(--acc-line); }
+.role-opt-ic { font-size: 26px; line-height: 1; }
+.role-opt b { display: block; font-size: 16px; }
+.role-opt i { display: block; margin-top: 3px; font-style: normal; font-size: 12.5px;
+  color: var(--text-dim); line-height: 1.5; }
+
+/* --- A guest's own phone --- */
+.guest .screen { padding-bottom: calc(var(--safe-b) + 24px); }
+.guest-me { display: flex; align-items: center; gap: 12px; }
+.guest-me-emoji { font-size: 30px; line-height: 1; }
+.guest-me-name { font-weight: 700; font-size: 17px; }
+.guest-me-stack { text-align: right; }
+.guest-me-stack .k { display: block; font-size: 10.5px; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--text-faint); }
+.guest-me-stack b { font-size: 20px; font-variant-numeric: tabular-nums; color: var(--acc); }
+.guest-clock { text-align: center; }
+.guest-level { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
+.guest-blinds { font-size: 30px; font-weight: 800; color: var(--acc); font-family: var(--font-display);
+  font-variant-numeric: tabular-nums; margin-top: 2px; }
+.guest-time { font-size: 44px; font-weight: 800; font-family: var(--font-display);
+  font-variant-numeric: tabular-nums; letter-spacing: -.03em; margin-top: 4px; }
+.guest-row { display: flex; align-items: center; gap: 10px; padding: 8px 0;
+  border-bottom: 1px solid var(--line-soft); }
+.guest-row:last-child { border-bottom: none; }
+.guest-row.is-out { opacity: .45; text-decoration: line-through; }
+.guest-row-emoji { font-size: 18px; }
+.guest-row-name { flex: 1; min-width: 0; font-weight: 600; font-size: 14px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.guest-row-stack { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 14px; }
+
+/* --- People asking to be seated from their own phone --- */
+.join-card { border-color: var(--acc-line); }
+.join-row { display: flex; align-items: center; gap: 9px; padding: 7px 0;
+  border-bottom: 1px solid var(--line-soft); }
+.join-row:last-child { border-bottom: none; }
+.join-emoji { font-size: 20px; line-height: 1; }
+.join-name { flex: 1; min-width: 0; font-weight: 600; font-size: 14.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.join-tag { font-size: 11.5px; color: var(--text-faint); }
+
+/* --- Titles of the night --- */
+.award-row { display: flex; align-items: center; gap: 11px; padding: 9px 0;
+  border-bottom: 1px solid var(--line-soft); }
+.award-row:last-of-type { border-bottom: none; }
+.award-ic { font-size: 22px; line-height: 1; }
+.award-text { flex: 1; min-width: 0; }
+.award-k { font-weight: 700; font-size: 14px; }
+.award-d { font-size: 12px; color: var(--text-faint); margin-top: 1px; }
+.award-who { font-weight: 700; font-size: 13.5px; color: var(--acc); white-space: nowrap; }
+
+/* break at a wall-clock time — lives with the clock, not with the tournament rules */
+.break-at { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); gap: 8px; }
+.break-at-in { width: 106px; flex: none; font-variant-numeric: tabular-nums; }
+
+/* the card each player drew for the button */
+.draw-card { margin-left: auto; margin-right: 8px; min-width: 3ch; text-align: center;
+  padding: 2px 7px; border-radius: 6px; font-weight: 800; font-size: 13px;
+  background: var(--surface-3); border: 1px solid var(--line); color: var(--text);
+  font-variant-numeric: tabular-nums; }
+.draw-card.red { color: #e05a5a; }
+
+/* --- Hand-of-the-night vote (a guest's phone) --- */
+.vote-row { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  padding: 10px 0; border: none; border-bottom: 1px solid var(--line-soft);
+  background: none; color: inherit; font: inherit; }
+.vote-row:last-child { border-bottom: none; }
+.vote-row:disabled { opacity: .5; }
+.vote-row.mine .vote-txt { color: var(--acc); font-weight: 600; }
+.vote-txt { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.45; }
+.vote-count { min-width: 1.6em; text-align: center; padding: 2px 7px; border-radius: 999px;
+  background: var(--surface-3); border: 1px solid var(--line); font-size: 12px; font-weight: 700;
+  font-variant-numeric: tabular-nums; }
+.vote-mine { font-size: 11px; color: var(--acc); white-space: nowrap; }
+
+/* the hand the table voted for, on the big screen */
+.tv-topmoment { margin-top: clamp(8px, 1.4vmin, 20px); display: flex; flex-direction: column;
+  align-items: center; gap: 2px; max-width: 46vmin; }
+.tv-topmoment-k { font-family: var(--tv-head); text-transform: uppercase; letter-spacing: .12em;
+  font-weight: 700; color: var(--acc); font-size: clamp(10px, 1.3vmin, 24px); }
+.tv-topmoment-v { font-family: var(--tv-body); color: var(--tv-dim); text-align: center;
+  font-size: clamp(12px, 1.6vmin, 32px); line-height: 1.35; }
+
+/* "the night should run about three hours" — length-first ladder building */
+.dur-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.dur-picks { display: flex; gap: 6px; }
+.dur-pick { padding: 6px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 700;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--text-dim);
+  font-variant-numeric: tabular-nums; }
+.dur-pick.active { background: var(--acc-wash); border-color: var(--acc-line); color: var(--acc); }

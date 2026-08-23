@@ -154,3 +154,90 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 }
 
 export type { ImageStack };
+
+/**
+ * The night's settlement as a picture, for the group chat.
+ *
+ * Text works, but a table of eight names and amounts turns into an unreadable wall
+ * on a phone keyboard — and this is the message everybody screenshots anyway.
+ */
+export function renderSettlementImage(opts: {
+  title: string;
+  subtitle: string;
+  nets: { name: string; emoji?: string; net: number }[];
+  transfers: { from: string; to: string; amount: number }[];
+  format: (n: number) => string;
+  paysLabel: string;
+  netLabel: string;
+  payLabel: string;
+}): string {
+  const scale = 2;
+  const W = 720;
+  const rowH = 46;
+  const head = 132;
+  const gap = 34;
+  const H =
+    head + gap + opts.nets.length * rowH + (opts.transfers.length ? gap + 26 + opts.transfers.length * rowH : 0) + 50;
+  const c = document.createElement('canvas');
+  c.width = W * scale;
+  c.height = H * scale;
+  const ctx = c.getContext('2d')!;
+  ctx.scale(scale, scale);
+
+  ctx.fillStyle = '#0f0f15';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#17171d';
+  roundRect(ctx, 16, 16, W - 32, H - 32, 22);
+  ctx.fill();
+
+  ctx.fillStyle = '#e4b41f';
+  ctx.font = '800 30px Inter, sans-serif';
+  ctx.fillText('♣ ' + opts.title, 40, 62);
+  ctx.fillStyle = '#9a9aa6';
+  ctx.font = '600 18px Inter, sans-serif';
+  ctx.fillText(opts.subtitle, 40, 92);
+  ctx.strokeStyle = '#2b2b35';
+  ctx.beginPath();
+  ctx.moveTo(40, 112);
+  ctx.lineTo(W - 40, 112);
+  ctx.stroke();
+
+  let y = head + 20;
+  ctx.fillStyle = '#6e6e7a';
+  ctx.font = '700 13px Inter, sans-serif';
+  ctx.fillText(opts.netLabel.toUpperCase(), 40, y - 14);
+  for (const n of opts.nets) {
+    ctx.fillStyle = '#e9e9ef';
+    ctx.font = '600 20px Inter, sans-serif';
+    ctx.fillText(`${n.emoji ? n.emoji + ' ' : ''}${n.name}`, 44, y + 6);
+    ctx.fillStyle = n.net >= 0 ? '#43c58a' : '#ff6b6b';
+    ctx.font = '800 20px Inter, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${n.net >= 0 ? '+' : ''}${opts.format(n.net)}`, W - 44, y + 6);
+    ctx.textAlign = 'left';
+    y += rowH;
+  }
+
+  if (opts.transfers.length) {
+    y += gap;
+    ctx.fillStyle = '#6e6e7a';
+    ctx.font = '700 13px Inter, sans-serif';
+    ctx.fillText(opts.payLabel.toUpperCase(), 40, y - 14);
+    for (const tr of opts.transfers) {
+      ctx.fillStyle = '#e9e9ef';
+      ctx.font = '600 19px Inter, sans-serif';
+      ctx.fillText(`${tr.from}  →  ${tr.to}`, 44, y + 6);
+      ctx.fillStyle = '#e4b41f';
+      ctx.font = '800 19px Inter, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(opts.format(tr.amount), W - 44, y + 6);
+      ctx.textAlign = 'left';
+      y += rowH;
+    }
+  }
+
+  ctx.fillStyle = '#4a4a56';
+  ctx.font = '600 14px Inter, sans-serif';
+  ctx.fillText('ChipStack', 40, H - 34);
+  return c.toDataURL('image/png');
+}

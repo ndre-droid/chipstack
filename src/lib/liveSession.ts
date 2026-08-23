@@ -211,6 +211,123 @@ export function subscribeBackground(code: string, onUpdate: (image: string | nul
   );
 }
 
+/* -------------------------------------------------------------- guest joins -- */
+
+/** Somebody at the table asking to be put in the roster from their own phone. */
+export interface JoinRequest {
+  id: string;
+  name: string;
+  emoji?: string;
+  at: number;
+}
+
+const joinsRef = (code: string) => {
+  const db = getDb();
+  if (!db) throw new Error('firebase not configured');
+  // its own document, like the background: guests write here constantly while the
+  // session document is the host's to own
+  return doc(db, 'sessions', `${code}-joins`);
+};
+
+/**
+ * Guest: ask to be seated.
+ *
+ * The point is that the host stops typing six names into a phone while six people
+ * watch — everyone scans the code on the TV and puts their own name in. A
+ * transaction because several people will do this at the same moment, and a plain
+ * merge write would have the last one overwrite the rest.
+ */
+export async function requestSeat(code: string, name: string, emoji?: string): Promise<string> {
+  await ensureAuth();
+  const id = Math.random().toString(36).slice(2, 10);
+  const ref = joinsRef(code);
+  await runTransaction(getDb()!, async (tx) => {
+    const snap = await tx.get(ref);
+    const existing = (snap.exists() ? (snap.data() as { requests?: JoinRequest[] }).requests : []) ?? [];
+    // one seat per person: asking twice updates the name rather than queueing again
+    const mine = existing.filter((r) => r.name.trim().toLowerCase() !== name.trim().toLowerCase());
+    const next = [...mine, { id, name: name.trim().slice(0, 24), emoji, at: Date.now() }].slice(-16);
+    tx.set(ref, { requests: next, ...stamps() });
+  });
+  return id;
+}
+
+/** Host: watch for people asking to be seated. */
+export function subscribeJoins(code: string, onUpdate: (requests: JoinRequest[]) => void): Unsubscribe {
+  const db = getDb();
+  if (!db) return () => {};
+  void ensureAuth();
+  return onSnapshot(
+    doc(db, 'sessions', `${code}-joins`),
+    (snap) => onUpdate(snap.exists() ? ((snap.data() as { requests?: JoinRequest[] }).requests ?? []) : []),
+    () => {
+      /* the session listener already reports a lost connection */
+    },
+  );
+}
+
+/** Host: a request has been dealt with (seated or dismissed). */
+export async function clearJoin(code: string, id: string): Promise<void> {
+  await ensureAuth();
+  const ref = joinsRef(code);
+  await runTransaction(getDb()!, async (tx) => {
+    const snap = await tx.get(ref);
+    const existing = (snap.exists() ? (snap.data() as { requests?: JoinRequest[] }).requests : []) ?? [];
+    tx.set(ref, { requests: existing.filter((r) => r.id !== id), ...stamps() });
+  });
+}
+
+/* --------------------------------------------------- hand-of-the-night vote -- */
+
+/** Votes for the best hand of the night, keyed by moment id. */
+export type MomentVotes = Record<string, string[]>;
+
+const votesRef = (code: string) => {
+  const db = getDb();
+  if (!db) throw new Error('firebase not configured');
+  return doc(db, 'sessions', `${code}-votes`);
+};
+
+/**
+ * Guest: vote for the hand of the night from your own phone.
+ *
+ * One vote per person, changeable — the name is the identity, which is exactly as
+ * strong as it needs to be for six friends around a table. A transaction because
+ * everyone votes in the same ten seconds.
+ */
+export async function castVote(code: string, momentId: string, voter: string): Promise<void> {
+  await ensureAuth();
+  const ref = votesRef(code);
+  const who = voter.trim().toLowerCase();
+  if (!who) return;
+  await runTransaction(getDb()!, async (tx) => {
+    const snap = await tx.get(ref);
+    const current = (snap.exists() ? (snap.data() as { votes?: MomentVotes }).votes : {}) ?? {};
+    const next: MomentVotes = {};
+    // clear this voter out of every moment first: voting again moves the vote
+    for (const [id, voters] of Object.entries(current)) {
+      const kept = voters.filter((v) => v.trim().toLowerCase() !== who);
+      if (kept.length) next[id] = kept;
+    }
+    next[momentId] = [...(next[momentId] ?? []), voter.trim().slice(0, 24)];
+    tx.set(ref, { votes: next, ...stamps() });
+  });
+}
+
+/** TV / host: watch the vote count. */
+export function subscribeVotes(code: string, onUpdate: (votes: MomentVotes) => void): Unsubscribe {
+  const db = getDb();
+  if (!db) return () => {};
+  void ensureAuth();
+  return onSnapshot(
+    doc(db, 'sessions', `${code}-votes`),
+    (snap) => onUpdate(snap.exists() ? ((snap.data() as { votes?: MomentVotes }).votes ?? {}) : {}),
+    () => {
+      /* the session listener already reports a lost connection */
+    },
+  );
+}
+
 /**
  * TV: bump the heartbeat so the host phone can tell this TV is alive. Called on a
  * short interval while a device is showing the big screen. Merge write, tiny.
@@ -231,6 +348,8 @@ export async function endSession(code: string): Promise<void> {
     await ensureAuth(); // only the screen that created the session may delete it
     // the photo first: deleting a parent document does not remove its subcollection
     await deleteDoc(backgroundRef(code)).catch(() => {});
+    await deleteDoc(joinsRef(code)).catch(() => {});
+    await deleteDoc(votesRef(code)).catch(() => {});
     await deleteDoc(sessionRef(code));
   } catch {
     /* offline or already gone — the TTL policy cleans up either way */

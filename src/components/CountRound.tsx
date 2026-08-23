@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useBackHandler } from '../lib/backHandler';
 import { useStore } from '../store';
 import { useT, useFmt } from '../lib/i18n';
 import { moneyToUnits } from '../lib/distribution';
@@ -6,7 +7,9 @@ import { parseMoney } from '../lib/money';
 import { startingStackOf, handoutStack } from '../lib/startingStack';
 import type { Denomination, LedgerPlayer } from '../types';
 
-export type ChipSnapshot = { id: string; chips?: number; chipHistory?: { at: number; chips: number }[] };
+/** The whole ledger as it stood before a change — one undo shape for every
+ *  money action, not just counting rounds. */
+export type LedgerSnapshot = LedgerPlayer[];
 
 /**
  * The counting round: walk the table player by player and tally each stack by
@@ -27,7 +30,7 @@ export default function CountRound({
 }: {
   only?: string;
   onClose: () => void;
-  onUndoable?: (snapshot: ChipSnapshot[]) => void;
+  onUndoable?: (previous: LedgerSnapshot) => void;
 }) {
   const { state, dispatch } = useStore();
   const t = useT();
@@ -68,6 +71,9 @@ export default function CountRound({
   const [moneyText, setMoneyText] = useState('');
   const [prefilled, setPrefilled] = useState(false);
   const [padId, setPadId] = useState<string | null>(null);
+  // back closes the numpad first, then the whole round
+  useBackHandler(padId !== null, () => setPadId(null));
+  useBackHandler(true, onClose);
   // playerId → new chip-unit total; only players actually counted appear here
   const [results, setResults] = useState<Record<string, number>>({});
   // playerId → per-colour tally, so the inventory check can add up the whole table
@@ -127,7 +133,7 @@ export default function CountRound({
 
   /** Single-player mode (tapped one stack in the roster): save straight away. */
   const saveOnly = () => {
-    onUndoable?.(ledger.map((p) => ({ id: p.id, chips: p.chips, chipHistory: p.chipHistory })));
+    onUndoable?.(ledger);
     dispatch({ type: 'LEDGER_SET_CHIPS_MANY', entries: [{ id: player!.id, chips: currentUnits }] });
     onClose();
   };
@@ -176,7 +182,7 @@ export default function CountRound({
     if (entries.length) {
       // the whole ledger, not just the counted rows: a round appends a trail point
       // to every player still in play, so undo has to be able to take them all back
-      onUndoable?.(ledger.map((p) => ({ id: p.id, chips: p.chips, chipHistory: p.chipHistory })));
+      onUndoable?.(ledger);
       dispatch({ type: 'LEDGER_SET_CHIPS_MANY', entries });
     }
     onClose();

@@ -50,6 +50,23 @@ service cloud.firestore {
     function isBackground(id) {
       return id.matches('^[0-9]{4}-bg$');
     }
+    /* Guests write here: people asking to be seated, and the hand-of-the-night vote.
+       Kept in their own documents so a guest never touches the session document —
+       the game payload stays the host's alone. */
+    function isJoins(id) {
+      return id.matches('^[0-9]{4}-joins$');
+    }
+    function isVotes(id) {
+      return id.matches('^[0-9]{4}-votes$');
+    }
+    /* A guest document is only writable while the session it belongs to exists, so
+       the code has to have been shown on a real screen. That is the same level of
+       trust as the code itself, which is the point: everyone in the room can see it,
+       and nobody outside can do anything with it beyond adding a name to a list the
+       host has to accept. */
+    function sessionAlive(id) {
+      return exists(/databases/$(database)/documents/sessions/$(id.split('-')[0]));
+    }
     function signedIn() {
       return request.auth != null;
     }
@@ -125,7 +142,7 @@ service cloud.firestore {
 
     match /sessions/{id} {
       // The code alone is no longer enough to watch a table from the outside.
-      allow read: if signedIn() && (isCode(id) || isBackground(id));
+      allow read: if signedIn() && (isCode(id) || isBackground(id) || isJoins(id) || isVotes(id));
 
       allow create: if signedIn() && isCode(id) && ttlOk() && fieldsOk()
         // whoever creates a session must claim it in the same write
@@ -147,12 +164,28 @@ service cloud.firestore {
         && (incoming().image == null
             || (incoming().image is string && incoming().image.size() < 400000));
 
+      /* Join requests and votes: any signed-in device that has the code may write,
+         because that is exactly what a guest is. Bounded hard — a list of names, and
+         a map of votes — so the worst a stranger who guessed the code can do is add
+         a name the host declines. */
+      allow create, update: if signedIn() && isJoins(id) && sessionAlive(id) && ttlOk()
+        && incoming().keys().hasOnly(['requests', 'updatedAt', 'expiresAt'])
+        && incoming().requests is list
+        && incoming().requests.size() <= 16;
+
+      allow create, update: if signedIn() && isVotes(id) && sessionAlive(id) && ttlOk()
+        && incoming().keys().hasOnly(['votes', 'updatedAt', 'expiresAt'])
+        && incoming().votes is map
+        && incoming().votes.keys().size() <= 30;
+
       /* The TV deletes its session (and its photo) when the big screen is switched
          off. Restricted to the owning screen: a guessed code used to be enough to
          wipe a table mid-game. The TTL policy is the backstop either way. */
       allow delete: if signedIn()
         && ((isCode(id) && (!('tvUid' in resource.data) || resource.data.tvUid == me()))
-            || (isBackground(id) && ownsBackground(id)));
+            || (isBackground(id) && ownsBackground(id))
+            // the guest documents go with the session; only its owner clears them
+            || ((isJoins(id) || isVotes(id)) && ownsBackground(id)));
     }
 
     // Nothing else in this project is public.

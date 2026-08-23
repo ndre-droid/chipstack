@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useStore } from '../store';
 import { useT, useFmt } from '../lib/i18n';
 import { IconTrash } from './Icons';
+import SeasonStats from './SeasonStats';
 
 interface Standing {
   name: string;
@@ -112,6 +113,7 @@ export default function SeasonLeague() {
           </>
         )}
       </div>
+      <SeasonStats />
     </>
   );
 }

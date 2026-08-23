@@ -4,6 +4,7 @@ import { useStore } from '../store';
 import { useT } from '../lib/i18n';
 import { encodeSetup, decodeSetup, renderStackImage } from '../lib/share';
 import { IconShare, IconCheck } from '../components/Icons';
+import { useBackHandler } from '../lib/backHandler';
 
 interface Props {
   onClose: () => void;
@@ -20,6 +21,7 @@ export default function ShareSheet({ onClose, imageRows, title, subtitle, totalC
   const [copied, setCopied] = useState(false);
   const [importText, setImportText] = useState('');
   const [importMsg, setImportMsg] = useState<string | null>(null);
+  useBackHandler(true, onClose);
 
   const code = useMemo(() => encodeSetup(state), [state]);
 

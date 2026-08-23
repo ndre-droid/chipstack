@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { IconCheck, IconChevron } from './Icons';
+import { TV_BACKGROUNDS, backgroundsFor } from '../lib/tvBackgrounds';
+import { addPhoto, deletePhoto, listPhotos, type SavedPhoto } from '../lib/photoStore';
 import { useT } from '../lib/i18n';
 import { analyzeBackground } from '../lib/imageAnalysis';
 import type { AccentId, Skin } from '../types';
@@ -22,61 +24,6 @@ const ACCENTS: { id: AccentId; color: string }[] = [
 ];
 const accentColor = (id: AccentId) => ACCENTS.find((a) => a.id === id)?.color ?? '#f0b429';
 
-// Themed background presets — generated SVG (no copyright, tiny, syncs to the TV).
-// `tone` is the mean luminance the TV uses to size its readability scrim.
-// encodeURIComponent leaves ' untouched, which makes an unquoted CSS url() invalid
-// — escape it here too so the value is safe in every context, quoted or not.
-const svgUrl = (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg).replace(/'/g, '%27')}`;
-const W = 1600;
-const H = 900;
-function neonGrid(): string {
-  let lines = '';
-  for (let i = 0; i <= 10; i++) {
-    const x = (i / 10) * W;
-    lines += `<line x1='${x}' y1='340' x2='${800 + (x - 800) * 2.6}' y2='900'/>`;
-  }
-  for (let i = 1; i <= 5; i++) {
-    const y = 340 + (i / 5) * 560;
-    lines += `<line x1='0' y1='${y}' x2='${W}' y2='${y}'/>`;
-  }
-  return `<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#0c1a4c'/><stop offset='1' stop-color='#05060f'/></linearGradient></defs><rect width='${W}' height='${H}' fill='url(#g)'/><circle cx='800' cy='320' r='520' fill='#3fe6ff' fill-opacity='0.10'/><g stroke='#3fe6ff' stroke-opacity='0.16' stroke-width='2'>${lines}</g></svg>`;
-}
-const PRESETS: { id: string; name: string; tone: number; url: string }[] = [
-  {
-    id: 'felt', name: 'Felt', tone: 0.18,
-    url: svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><defs><radialGradient id='g' cx='50%' cy='36%' r='78%'><stop offset='0%' stop-color='#2f7d54'/><stop offset='58%' stop-color='#17573a'/><stop offset='100%' stop-color='#0a2a1c'/></radialGradient></defs><rect width='${W}' height='${H}' fill='url(#g)'/></svg>`),
-  },
-  { id: 'neon', name: 'Neon', tone: 0.12, url: svgUrl(neonGrid()) },
-  {
-    id: 'sunset', name: 'Sunset', tone: 0.5,
-    url: svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><defs><linearGradient id='g' x1='0' y1='0' x2='0.4' y2='1'><stop offset='0' stop-color='#ffb15a'/><stop offset='0.5' stop-color='#ff6f7d'/><stop offset='1' stop-color='#7a3fb0'/></linearGradient></defs><rect width='${W}' height='${H}' fill='url(#g)'/><circle cx='1180' cy='250' r='150' fill='#fff' fill-opacity='0.28'/></svg>`),
-  },
-  {
-    id: 'slate', name: 'Slate', tone: 0.14,
-    url: svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#26262e'/><stop offset='1' stop-color='#0c0c10'/></linearGradient></defs><rect width='${W}' height='${H}' fill='url(#g)'/></svg>`),
-  },
-  {
-    id: 'baize', name: 'Emerald', tone: 0.2,
-    url: svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><defs><radialGradient id='g' cx='50%' cy='40%' r='80%'><stop offset='0%' stop-color='#1f8a6d'/><stop offset='60%' stop-color='#0f5a48'/><stop offset='100%' stop-color='#062720'/></radialGradient></defs><rect width='${W}' height='${H}' fill='url(#g)'/></svg>`),
-  },
-  {
-    id: 'amber', name: 'Amber', tone: 0.28,
-    url: svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><defs><radialGradient id='g' cx='50%' cy='34%' r='82%'><stop offset='0%' stop-color='#3a2c12'/><stop offset='55%' stop-color='#211a10'/><stop offset='100%' stop-color='#0c0a06'/></radialGradient></defs><rect width='${W}' height='${H}' fill='url(#g)'/><circle cx='800' cy='300' r='460' fill='#f0b429' fill-opacity='0.12'/></svg>`),
-  },
-  // Seasonal / themed nights
-  {
-    id: 'xmas', name: '🎄 Xmas', tone: 0.14,
-    url: svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><defs><radialGradient id='g' cx='50%' cy='30%' r='85%'><stop offset='0%' stop-color='#1c5138'/><stop offset='55%' stop-color='#0e3322'/><stop offset='100%' stop-color='#3a0f12'/></radialGradient></defs><rect width='${W}' height='${H}' fill='url(#g)'/><g fill='#fff' fill-opacity='0.55'>${Array.from({ length: 40 }, () => `<circle cx='${Math.round(Math.random() * W)}' cy='${Math.round(Math.random() * H)}' r='${1 + Math.round(Math.random() * 3)}'/>`).join('')}</g></svg>`),
-  },
-  {
-    id: 'halloween', name: '🎃 Halloween', tone: 0.16,
-    url: svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><defs><radialGradient id='g' cx='50%' cy='36%' r='82%'><stop offset='0%' stop-color='#c25a12'/><stop offset='45%' stop-color='#5a2a08'/><stop offset='100%' stop-color='#120a14'/></radialGradient></defs><rect width='${W}' height='${H}' fill='url(#g)'/><circle cx='1200' cy='230' r='120' fill='#f7a83e' fill-opacity='0.5'/></svg>`),
-  },
-  {
-    id: 'summer', name: '🌴 Summer', tone: 0.55,
-    url: svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#2ec5d3'/><stop offset='0.55' stop-color='#4a8fd6'/><stop offset='1' stop-color='#ffd66b'/></linearGradient></defs><rect width='${W}' height='${H}' fill='url(#g)'/><circle cx='300' cy='240' r='120' fill='#fff' fill-opacity='0.5'/></svg>`),
-  },
-];
 
 /**
  * The big-screen (TV) configuration — style, accent, extras (quips + background photo)
@@ -106,7 +53,19 @@ export default function TvBroadcast() {
   const [urlCopied, setUrlCopied] = useState(false);
   const [bgBusy, setBgBusy] = useState(false);
   const [bgError, setBgError] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<SavedPhoto[]>([]);
   const [penaltyText, setPenaltyText] = useState('');
+
+  // The gallery lives in IndexedDB (see lib/photoStore.ts), so it is read once the
+  // panel is actually opened rather than on every Table-tab render.
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    void listPhotos().then((list) => alive && setPhotos(list));
+    return () => {
+      alive = false;
+    };
+  }, [open]);
   const [ruleText, setRuleText] = useState('');
 
   const addToList = (key: 'tvPenalties' | 'tvHouseRules', text: string) => {
@@ -170,6 +129,9 @@ export default function TvBroadcast() {
           }
           const { focus, tone } = analyzeBackground(ctx, w, h);
           dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: dataUrl, tvBackgroundFocus: focus, tvBackgroundTone: tone } });
+          // keep it: picking the same photo again next week should not mean
+          // hunting through the camera roll for it
+          void addPhoto({ url: dataUrl, tone, focus }).then(() => listPhotos()).then(setPhotos);
         } catch {
           setBgError('Could not process that image — try a different photo.');
         } finally {
@@ -265,11 +227,13 @@ export default function TvBroadcast() {
             <div className="divider" />
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{t('settings.tvBackground')}</div>
             <div className="faint" style={{ fontSize: 12, marginBottom: 10 }}>{t('settings.tvBackgroundDesc')}</div>
+            {/* Ordered so the ones drawn for the chosen big-screen style come first —
+                casino and sci-fi each have their own set. */}
             <div className="bg-preset-grid">
-              {PRESETS.map((p) => (
+              {backgroundsFor(effTvSkin).map((p) => (
                 <button
                   key={p.id}
-                  className={`bg-preset ${settings.tvBackground === p.url ? 'active' : ''}`}
+                  className={`bg-preset ${settings.tvBackground === p.url ? 'active' : ''} ${p.skin === effTvSkin ? 'matches' : ''}`}
                   style={{ backgroundImage: `url("${p.url}")` }}
                   onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: p.url, tvBackgroundFocus: { x: 50, y: 50 }, tvBackgroundTone: p.tone } })}
                   title={p.name}
@@ -278,9 +242,50 @@ export default function TvBroadcast() {
                 </button>
               ))}
             </div>
-            {settings.tvBackground && !PRESETS.some((p) => p.url === settings.tvBackground) && (
-              <div className="tv-bg-preview" style={{ backgroundImage: `url("${settings.tvBackground}")` }} />
+
+            {/* The user's own gallery — saved on this device, never synced. */}
+            {photos.length > 0 && (
+              <>
+                <div className="bg-fav-head">
+                  {t('settings.myPhotos')}
+                  <span className="faint">{t('settings.myPhotosHint')}</span>
+                </div>
+                <div className="bg-fav-strip">
+                  {photos.map((ph) => (
+                    <div className={`bg-fav ${settings.tvBackground === ph.url ? 'active' : ''}`} key={ph.id}>
+                      <button
+                        className="bg-fav-pick"
+                        style={{ backgroundImage: `url("${ph.url}")` }}
+                        onClick={() =>
+                          dispatch({
+                            type: 'UPDATE_SETTINGS',
+                            patch: { tvBackground: ph.url, tvBackgroundFocus: ph.focus, tvBackgroundTone: ph.tone },
+                          })
+                        }
+                        aria-label={t('settings.myPhotos')}
+                      />
+                      <button
+                        className="bg-fav-x"
+                        aria-label={t('settings.removePhoto')}
+                        onClick={() => {
+                          void deletePhoto(ph.id).then(() => setPhotos((l) => l.filter((x) => x.id !== ph.id)));
+                          if (settings.tvBackground === ph.url)
+                            dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: null, tvBackgroundFocus: null, tvBackgroundTone: null } });
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
+
+            {settings.tvBackground &&
+              !TV_BACKGROUNDS.some((p) => p.url === settings.tvBackground) &&
+              !photos.some((p) => p.url === settings.tvBackground) && (
+                <div className="tv-bg-preview" style={{ backgroundImage: `url("${settings.tvBackground}")` }} />
+              )}
             {bgError && <p style={{ color: 'var(--bad)', fontSize: 12, margin: '0 0 8px' }}>{bgError}</p>}
             {/* The photo was dropped to get the rest of the night saved — say so,
                 rather than letting it disappear on the next launch unexplained. */}

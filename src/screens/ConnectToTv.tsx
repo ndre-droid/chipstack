@@ -83,6 +83,17 @@ export default function ConnectToTv() {
     return () => window.clearInterval(id);
   }, [connected]);
 
+  /* "Synced" on its own is ambiguous: synced a second ago, or synced twenty minutes
+     ago and nothing has moved since? The age answers it, and it needs its own slow
+     tick because no store change fires while time simply passes. */
+  const [ageTick, setAgeTick] = useState(0);
+  useEffect(() => {
+    if (!connected) return;
+    const h = window.setInterval(() => setAgeTick((n) => n + 1), 5000);
+    return () => window.clearInterval(h);
+  }, [connected]);
+  void ageTick;
+
   if (!firebaseConfigured) return null;
 
   const code = digits.join('');
@@ -151,6 +162,12 @@ export default function ConnectToTv() {
 
   const statusLabel = online ? t('connect.tvLive') : tvSeen ? t('connect.tvOffline') : t('connect.waitingTv');
 
+  const syncedAge = (() => {
+    if (!sync.lastSyncedAt) return null;
+    const secs = Math.max(0, Math.round((Date.now() - sync.lastSyncedAt) / 1000));
+    return secs < 90 ? t('connect.syncAgo', { n: secs }) : t('connect.syncAgoMin', { n: Math.round(secs / 60) });
+  })();
+
   // The outbound half of the link: the heartbeat above says the TV is there, this
   // says whether what you changed on the phone actually reached it.
   const stuck = sync.status === 'retrying';
@@ -189,6 +206,7 @@ export default function ConnectToTv() {
             <div className={`sync-line ${syncTone}`}>
               <span className={`sync-dot ${syncTone}`} />
               <span>{syncLabel}</span>
+              {sync.status === 'synced' && syncedAge && <span className="sync-age">{syncedAge}</span>}
             </div>
             {stuck && sync.lastError && (
               // The reason, verbatim from the SDK. Unglamorous, but a stuck sync used

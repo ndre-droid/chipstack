@@ -45,6 +45,10 @@ export interface LiveData {
   bountyAmount: number;
   /** the profit/loss trend line — the TV follows the phone's choice */
   showTrend: boolean;
+  /** custom prize-pool split; null = the default for the field size */
+  payoutSplit: number[] | null;
+  /** last level you can still buy in during; 0 = no window */
+  lateRegLevels: number;
   /** free custom accent colour (hex) — overrides the presets on the TV too */
   customAccent: string | null;
   /** custom penalty spinner entries + break house rules */
@@ -85,6 +89,8 @@ export function dataOf(state: AppState): LiveData {
     bountyMode: state.settings.bountyMode ?? false,
     bountyAmount: state.settings.bountyAmount ?? 5,
     showTrend: state.settings.showTrend ?? true,
+    payoutSplit: state.settings.payoutSplit ?? null,
+    lateRegLevels: state.settings.lateRegLevels ?? 0,
     customAccent: state.settings.customAccent ?? null,
     tvPenalties: state.settings.tvPenalties ?? [],
     tvHouseRules: state.settings.tvHouseRules ?? [],

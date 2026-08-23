@@ -3,13 +3,17 @@ import { useStore } from '../store';
 import { useT, useFmt } from '../lib/i18n';
 import { IconPlus, IconTrash } from './Icons';
 import { EmojiPicker } from './EmojiPicker';
-import CountRound, { type ChipSnapshot } from './CountRound';
+import CountRound, { type LedgerSnapshot } from './CountRound';
 import PlayerSheet from './PlayerSheet';
 import Sparkline from './Sparkline';
 import { handoutStack } from '../lib/startingStack';
 import { moneyToUnits } from '../lib/distribution';
 import { parseMoney } from '../lib/money';
 import { useConfirm } from './Confirm';
+import { netOf } from '../lib/settle';
+import { useBackHandler } from '../lib/backHandler';
+import { haptic } from '../lib/platform';
+import PeoplePicker from './PeoplePicker';
 
 /** how old the newest count may get before the roster nudges you to count again */
 const STALE_MINUTES = 25;
@@ -55,8 +59,10 @@ export default function PlayerRoster() {
   const [nameId, setNameId] = useState<string | null>(null);
   const [handout, setHandout] = useState<Handout | null>(null);
   const [tableMenu, setTableMenu] = useState(false);
+  const [pickPeople, setPickPeople] = useState(false);
   const confirm = useConfirm();
-  const [undo, setUndo] = useState<ChipSnapshot[] | null>(null);
+  // What the ledger looked like before the last money change, plus what to call it.
+  const [undo, setUndo] = useState<{ ledger: LedgerSnapshot; label: string } | null>(null);
   const undoTimer = useRef<number | null>(null);
   // re-render on a slow tick so "counted 20 min ago" doesn't go stale on screen
   const [, setTick] = useState(0);
@@ -66,8 +72,8 @@ export default function PlayerRoster() {
   }, []);
   useEffect(() => () => { if (undoTimer.current) window.clearTimeout(undoTimer.current); }, []);
 
-  const offerUndo = (snapshot: ChipSnapshot[]) => {
-    setUndo(snapshot);
+  const offerUndo = (ledgerBefore: LedgerSnapshot, label = t('roster.countSaved')) => {
+    setUndo({ ledger: ledgerBefore, label });
     if (undoTimer.current) window.clearTimeout(undoTimer.current);
     undoTimer.current = window.setTimeout(() => setUndo(null), UNDO_MS);
   };
@@ -88,6 +94,23 @@ export default function PlayerRoster() {
   );
   const contested = inPlayCounted.length > 1;
 
+  /* Nine people in seat order is a scrolling exercise when you just want to see who
+     is winning. Display-only — the underlying ledger order never changes, and this
+     is deliberately NOT the TV's sort (see Settings.rosterSort). */
+  const sortMode = settings.rosterSort ?? 'seat';
+  const shown = (() => {
+    if (sortMode === 'seat') return ledger;
+    const key = (p: (typeof ledger)[number]) => (sortMode === 'chips' ? (p.chips || 0) * unitValue : netOf(p, unitValue));
+    // whoever has left the table sinks to the bottom either way
+    return [...ledger].sort((a, b) => Number(!!a.out) - Number(!!b.out) || key(b) - key(a));
+  })();
+  const cycleSort = () => {
+    const order = ['seat', 'chips', 'profit'] as const;
+    const next = order[(order.indexOf(sortMode) + 1) % order.length];
+    dispatch({ type: 'UPDATE_SETTINGS', patch: { rosterSort: next } });
+  };
+  const sortLabel = { seat: t('roster.sortSeat'), chips: t('roster.sortChips'), profit: t('roster.sortProfit') }[sortMode];
+
   const totalIn = ledger.reduce((s, p) => s + (p.buyIn || 0), 0);
   const totalOut = ledger.reduce((s, p) => s + (p.cashOut || 0), 0);
   const onTable = totalIn - totalOut;
@@ -102,25 +125,42 @@ export default function PlayerRoster() {
     .slice(0, 4);
 
   /** What a still-playing stack is worth against what they put in — the number
-   *  everybody asks for mid-game and had to work out in their head. */
-  const netNow = (p: (typeof ledger)[number]) =>
-    (p.chips || 0) * unitValue + (p.cashOut || 0) - (p.buyIn || 0);
+   *  everybody asks for mid-game and had to work out in their head. Shared with the
+   *  settle-up tab so the same player can't read +€12 here and −€20 there. */
+  const netNow = (p: (typeof ledger)[number]) => netOf(p, unitValue);
 
-  /** Keep the planning player count in step with who's actually here. */
-  const syncCount = (n: number) => dispatch({ type: 'SET_PLAYER_COUNT', n: Math.max(1, n) });
-
-  const addPlayer = () => {
-    dispatch({ type: 'LEDGER_ADD' });
-    syncCount(ledger.length + 1);
-  };
+  // The planning player count follows the roster automatically (see the reducer),
+  // so nothing here has to remember to keep the two in step.
+  // Adding somebody goes through the saved-players sheet: the same six people show
+  // up most weeks, and retyping them every night was the single most tedious thing
+  // about setting up.
+  const addPlayer = () => setPickPeople(true);
 
   const removePlayer = (id: string) => {
+    const gone = ledger.find((p) => p.id === id);
     dispatch({ type: 'LEDGER_REMOVE', id });
-    syncCount(ledger.length - 1);
+    offerUndo(ledger, t('roster.undoRemoved', { name: gone?.name || '' }));
     setMenuId(null);
   };
 
   const closeRow = () => { setMenuId(null); setPrompt(null); };
+
+  /* Android back closes whatever the row has open, innermost first, before it gets
+     anywhere near leaving the app. The sheets (counting round, player sheet) register
+     themselves, so they are not listed here. */
+  useBackHandler(
+    !!(handout || koPickId || tableMenu || emojiId || stackId || prompt || menuId || nameId),
+    () => {
+      if (handout) setHandout(null);
+      else if (koPickId) setKoPickId(null);
+      else if (tableMenu) setTableMenu(false);
+      else if (emojiId) setEmojiId(null);
+      else if (stackId) setStackId(null);
+      else if (prompt) setPrompt(null);
+      else if (menuId) setMenuId(null);
+      else setNameId(null);
+    },
+  );
 
   /** Cash-out ADDS to the total taken off the table, so a second one later still adds up. */
   const cashOut = (id: string, amount: number) => {
@@ -131,6 +171,8 @@ export default function PlayerRoster() {
       id,
       patch: { cashOut: (p.cashOut || 0) + amount, out: true, outAt: Date.now(), chips: undefined },
     });
+    offerUndo(ledger, t('roster.undoCashOut', { name: p.name || '' }));
+    haptic(18);
     closeRow();
   };
 
@@ -153,6 +195,8 @@ export default function PlayerRoster() {
         chips: (p.chips || 0) + moneyToUnits(amount, unitValue),
       },
     });
+    offerUndo(ledger, t('roster.undoRebuy', { name: p.name || '' }));
+    haptic(12);
     setHandout({
       id,
       amount,
@@ -171,7 +215,7 @@ export default function PlayerRoster() {
     if (!p) return;
     const units = moneyToUnits(Math.max(0, amount), unitValue);
     // same reason as the counting round: the trail point lands on every in-play row
-    offerUndo(ledger.map((x) => ({ id: x.id, chips: x.chips, chipHistory: x.chipHistory })));
+    offerUndo(ledger);
     dispatch({ type: 'LEDGER_SET_CHIPS_MANY', entries: [{ id, chips: units > 0 ? units : undefined }] });
     setStackId(null);
   };
@@ -180,27 +224,43 @@ export default function PlayerRoster() {
     <>
       <div className="section-label">
         {t('roster.title')}
-        <span className="hint">{t('roster.hint')}</span>
+        {ledger.length > 3 ? (
+          <button className="pr-sort hint" onClick={cycleSort} aria-label={t('roster.sort')}>
+            ⇅ {sortLabel}
+          </button>
+        ) : (
+          <span className="hint">{t('roster.hint')}</span>
+        )}
       </div>
 
       <div className="card">
         {ledger.length === 0 ? (
           <>
             <div className="empty" style={{ paddingBottom: 12 }}>{t('roster.empty')}</div>
+            {/* One tap for the usual crowd — the fastest possible start to a night. */}
+            {state.lastLineup.length > 0 && (
+              <button className="btn btn-primary btn-block" onClick={() => dispatch({ type: 'LEDGER_SEAT_LINEUP' })}>
+                {t('roster.lastLineup')}
+                <span className="pr-lineup-names">{state.lastLineup.map((l) => l.name).join(' · ')}</span>
+              </button>
+            )}
             <button
-              className="btn btn-primary btn-block"
+              className={`btn btn-block ${state.lastLineup.length ? 'btn-ghost mt8' : 'btn-primary'}`}
+              onClick={addPlayer}
+            >
+              <IconPlus size={16} /> {t('roster.addPlayers')}
+            </button>
+            <button
+              className="btn btn-ghost btn-block btn-sm mt8"
               onClick={() => dispatch({ type: 'LEDGER_ADD_MANY', n: session.playerCount })}
             >
               {t('roster.startWith', { n: session.playerCount })}
-            </button>
-            <button className="btn btn-ghost btn-block btn-sm mt8" onClick={addPlayer}>
-              <IconPlus size={16} /> {t('roster.addPlayer')}
             </button>
           </>
         ) : (
           <>
             <div className="pr-list">
-              {ledger.map((p) => {
+              {shown.map((p) => {
                 const gone = !!p.out;
                 const cashedOut = (p.cashOut || 0) > 0;
                 const net = (p.cashOut || 0) - (p.buyIn || 0);
@@ -325,6 +385,19 @@ export default function PlayerRoster() {
                         <button className="btn btn-ghost btn-sm" onClick={() => { setEditId(p.id); closeRow(); }}>
                           ✏️ {t('roster.edit')}
                         </button>
+                        {/* Somebody who wandered in and got typed by hand — keep them
+                            so next week they are one tap in the picker. */}
+                        {!p.personId && (p.name || '').trim() && (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => {
+                              dispatch({ type: 'PERSON_SAVE', person: { name: p.name, emoji: p.emoji } });
+                              closeRow();
+                            }}
+                          >
+                            ⭐ {t('roster.saveToPeople')}
+                          </button>
+                        )}
                         <button
                           className={`btn btn-sm ${prompt?.id === p.id && prompt.kind === 'rebuy' ? 'btn-primary' : 'btn-ghost'}`}
                           onClick={() => setPrompt(prompt?.id === p.id && prompt.kind === 'rebuy' ? null : { id: p.id, kind: 'rebuy' })}
@@ -344,6 +417,8 @@ export default function PlayerRoster() {
                             className="btn btn-ghost btn-sm"
                             onClick={() => {
                               dispatch({ type: 'LEDGER_UPDATE', id: p.id, patch: { out: true, outAt: Date.now(), chips: undefined } });
+                              offerUndo(ledger, t('roster.undoBust', { name: p.name || '' }));
+                              haptic([14, 60, 14]);
                               setKoPickId(bountyMode ? p.id : null);
                               setMenuId(null);
                             }}
@@ -558,15 +633,16 @@ export default function PlayerRoster() {
 
       {confirm.node}
       {round && <CountRound only={round.only} onClose={() => setRound(null)} onUndoable={offerUndo} />}
+      {pickPeople && <PeoplePicker onClose={() => setPickPeople(false)} />}
       {editId && <PlayerSheet playerId={editId} onClose={() => setEditId(null)} />}
 
       {undo && (
         <div className="snackbar" role="status">
-          <span>{t('roster.countSaved')}</span>
+          <span>{undo.label}</span>
           <button
             className="btn btn-ghost btn-sm"
             onClick={() => {
-              dispatch({ type: 'LEDGER_RESTORE_CHIPS', players: undo });
+              dispatch({ type: 'LEDGER_RESTORE', ledger: undo.ledger });
               setUndo(null);
             }}
           >

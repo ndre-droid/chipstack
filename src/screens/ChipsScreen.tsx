@@ -1,13 +1,20 @@
+import { useState } from 'react';
 import { useStore } from '../store';
 import Chip from '../components/Chip';
 import { IconPlus, IconTrash } from '../components/Icons';
 import { useT, useFmt } from '../lib/i18n';
 import { Toggle } from '../components/Toggle';
+import { useConfirm } from '../components/Confirm';
+import { CHIP_SET_PRESETS, denomsFromPreset } from '../lib/chipSetPresets';
 
 export default function ChipsScreen() {
   const { state, dispatch } = useStore();
-  const { denominations, settings } = state;
+  const { denominations, settings, chipSets, activeChipSetId } = state;
   const t = useT();
+  const confirm = useConfirm();
+  const [renaming, setRenaming] = useState(false);
+  const [presetsOpen, setPresetsOpen] = useState(false);
+  const activeSet = chipSets.find((c) => c.id === activeChipSetId) ?? chipSets[0];
   // One translatable sentence with a {settings} placeholder, split so the bold word
   // lands wherever that language puts it rather than where the markup does.
   const [unitHintBefore, unitHintAfter = ''] = t('chips.unitHint').split('{settings}');
@@ -24,6 +31,114 @@ export default function ChipsScreen() {
       <div className="section-label">
         {t('chips.title')}
         <span className="hint">{t('chips.hint')}</span>
+      </div>
+
+      {/* A box that came out of a shop has a known contents list — no reason to make
+          anyone type nine values, colours and counts before the app can answer. */}
+      {presetsOpen && (
+        <div className="card preset-sets">
+          <div style={{ fontWeight: 600, fontSize: 14 }}>{t('chips.presets')}</div>
+          <div className="faint" style={{ fontSize: 12, margin: '3px 0 10px' }}>{t('chips.presetHint')}</div>
+          {CHIP_SET_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              className="preset-set-row"
+              onClick={() => {
+                dispatch({
+                  type: 'CHIPSET_ADD',
+                  name: p.name,
+                  denominations: denomsFromPreset(p, () => Math.random().toString(36).slice(2, 9)),
+                });
+                setPresetsOpen(false);
+              }}
+            >
+              <span className="preset-set-swatches">
+                {p.chips.slice(0, 6).map((c, i) => (
+                  <i key={i} style={{ background: c.color, borderColor: c.accent }} />
+                ))}
+              </span>
+              <span className="preset-set-text">
+                <b>{p.name}</b>
+                <span>{p.note}</span>
+              </span>
+            </button>
+          ))}
+          <button
+            className="btn btn-ghost btn-block btn-sm mt8"
+            onClick={() => {
+              dispatch({ type: 'CHIPSET_ADD', name: t('chips.newSet') });
+              setPresetsOpen(false);
+            }}
+          >
+            {t('chips.newSet')}
+          </button>
+        </div>
+      )}
+
+      {/* More than one box of chips: the Nash set at home, the travel case, a
+          friend's set. `denominations` is always the active one — see ChipSet. */}
+      <div className="set-bar">
+        <div className="set-list">
+          {chipSets.map((c) => (
+            <button
+              key={c.id}
+              className={`set-chip ${c.id === activeSet?.id ? 'active' : ''}`}
+              onClick={() => {
+                dispatch({ type: 'CHIPSET_SELECT', id: c.id });
+                setRenaming(false);
+              }}
+            >
+              {c.name}
+            </button>
+          ))}
+          <button className="set-chip add" onClick={() => setPresetsOpen((v) => !v)}>
+            <IconPlus size={13} /> {t('chips.newSet')}
+          </button>
+        </div>
+        {activeSet && (
+          <div className="set-actions">
+            {renaming ? (
+              <input
+                className="input set-rename"
+                defaultValue={activeSet.name}
+                autoFocus
+                placeholder={t('chips.setNamePlaceholder')}
+                onBlur={(e) => {
+                  dispatch({ type: 'CHIPSET_RENAME', id: activeSet.id, name: e.target.value });
+                  setRenaming(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur();
+                }}
+              />
+            ) : (
+              <>
+                <button className="btn btn-ghost btn-sm" onClick={() => setRenaming(true)}>{t('chips.renameSet')}</button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => dispatch({ type: 'CHIPSET_ADD', name: `${activeSet.name} 2`, copyActive: true })}
+                >
+                  {t('chips.copySet')}
+                </button>
+                {chipSets.length > 1 && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() =>
+                      confirm.ask({
+                        text: t('chips.removeSetConfirm', { name: activeSet.name }),
+                        confirmLabel: t('common.remove'),
+                        danger: true,
+                        onYes: () => dispatch({ type: 'CHIPSET_REMOVE', id: activeSet.id }),
+                      })
+                    }
+                  >
+                    <IconTrash size={13} />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="card">
@@ -137,6 +252,7 @@ export default function ChipsScreen() {
         <b>{t('nav.settings')}</b>
         {unitHintAfter}
       </p>
+      {confirm.node}
     </div>
   );
 }

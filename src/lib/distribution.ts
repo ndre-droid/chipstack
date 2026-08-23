@@ -25,6 +25,10 @@ export interface StackResult {
   blindOk: boolean;
   /** the eligible denominations for this stack (blind-compatible pool), asc by value */
   pool: Denomination[];
+  /** Chips the plan needs more of than the box holds. Empty when `feasible`. The
+   *  warnings say the same thing in prose; this is the version the UI can turn into
+   *  "you are 40 short of 25s". */
+  shortfall: { denomId: string; value: number; needed: number; have: number; missing: number }[];
 }
 
 export interface DistOptions {
@@ -425,17 +429,19 @@ function finalize(
   }
 
   let feasible = true;
+  const shortfall: StackResult['shortfall'] = [];
   all.forEach((d) => {
     const needed = counts[d.id] * stacksNeeded;
     if (needed > d.count) {
       feasible = false;
+      shortfall.push({ denomId: d.id, value: d.value, needed, have: d.count, missing: needed - d.count });
       warnings.push(
         `Not enough ${d.value} chips: need ${needed} (${counts[d.id]} × ${stacksNeeded} stacks) but you own ${d.count}.`,
       );
     }
   });
 
-  return result(counts, all, target, warnings, notes, feasible, baseValue, blindOk, pool);
+  return result(counts, all, target, warnings, notes, feasible, baseValue, blindOk, pool, shortfall);
 }
 
 function result(
@@ -448,6 +454,7 @@ function result(
   baseValue: number,
   blindOk: boolean,
   pool: Denomination[] = [],
+  shortfall: StackResult['shortfall'] = [],
 ): StackResult {
   const denomsUsed = all
     .filter((d) => counts[d.id] > 0)
@@ -467,6 +474,7 @@ function result(
     baseValue: baseValue || (denomsUsed[0]?.value ?? 0),
     blindOk,
     pool,
+    shortfall,
   };
 }
 

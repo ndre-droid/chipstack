@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { settleUp } from './settle.ts';
-import type { PlayerBalance } from './settle.ts';
+import { settleUp, settleLedger, netOf } from './settle.ts';
+import type { PlayerBalance, SettlePlayer } from './settle.ts';
 
 /**
  * Settlement is the last thing that happens on a poker night and the one number
@@ -98,6 +98,62 @@ const cents = settlesEveryone('amounts with cents', [
   { name: 'C', net: 20 },
 ]);
 check('every payment is a whole number of cents', cents.every((t) => Math.abs(t.amount * 100 - Math.round(t.amount * 100)) < 1e-9));
+// ---------------------------------------------------------------------------
+// Mid-game settlement: a player who has not cashed out is still holding chips,
+// and that stack is what they would take off the table right now. Ignoring it
+// used to make every still-playing player look like a total loser AND produced a
+// transfer list built from balances that did not add up to zero.
+// ---------------------------------------------------------------------------
+console.log('\nmid-game (nobody cashed out yet)');
+const UNIT = 0.01;
+const midGame: SettlePlayer[] = [
+  { name: 'Nahuel', buyIn: 20, cashOut: 0, chips: 3200 },
+  { name: 'Mika', buyIn: 20, cashOut: 0, chips: 1500 },
+  { name: 'Jo', buyIn: 20, cashOut: 0, chips: 1300 },
+];
+const mid = settleLedger(midGame, UNIT);
+check('a leading stack shows a profit, not minus the buy-in', netOf(midGame[0], UNIT) === 12);
+check('the round is flagged provisional', mid.provisional === true);
+check('money still on the table is counted', round(mid.onTable) === 60);
+check('nets sum to zero', Math.abs(sum(mid.nets.map((n) => n.net))) < 0.005);
+check(
+  'every euro of the loss is paid to the winner',
+  round(sum(mid.transfers.map((t) => t.amount))) === 12,
+  mid.transfers.map((t) => `${t.from} to ${t.to} ${t.amount}`).join(' / '),
+);
+
+console.log('\none player cashed out, the rest still playing');
+const partly: SettlePlayer[] = [
+  { name: 'A', buyIn: 20, cashOut: 32, out: true },
+  { name: 'B', buyIn: 20, cashOut: 0, chips: 1400 },
+  { name: 'C', buyIn: 20, cashOut: 0, chips: 1400 },
+];
+const part = settleLedger(partly, UNIT);
+check('a cashed-out player holds nothing more', part.nets[0].onTable === 0);
+check('nets still sum to zero', Math.abs(sum(part.nets.map((n) => n.net))) < 0.005);
+check('the cashed-out winner is owed exactly their profit', round(part.nets[0].net) === 12);
+
+console.log('\nfully settled night');
+const done: SettlePlayer[] = [
+  { name: 'A', buyIn: 20, cashOut: 45, out: true },
+  { name: 'B', buyIn: 20, cashOut: 15, out: true },
+  { name: 'C', buyIn: 20, cashOut: 0, out: true },
+];
+const fin = settleLedger(done, UNIT);
+check('a settled night is not provisional', fin.provisional === false);
+check('no drift when the cash-outs match the buy-ins', fin.drift === 0);
+check('a busted player owes their whole buy-in', round(fin.nets[2].net) === -20);
+
+console.log('\nmiscounted night');
+const off = settleLedger(
+  [
+    { name: 'A', buyIn: 20, cashOut: 50, out: true },
+    { name: 'B', buyIn: 20, cashOut: 0, out: true },
+  ],
+  UNIT,
+);
+check('drift reports the missing or extra money', off.drift === 10);
+
 
 console.log(`\n${failures === 0 ? 'ALL PASS' : `${failures} FAILED`}`);
 assert.equal(failures, 0, `${failures} settlement check(s) failed`);

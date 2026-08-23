@@ -175,6 +175,17 @@ src/
       A standalone TvMode adopts it and writes back, so both screens show one clock.
     useHostClock.ts  the same job while HOSTING: one subscription owned by the Table tab, handed
       to RemoteControl as props. Never runs a countdown — derives from the shared deadline.
+    backHandler.ts   the Android back stack — useBackHandler registers an overlay
+    useWakeLock.ts   keep the screen awake (big screen + a running clock)
+    platform.ts      isNative() / haptic()
+    settle.ts        THE definition of a player net; settleLedger() answers
+      "who pays whom" at any point in the night, carried balances included
+    sidePots.ts, chipRace.ts, payouts.ts, lateReg.ts, awards.ts, leagueStats.ts
+    tvBackgrounds.ts 21 generated big-screen backgrounds, grouped by skin
+    photoStore.ts    the user's own TV photos, in IndexedDB (NOT localStorage)
+    backup.ts        the whole device as one JSON file
+    chipSetPresets.ts known chip sets (Nash, Dice 300/500, ...)
+    levelAlert.ts    level-end notification — NATIVE ONLY, untested locally
     deepLink.ts (parseTvCode + useNativeDeepLink via @capacitor/app: chipstack://tv/NNNN → host)
     money.ts (fmtMoney/fmtNum/localeFor — language-driven grouping; i18n.ts useFmt() binds it —
       plus parseMoney(), which is why no money field is <input type="number"> any more: Chrome
@@ -186,6 +197,17 @@ src/
     ChipStackViz.tsx 3D chip-cylinder stacks (curved body, per-chip divisions, perspective-
                      projected deco face). Auto-fits width (ResizeObserver).
     ShareSheet.tsx, Icons.tsx
+    Onboarding.tsx     first run: buy-in / how many / how long, then derive the rest
+    PeoplePicker.tsx   the regulars (AppState.people) — seat them in a tap
+    JoinRequests.tsx   guests who scanned the TV code and typed their own name
+    TableTools.tsx     side pots + the live colour-up / chip race
+    ClockFocus.tsx     full-screen clock (tap the time in the sticky bar)
+    BreakAt.tsx        break at a wall-clock time, arms once
+    Timeline.tsx       what happened tonight (AppState.timeline)
+    NightAwards.tsx    end-of-night titles (lib/awards.ts)
+    SeasonStats.tsx    season badges, streaks, head-to-head (lib/leagueStats.ts)
+    PayoutCard.tsx     the prize split on the phone (lib/payouts.ts)
+    CarryCard.tsx      balances carried between nights (AppState.carry)
     StartingStack.tsx  the "stack everyone gets" card on the Table tab (computeStack + ChipStackViz)
     SeasonLeague.tsx   NEW — season league on the Cash tab (save night → net/ROI standings + history)
     PlayerRoster.tsx   THE player list (Table tab): join / rename / emoji / rebuy / stack / cash-out /
@@ -213,6 +235,7 @@ src/
                      folded into a "Tisch-Setup" disclosure once anybody has sat down.
     ConnectToTv.tsx  phone-side link: 4 code boxes → checkCodeExists → role 'host' + code
                      (replaced LiveSessionControl.tsx). Firebase-configured only.
+    GuestView.tsx    a guest's own phone: read-only table, put your name in, vote
     TvMode.tsx       fullscreen landscape big-screen dashboard (clock/standings/legend/colour-up/
                      quips/shot-clock/who-drinks). If deviceIsTv: advertises a pairing code
                      (tvEnsurePairing), shows .tv-pair card until a phone connects, then mirrors
@@ -308,6 +331,139 @@ RemoteControl (host, Table tab) still covers: clock, level length (±1/±10 + Tu
 break length + auto-break every N, blinds (edit/add/remove), players & pool (rename, buy-in, Rebuy,
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
+
+### Recent work (2026-08-24 — the big UX pass: 45 items, all of them)
+
+The user asked for a full UI/UX review and then said "do all of it". What follows is
+what landed. `npx tsc -b`, `npm run build`, `npm test` (11 files) and `oxlint` are all
+clean; every item below was checked in the dev preview unless it says otherwise.
+
+**Correctness — the settle-up tab was lying.**
+- `netOf()` / `stackMoney()` / `settleLedger()` in `lib/settle.ts` are now the ONE
+  definition of a player's result. The Cash tab counted only `cashOut − buyIn`, so
+  mid-game every still-playing player read as `−buy-in` while the roster showed them
+  up; and the moment ONE player cashed out it printed a confident payment list built
+  from balances that did not sum to zero (`settleUp` silently truncates the excess).
+  An uncashed stack now counts as what that player would take right now, the card is
+  labelled **provisional**, and `imbalance` is surfaced instead of swallowed.
+- **"Jetzt abrechnen"** (`LEDGER_SETTLE_ALL`) books every remaining stack as a
+  cash-out and closes the night.
+- `session.playerCount` follows the roster. It is decided in ONE place (the reducer
+  wrapper), because deleting somebody from the player sheet used to miss it, and
+  `migrate()` repairs an already-drifted save. The Plan stepper goes read-only once
+  anybody is seated.
+
+**Platform / shell.**
+- **Android back** — `lib/backHandler.ts` + `useBackHandler`. Sheets and dialogs
+  register themselves; App falls back to leaving Settings, then press-again-to-exit.
+  Native uses `@capacitor/app`'s `backButton`; the web/PWA keeps one spare history
+  entry and re-pushes it. Registered by: Confirm, ShareSheet, CountRound (numpad
+  first), PlayerSheet, PeoplePicker, TableTools, ClockFocus, the big screen, and the
+  roster's inline editors.
+- **Screens stay mounted** (`App.tsx` renders every visited view, only the active one
+  is displayed). `key={view}` was throwing away scroll and every piece of local UI
+  state on each tab change. Scroll offsets are recorded on `scroll`, NOT on switch —
+  `display:none` has already zeroed `scrollTop` by the time an effect could read it.
+- **Last tab is remembered** (`chipstack.view`), and a first launch with players on
+  the table opens on Table.
+- **WakeLock on the phone** — `lib/useWakeLock.ts`, shared with TvMode, held while the
+  countdown runs.
+- Language is detected from `navigator.language` on a first run only.
+- Haptics on rebuy / cash-out / bust / card draw (`lib/platform.ts`).
+
+**New screens and tools.**
+- `components/Onboarding.tsx` — first run asks three questions (buy-in, how many, how
+  long) and derives the rest via `ladderForDuration()` in `lib/planning.ts`.
+  `Settings.onboardedAt` is `0` for existing installs, so nobody who already set the
+  app up ever sees it.
+- `components/PeoplePicker.tsx` + `AppState.people` — the regulars, saved once and
+  seated in a tap, with payment details for the settle-up. `lastLineup` powers
+  **"Wie letztes Mal"** in the empty roster. Renaming a seated regular updates their
+  profile.
+- `components/TableTools.tsx` — **side pots** (`lib/sidePots.ts`) and the **live
+  colour-up / chip race** (`lib/chipRace.ts`), both property-tested.
+- `components/ClockFocus.tsx` — full-screen clock, opened by tapping the time in the
+  sticky bar.
+- `components/Timeline.tsx` + `AppState.timeline` — what happened tonight, recorded by
+  DIFFING the ledger in the reducer, so no call site can forget. Undo pops the last
+  entry.
+- `components/NightAwards.tsx` (`lib/awards.ts`) — end-of-night titles, shareable.
+- `components/SeasonStats.tsx` (`lib/leagueStats.ts`) — season badges, streaks,
+  head-to-head, shareable season card.
+- `components/PayoutCard.tsx` (`lib/payouts.ts`) — the prize split on the PHONE, with
+  the number of paid places adjustable and the bubble named. TvMode uses the same
+  helper. `Settings.payoutSplit` is synced.
+- `components/CarryCard.tsx` + `AppState.carry` — results carried between nights,
+  folded into the settlement so one list of payments settles everything.
+- `components/BreakAt.tsx` — a break at a wall-clock time ("the pizza gets here at
+  ten"). Arms once and clears itself.
+- **Late registration** (`lib/lateReg.ts`, `Settings.lateRegLevels`, synced) on the
+  sticky bar and the big screen.
+- **Backup** (`lib/backup.ts`) — the whole device as one JSON file, TV photos
+  included; the parser is strict and tested.
+- **Chip sets** (`AppState.chipSets` / `activeChipSetId`) and `lib/chipSetPresets.ts`
+  (Nash, Dice 300/500, casino colours, cent values). `denominations` is still THE
+  active set, which is why this stayed a small change.
+- **"Was dir fehlt"** — `StackResult.shortfall` is structured now, so the Plan tab
+  prints a shopping list instead of only a red warning.
+- Roster sorting (`Settings.rosterSort`, per-device, deliberately NOT the TV's sort),
+  44px tap targets, landscape layout, sync age on the live pill.
+- **Length-first ladder on the Plan tab** — `ladderForDuration()` is reachable outside
+  the first-run wizard now (2 / 3 / 4 / 5 h chips next to "Suggest for my chips"),
+  because "we have until midnight" changes and the onboarding only runs once.
+- **`--text-faint` was failing WCAG AA everywhere.** Measured, not eyeballed: 2.58-2.89
+  in the minimal skins, 2.34 in playful, 3.14 in sci-fi, 4.40 in casino, all against
+  their own surfaces. It carries labels, hints and timestamps at 10-12px. Every skin's
+  value was recomputed to clear 4.5:1 against surface, surface-2 and bg; the TV's
+  `--tv-faint` is untouched (large text, 3:1 applies).
+
+**Guests (this is the one that changes how a night starts).**
+- A scanned code no longer makes you the host: `RoleChoice` in `App.tsx` asks. Role
+  `'guest'` renders `screens/GuestView.tsx` — read-only clock, blinds and stacks, plus
+  the two things a guest can do: put their own name in, and vote for the hand of the
+  night.
+- `requestSeat` / `subscribeJoins` / `clearJoin` and `castVote` / `subscribeVotes` in
+  `lib/liveSession.ts`, each in its OWN document (`NNNN-joins`, `NNNN-votes`) so a
+  guest never touches the host's game payload. Transactions, because everyone taps at
+  once. `components/JoinRequests.tsx` is the host's side; the TV shows the winning
+  moment. Verified end-to-end against the live project.
+- `firestore.rules` were extended for both documents (still NOT deployed — see the
+  Firebase note above; the live rules remain wide open by the user's decision).
+
+**Big screen.**
+- **Every skin now repaints the whole screen, not just the blinds.** Four role tokens
+  — `--tv-head` / `--tv-body` / `--tv-num` / `--tv-digits` — per `data-tv-skin`.
+  Casino is Playfair throughout, Playful is Fredoka, Sci-Fi is Orbitron including the
+  clock; everything else keeps monospaced digits, because the countdown repaints every
+  second and a proportional face makes the whole screen twitch.
+- **Backgrounds 9 → 21**, in `lib/tvBackgrounds.ts`, ordered so the ones drawn for the
+  chosen skin come first. New for casino: Art Deco, Velvet, Suits, Spotlight. For
+  sci-fi: Horizon, Nebula, Circuit, Datastream. Generated SVG, 18 kB each at most. The
+  random ones (Xmas) are seeded now — they used to produce a different data URL on
+  every load, which quietly lost the selection.
+- **Own photos are kept.** `lib/photoStore.ts` puts them in IndexedDB, not
+  localStorage: one downscaled photo is ~200 kB of base64 and the whole app state
+  shares a few MB. Per-device, never synced; the live session still carries only the
+  ONE active background.
+- **Switching style resets a custom accent.** A free custom accent overrides `--acc`
+  for every skin, so it followed you into the new style and cancelled the thing you
+  had just picked. Per-skin accents are untouched.
+
+**Two things worth knowing about the tooling.**
+- `scripts/i18n-add.mjs` appends keys to `lib/i18n.ts` from a small JSON file and
+  refuses a key that is missing a translation. ~350 strings were added this pass; do
+  not hand-edit that file any more.
+- The Bash tool mangles backslashes inside quoted heredocs. Writing `\n` into a source
+  file through one produces a real newline and breaks the file. Use the Write tool, or
+  build the backslash with `chr(92)`.
+
+**⚠️ Not verifiable locally:** `@capacitor/local-notifications` was added for the
+level-end notification (`lib/levelAlert.ts`, `Settings.levelAlerts`, switch on the
+Table tab). It is gated to native — Capacitor has no web implementation and calling
+the browser proxy throws `UNIMPLEMENTED`. **The next APK build is the first real test
+of it**, both that `npx cap sync` picks the plugin up and that the notification fires.
+Note the plugin proxy answers to every property including `then`, so it must never be
+returned straight out of an `async` function (that was the first bug).
 
 ### Recent work (2026-08-23 — the sync-wedge bug, leader marking, the trend line)
 

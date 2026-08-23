@@ -42,9 +42,20 @@ export interface Settings {
    *  first, or biggest profit first. Busted / cashed-out players always sink to
    *  the bottom of a sorted list. */
   tvRosterSort: 'seat' | 'chips' | 'profit';
+  /** How the PHONE roster is ordered. Deliberately separate from `tvRosterSort`:
+   *  sorting your own list to find somebody should not reshuffle the big screen
+   *  in front of the whole table. Per-device, never synced. */
+  rosterSort: 'seat' | 'chips' | 'profit';
   tvShowPayouts: boolean;   // show the prize-pool payout split on the TV
   tvShowBustOrder: boolean; // show the knocked-out / finish order on the TV
   breakMinutes: number;     // length of a break, in minutes (default 5)
+  /** Wall-clock time to break at, "HH:MM", or null. Level-based breaks answer
+   *  "every N levels"; this answers "the pizza gets here at ten", which is the
+   *  version a home game actually plans around. Fires once, then clears itself. */
+  breakAt: string | null;
+  /** Fire a notification when the level runs out. Off by default — it needs a
+   *  permission, and asking for one before the user wants the feature is rude. */
+  levelAlerts: boolean;
   breakEvery: number;       // auto-break every N levels (0 = off)
   tvBackground: string | null; // optional custom TV background image (data URL)
   tvBackgroundFocus: { x: number; y: number } | null; // salience focal point (0..100%) for smart placement
@@ -71,6 +82,13 @@ export interface Settings {
   /** Show the little profit/loss trend line next to a player, on the phone roster
    *  and on the TV. One counting round is one point; off hides it everywhere. */
   showTrend: boolean;
+  /** Tournament: the last blind level during which somebody can still buy in.
+   *  0 = no late registration window (the default). Shown on the phone and the TV
+   *  so nobody has to remember whether the door is still open. */
+  lateRegLevels: number;
+  /** How the prize pool is split, as shares of 1 (e.g. [0.5, 0.3, 0.2]). Null uses
+   *  the default for the field size — see lib/payouts.ts. Synced to the TV. */
+  payoutSplit: number[] | null;
   /** Optional free custom accent colour (hex). Overrides the 8 presets when set. */
   customAccent: string | null;
   /** Custom entries added to the "who drinks?" penalty spinner + break house rules. */
@@ -87,9 +105,18 @@ export interface Settings {
   tvScale: number | null;
   /** Live Session (cloud sync): 'tv' = this device shows a pairing code, owns the
    *  clock and mirrors the phone's data once paired; 'host' = the phone that typed
-   *  the code, pushing data + sending clock commands. Null when not in a session. */
+   *  the code, pushing data + sending clock commands; 'guest' = somebody at the
+   *  table watching on their own phone, who can put their name in but changes
+   *  nothing. Null when not in a session. */
   liveSessionCode: string | null;
-  liveSessionRole: 'host' | 'tv' | null;
+  liveSessionRole: 'host' | 'tv' | 'guest' | null;
+  /** A guest's own name and avatar, so the join screen remembers them next week. */
+  guestName: string | null;
+  guestEmoji: string | null;
+  /** When the first-run setup was finished or skipped. `null` means it has never
+   *  run, which is the only thing that shows it — an install that predates the
+   *  wizard is treated as done, not asked three questions about its own table. */
+  onboardedAt: number | null;
 }
 
 export interface SessionConfig {
@@ -114,12 +141,41 @@ export interface SessionConfig {
   stackOverride: { key: string; counts: Record<string, number> } | null;
 }
 
+/**
+ * A named box of chips. `AppState.denominations` is always the ACTIVE set's chips —
+ * everything in the app reads that one field, so adding sets stayed a small change:
+ * switching writes the current chips back into their set and loads the other one.
+ */
+export interface ChipSet {
+  id: string;
+  name: string;
+  denominations: Denomination[];
+}
+
 export interface Preset {
   id: string;
   name: string;
   denominations: Denomination[];
   session: SessionConfig;
   settings: Settings;
+}
+
+/**
+ * Somebody who plays at this table — saved once, seated in one tap every week.
+ *
+ * Kept apart from `LedgerPlayer` on purpose: the ledger row is what happened on ONE
+ * night (buy-ins, stack, cash-out) and gets cleared with the night, while the person
+ * outlives it. Before this, every regular was retyped from scratch every time.
+ */
+export interface Person {
+  id: string;
+  name: string;
+  emoji?: string;
+  /** Where they want to be paid: a payment link, a handle, or an IBAN. Free text —
+   *  the app only ever shows or copies it, it never sends money anywhere. */
+  payment?: string;
+  /** epoch ms of the last night they were seated for, newest first in the picker */
+  lastPlayedAt?: number;
 }
 
 /** A player in the cash/settle ledger, tracked through the night. */
@@ -135,6 +191,8 @@ export interface LedgerPlayer {
   chipHistory?: { at: number; chips: number }[];
   emoji?: string;  // optional avatar emoji shown next to the name
   knockouts?: number; // knockout bounties won (count) — earnings = knockouts × bountyAmount
+  /** links this night's row back to the saved Person it was seated from */
+  personId?: string;
 }
 
 /** A counting round in progress, so the big screen can show how far around the table it is. */
@@ -146,6 +204,22 @@ export interface CountingProgress {
   at: number;      // epoch ms — the TV ignores a stale progress (phone closed the sheet mid-round)
 }
 
+/**
+ * Money still owed from an earlier night.
+ *
+ * Home games rarely settle to the cent on the night — somebody has no cash, somebody
+ * leaves early. Carrying the result forward means next week's "who pays whom" nets
+ * the whole thing out instead of everyone keeping a private tally.
+ */
+export interface CarryBalance {
+  id: string;
+  name: string;
+  personId?: string;
+  /** positive = they are owed this much, negative = they owe it */
+  amount: number;
+  since: number;
+}
+
 /** One finished game night, snapshotted into the season league. */
 export interface LeagueGame {
   id: string;
@@ -153,6 +227,24 @@ export interface LeagueGame {
   mode: 'tournament' | 'cash';
   currency: string;
   players: { name: string; buyIn: number; cashOut: number }[];
+}
+
+/**
+ * One thing that happened tonight, in order.
+ *
+ * Settles the two arguments a home game always has — "did I rebuy twice or three
+ * times?" and "when did she actually go out?" — and doubles as the raw material for
+ * the end-of-night recap. Recorded in the reducer so every path that changes the
+ * money is covered, including the ones that go through the player sheet.
+ */
+export interface TimelineEvent {
+  id: string;
+  at: number;
+  kind: 'join' | 'buyin' | 'cashout' | 'bust' | 'count' | 'level';
+  name?: string;
+  emoji?: string;
+  /** money for buyin/cashout, chip-units for count, level number for level */
+  amount?: number;
 }
 
 /** A memorable hand / moment logged during the night, rotated on the TV. */
@@ -163,7 +255,15 @@ export interface Moment {
 }
 
 export interface AppState {
+  /** the ACTIVE chip set's denominations — see ChipSet */
   denominations: Denomination[];
+  chipSets: ChipSet[];
+  activeChipSetId: string | null;
+  /** the regulars — see Person */
+  people: Person[];
+  /** who sat down last time, so a new night is one tap. Names are kept alongside the
+   *  ids so a line-up still reads correctly after a person has been deleted. */
+  lastLineup: { personId?: string; name: string; emoji?: string }[];
   settings: Settings;
   session: SessionConfig;
   presets: Preset[];
@@ -172,4 +272,8 @@ export interface AppState {
   counting: CountingProgress | null;
   league: LeagueGame[];
   moments: Moment[];
+  /** unsettled results carried over from earlier nights — see CarryBalance */
+  carry: CarryBalance[];
+  /** what happened tonight, oldest first — see TimelineEvent */
+  timeline: TimelineEvent[];
 }

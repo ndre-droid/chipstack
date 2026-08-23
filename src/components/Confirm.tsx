@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useT } from '../lib/i18n';
+import { useBackHandler } from '../lib/backHandler';
 
 /**
  * In-app confirmation for the destructive buttons (reset the table, new night,
@@ -30,6 +31,8 @@ export function useConfirm(): { ask: (req: ConfirmRequest) => void; node: React.
 
 function ConfirmDialog({ req, onClose }: { req: ConfirmRequest; onClose: () => void }) {
   const t = useT();
+  // back cancels, exactly like tapping outside — never confirms
+  useBackHandler(true, onClose);
   return (
     <div
       className="confirm-scrim"

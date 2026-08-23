@@ -60,6 +60,64 @@ export function suggestBlindLadder(
   return uniq.map((sb) => ({ id: uid(), smallBlind: sb, bigBlind: sb * 2, ante: 0 }));
 }
 
+/** A ladder plus how long each level runs to land on the requested finish time. */
+export interface TimedLadder {
+  levels: BlindLevel[];
+  minutesPerLevel: number;
+  /** how long the ladder actually takes, in minutes — rarely exactly the target */
+  totalMinutes: number;
+}
+
+/**
+ * Level lengths that feel like a real tournament. Under 10 minutes is frantic; the
+ * long end exists because a small chip set only supports so many blind steps — a
+ * four-hour night on seven levels genuinely IS a slow structure, and stretching the
+ * levels is the honest answer rather than inventing blinds nobody can post.
+ */
+const LEVEL_MINUTES = [10, 12, 15, 18, 20, 25, 30, 35, 40, 45];
+
+/**
+ * "I want the night to be about three hours."
+ *
+ * Blind-timer apps make you work this out backwards — pick a ladder, pick a level
+ * length, multiply, adjust, repeat. Here the target is the input: build the longest
+ * chip-friendly ladder we can, then pick the level length whose total lands closest
+ * to it, trimming levels only if even the shortest sensible level overshoots.
+ *
+ * `breakMinutes` × the number of breaks is included, so a night with breaks doesn't
+ * quietly run half an hour long.
+ */
+export function ladderForDuration(
+  denoms: Denomination[],
+  buyInUnits: number,
+  targetMinutes: number,
+  opts?: { targetStartBB?: number; breakMinutes?: number; breakEvery?: number },
+): TimedLadder {
+  const target = Math.max(30, targetMinutes);
+  const full = suggestBlindLadder(denoms, buyInUnits, { targetStartBB: opts?.targetStartBB ?? 100, maxLevels: 12 });
+  const levels = full.length ? full : suggestBlindLadder(denoms, buyInUnits, { maxLevels: 12 });
+  if (!levels.length) return { levels, minutesPerLevel: 20, totalMinutes: 0 };
+
+  const breakEvery = Math.max(0, opts?.breakEvery ?? 0);
+  const breakMins = Math.max(0, opts?.breakMinutes ?? 0);
+  const totalFor = (count: number, mins: number) => {
+    const breaks = breakEvery > 0 ? Math.max(0, Math.floor(count / breakEvery) - (count % breakEvery === 0 ? 1 : 0)) : 0;
+    return count * mins + breaks * breakMins;
+  };
+
+  let best = { count: levels.length, mins: LEVEL_MINUTES[0], miss: Infinity, total: 0 };
+  for (let count = levels.length; count >= Math.min(4, levels.length); count--) {
+    for (const mins of LEVEL_MINUTES) {
+      const total = totalFor(count, mins);
+      // a longer ladder is the better answer at equal accuracy: it is the one that
+      // still has somewhere to go if the table plays faster than expected
+      const miss = Math.abs(total - target);
+      if (miss < best.miss - 0.5) best = { count, mins, miss, total };
+    }
+  }
+  return { levels: levels.slice(0, best.count), minutesPerLevel: best.mins, totalMinutes: best.total };
+}
+
 /** One denomination being coloured up (raced off) at a blind level. */
 export interface Retirement {
   fromId: string;

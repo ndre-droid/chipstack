@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useBackHandler } from '../lib/backHandler';
 import { useStore } from '../store';
 import { useT, useFmt } from '../lib/i18n';
 import { moneyToUnits } from '../lib/distribution';
@@ -21,6 +22,7 @@ import MoneyInput from './MoneyInput';
  * play; the earlier cash-out stays on the record.
  */
 export default function PlayerSheet({ playerId, onClose }: { playerId: string; onClose: () => void }) {
+  useBackHandler(true, onClose);
   const { state, dispatch } = useStore();
   const t = useT();
   const { money } = useFmt();

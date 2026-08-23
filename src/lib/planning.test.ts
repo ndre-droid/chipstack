@@ -1,4 +1,5 @@
-import { suggestBlindLadder, colorUpEvents } from './planning.ts';
+import assert from 'node:assert/strict';
+import { suggestBlindLadder, colorUpEvents, ladderForDuration } from './planning.ts';
 import { computeStack, moneyToUnits } from './distribution.ts';
 import type { Denomination } from '../types.ts';
 
@@ -46,4 +47,40 @@ for (const e of events) {
   }
 }
 
-console.log('\nDone.');
+// ---------------------------------------------------------------------------
+// "The night should be about three hours" — the input people actually have, as
+// opposed to "how many levels of how many minutes", which is the same question
+// asked backwards.
+// ---------------------------------------------------------------------------
+let failures = 0;
+function check(label: string, ok: boolean, detail = '') {
+  if (ok) console.log(`  ok   ${label}`);
+  else {
+    failures++;
+    console.log(`  FAIL ${label}${detail ? ` — ${detail}` : ''}`);
+  }
+}
+
+console.log('\n== Ladder for a target duration ==');
+for (const target of [120, 180, 240]) {
+  const r = ladderForDuration(denoms, 2000, target);
+  console.log(`  ${target} min -> ${r.levels.length} levels x ${r.minutesPerLevel} min = ${r.totalMinutes} min`);
+  check(`${target} min lands within 25 min of the target`, Math.abs(r.totalMinutes - target) <= 25,
+    `off by ${Math.abs(r.totalMinutes - target)}`);
+  check(`${target} min uses a sane level length`, r.minutesPerLevel >= 10 && r.minutesPerLevel <= 45);
+  check(`${target} min keeps at least four levels`, r.levels.length >= 4);
+  check(`${target} min blinds only ever go up`,
+    r.levels.every((l, i) => i === 0 || l.smallBlind > r.levels[i - 1].smallBlind));
+}
+
+console.log('\n== Breaks count towards the running time ==');
+const noBreaks = ladderForDuration(denoms, 2000, 180);
+const withBreaks = ladderForDuration(denoms, 2000, 180, { breakMinutes: 10, breakEvery: 3 });
+console.log(`  without breaks ${noBreaks.totalMinutes} min / with breaks ${withBreaks.totalMinutes} min`);
+check('a night with breaks is not simply longer', withBreaks.totalMinutes <= noBreaks.totalMinutes + 12);
+
+console.log('\n== No chips, no ladder ==');
+check('degrades to an empty ladder instead of throwing', ladderForDuration([], 2000, 180).levels.length === 0);
+
+console.log(`\n${failures === 0 ? 'ALL PASS' : `${failures} FAILED`}`);
+assert.equal(failures, 0, `${failures} planning check(s) failed`);
