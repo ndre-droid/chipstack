@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useStore } from '../store';
 import { firebaseConfigured } from './firebaseConfig';
 import { backgroundOf, backgroundSignature, liveSignature } from './liveData';
+import { pushDelay } from './pushPacing';
 import {
   cancelLiveSync,
   getLiveSyncState,
@@ -32,12 +33,15 @@ export function useLiveHostSync() {
   const { state } = useStore();
   const { liveSessionCode, liveSessionRole } = state.settings;
   const timer = useRef<number | null>(null);
+  /** When the last game-data write actually went out, so a burst can be paced. */
+  const lastPush = useRef<number | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
 
   const hosting = firebaseConfigured && liveSessionRole === 'host' && !!liveSessionCode;
-  // A cheap string that changes iff something the TV mirrors changes. Debounced so
-  // rapid edits (typing a name, dragging the stack slider) collapse into one write.
+  // A cheap string that changes iff something the TV mirrors changes. Paced, so a
+  // burst of edits (typing a name, dragging the stack slider) becomes a steady
+  // trickle of writes rather than one write per keystroke.
   /* Memoised on the state object: the store hands out a new one per dispatch, so
      this serialises the ledger once per actual change instead of once per render
      of the whole app. */
@@ -51,13 +55,18 @@ export function useLiveHostSync() {
     if (timer.current) window.clearTimeout(timer.current);
     // The queue is handed a getter, not a snapshot, so a retry sends the state as
     // it is at that moment rather than replaying whatever it was when this fired.
-    /* 400ms, not 150: every push is a full merge of the game document, and typing a
-       name or dragging the stack slider used to fire one every 150ms. Nobody at the
-       table can tell the difference, and the write count drops by more than half.
+    /* Paced, not collapsed — see lib/pushPacing. The first change of a burst leaves
+       immediately and the rest are spaced out, so the big screen follows the chip-mix
+       slider as it is dragged instead of jumping once the finger lifts. The last
+       change always lands: one inside the gap waits for the gap, it is not dropped.
        (Deliberately NOT skipped when no TV is listening — a phone cannot reliably
        tell "no TV" from "TV briefly offline", and a skipped push would leave the big
        screen stale when it comes back. Correctness beats the quota.) */
-    timer.current = window.setTimeout(() => queueData(liveSessionCode, () => stateRef.current), 400);
+    const send = () => {
+      lastPush.current = Date.now();
+      queueData(liveSessionCode, () => stateRef.current);
+    };
+    timer.current = window.setTimeout(send, pushDelay(lastPush.current, Date.now()));
     return () => {
       if (timer.current) window.clearTimeout(timer.current);
     };

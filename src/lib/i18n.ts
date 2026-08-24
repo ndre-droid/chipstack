@@ -787,7 +787,7 @@ const dict: Record<Lang, Record<string, string>> = {
     'settings.chipAnim.off': 'Off',
     'settings.chipAnim.plan': 'Plan only',
     'settings.chipAnim.all': 'Everywhere',
-    'settings.chipAnimNote': 'When a stack grows, the new chips appear above it and drop on; when it shrinks, they lift off again. Most visible on the Plan screen, where the chip-mix slider moves the stacks while you watch.',
+    'settings.chipAnimNote': 'When a stack grows, the new chips appear above it and drop on; when it shrinks, they lift off again. Most visible on the Plan screen, where the chip-mix slider moves the stacks while you watch — and on the big screen, which follows that slider as you drag it. Per device: a slow TV stick can be set to Off on its own.',
 
   },
   de: {
@@ -1568,7 +1568,7 @@ const dict: Record<Lang, Record<string, string>> = {
     'settings.chipAnim.off': 'Aus',
     'settings.chipAnim.plan': 'Nur Plan',
     'settings.chipAnim.all': 'Überall',
-    'settings.chipAnimNote': 'Wächst ein Stapel, erscheinen die neuen Chips darüber und fallen darauf; schrumpft er, heben sie wieder ab. Am deutlichsten im Plan-Tab, wo der Chip-Mix-Regler die Stapel live verschiebt.',
+    'settings.chipAnimNote': 'Wächst ein Stapel, erscheinen die neuen Chips darüber und fallen darauf; schrumpft er, heben sie wieder ab. Am deutlichsten im Plan-Tab, wo der Chip-Mix-Regler die Stapel live verschiebt — und auf dem großen Bildschirm, der diesem Regler live folgt. Pro Gerät: ein langsamer TV-Stick kann einzeln auf Aus gestellt werden.',
 
   },
 };

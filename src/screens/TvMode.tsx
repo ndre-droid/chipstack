@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import qrcode from 'qrcode-generator';
 import { useStore } from '../store';
 import Chip from '../components/Chip';
+import ChipStackViz from '../components/ChipStackViz';
 import { IconPlay, IconPause, IconChevron, IconReset } from '../components/Icons';
 import { useT, useFmt } from '../lib/i18n';
 import { firebaseConfigured } from '../lib/firebaseConfig';
@@ -1285,13 +1286,16 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       {tvShowStartStack && startStack.denomsUsed.length > 0 && (
         <div className="tv-overlay tv-startstack" onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvShowStartStack: false } })}>
           <div className="tv-overlay-label">{t('table.startingStack')}</div>
+          {/* The real pile per denomination, not one chip and a number: the phone's
+              chip-mix slider moves these stacks, and the big screen shows the chips
+              arriving and leaving as it is dragged. */}
           <div className="tv-startstack-grid">
-            {startStack.denomsUsed.map((d) => (
-              <div className="tv-startstack-col" key={d.id}>
-                <Chip value={d.value} color={d.color} accent={d.accent} size={92} shape={d.shape} />
-                <span className="tv-startstack-count">×{startStack.counts[d.id]}</span>
-              </div>
-            ))}
+            <ChipStackViz
+              denoms={startStack.denomsUsed}
+              counts={startStack.counts}
+              surface="tv"
+              maxChipSize={96}
+            />
           </div>
           <div className="tv-startstack-total">
             {num(startStack.totalValue)} {t('plan.chips').toLowerCase()} · {money(buyIn, currency)} · {startStack.chipCount} {t('plan.chips').toLowerCase()}

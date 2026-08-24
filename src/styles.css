@@ -1752,6 +1752,16 @@ input[type='color'] { cursor: pointer; }
 }
 .tv-startstack-col { display: flex; flex-direction: column; align-items: center; gap: clamp(4px, 0.8vmin, 12px); }
 .tv-startstack-count { font-family: var(--tv-num); font-weight: 700; font-size: clamp(20px, 3vmin, 52px); color: var(--tv-fg); }
+/* The spread on the big screen is the same component as on the phone, so the count
+   under each pile arrives sized for a hand — from an inline style, which is why this
+   has to shout to be heard. Room to fall, too: a chip drops from above the pile. */
+.tv-startstack .stack-viz { margin: clamp(52px, 9vmin, 132px) 0 0; }
+.tv-startstack .stack-col .cap {
+  font-family: var(--tv-num);
+  font-size: clamp(20px, 3vmin, 52px) !important;
+  color: var(--tv-fg);
+  margin-top: clamp(6px, 1.1vmin, 18px);
+}
 .tv-startstack-total { font-family: var(--tv-num); font-weight: 700; font-size: clamp(15px, 2.1vmin, 40px); color: var(--acc); }
 
 /* TV background preset swatches (Table → TV broadcast) */

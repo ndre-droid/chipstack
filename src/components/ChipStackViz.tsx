@@ -23,6 +23,8 @@ interface Props {
   maxDiscs?: number;
   /** Where this spread is being shown — decides whether chips are allowed to move. */
   surface?: ChipAnimSurface;
+  /** Biggest a single chip may be drawn. The big screen is metres away, not inches. */
+  maxChipSize?: number;
 }
 
 /**
@@ -35,7 +37,13 @@ interface Props {
  * pile, so when the numbers change the chips that were added drop in from above
  * and the ones that went away lift off — see lib/stackDrop.
  */
-export default function ChipStackViz({ denoms, counts, maxDiscs = 11, surface = 'table' }: Props) {
+export default function ChipStackViz({
+  denoms,
+  counts,
+  maxDiscs = 11,
+  surface = 'table',
+  maxChipSize = 58,
+}: Props) {
   const t = useT();
   const settings = useStore().state.settings;
   const animate = animatedHere(settings.chipAnim, surface);
@@ -56,12 +64,13 @@ export default function ChipStackViz({ denoms, counts, maxDiscs = 11, surface = 
 
   if (used.length === 0) return <div className="empty">{t('plan.noChipsYet')}</div>;
 
-  const gap = 12;
+  // The gap belongs to the chips, not the screen: bigger chips, bigger gaps.
+  const gap = Math.round(maxChipSize * 0.21);
   const weight = (d: Denomination) => (d.shape === 'plaque' ? 1.5 : 1);
   const totalWeight = used.reduce((s, d) => s + weight(d), 0) || 1;
   const w = Number.isFinite(width) && width > 0 ? width : 320;
   const rawSize = Math.floor((w - (used.length - 1) * gap - 2) / totalWeight);
-  const chipSize = Math.max(20, Math.min(58, Number.isFinite(rawSize) ? rawSize : 34));
+  const chipSize = Math.max(20, Math.min(maxChipSize, Number.isFinite(rawSize) ? rawSize : 34));
 
   return (
     <div className="stack-viz" ref={ref} style={{ gap }}>

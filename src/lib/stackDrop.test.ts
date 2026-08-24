@@ -152,6 +152,10 @@ console.log('\nwhere the animation is allowed to play');
   eq('off means off on the Table', animatedHere('off', 'table'), false);
   eq('everywhere covers the Table too', animatedHere('all', 'table'), true);
   eq('everywhere still covers Plan', animatedHere('all', 'plan'), true);
+  // the big screen shows the Plan spread, so the phone's slider moves it there too
+  eq('the big screen follows the slider by default', animatedHere(undefined, 'tv'), true);
+  eq('a slow TV stick can be told to stop', animatedHere('off', 'tv'), false);
+  eq('everywhere covers the big screen', animatedHere('all', 'tv'), true);
 }
 
 console.log(`\n${failures === 0 ? 'stackDrop: all checks passed' : `stackDrop: ${failures} FAILED`}`);
