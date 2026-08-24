@@ -610,6 +610,16 @@ input[type='number'] { -moz-appearance: textfield; }
 .stack-viz { display: flex; align-items: flex-end; justify-content: center; width: 100%; margin: 16px 0 6px; }
 .stack-col { display: flex; flex-direction: column; align-items: center; }
 .chip-stack-svg { display: block; filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.35)); }
+
+/* ---- 3D chip: a rendered bitmap with the value laid over its face ---- */
+.chip3d { position: relative; display: block; line-height: 0; }
+.chip3d img { display: block; width: 100%; height: 100%; filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.4)); }
+.chip3d-value {
+  position: absolute; font-weight: 800; letter-spacing: -0.03em; line-height: 1;
+  font-family: var(--font); text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35); pointer-events: none;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.chip3d-in-stack img { filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.35)); }
 .plaque-stack { filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.35)); line-height: 0; }
 .stack-col .cap { font-family: var(--mono); color: var(--text-dim); margin-top: 7px; font-weight: 600; font-variant-numeric: tabular-nums; }
 

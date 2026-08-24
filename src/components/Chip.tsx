@@ -1,5 +1,6 @@
 import type { ChipShape, ChipArt } from '../types';
 import { useStore } from '../store';
+import Chip3D from './Chip3D';
 
 interface ChipProps {
   value: number | string;
@@ -18,11 +19,18 @@ interface ChipProps {
  * as a rectangular art-deco tile. Rendered as scalable SVG.
  */
 export default function Chip({ value, color, accent, size = 44, className, shape = 'chip', art }: ChipProps) {
-  const storeArt = useStore().state.settings.chipArt;
-  const a = art ?? storeArt ?? 'deco';
+  const settings = useStore().state.settings;
+  const a = art ?? settings.chipArt ?? 'deco';
   const sz = Number.isFinite(size) ? (size as number) : 44;
   if (shape === 'plaque') return <Plaque value={value} color={color} accent={accent} size={sz} className={className} />;
-  return <RoundChip value={value} color={color} accent={accent} size={sz} className={className} art={a} />;
+
+  const vector = <RoundChip value={value} color={color} accent={accent} size={sz} className={className} art={a} />;
+  // The 3D chip has one face — the art styles are a vector-only choice, so an
+  // explicit `art` (the Settings picker showing all four) always draws the vector.
+  if (settings.chipStyle !== 'render3d' || art) return vector;
+  return (
+    <Chip3D value={value} color={color} accent={accent} size={sz} view="face" className={className} fallback={vector} />
+  );
 }
 
 function octaPoints(r: number, rot = 0) {

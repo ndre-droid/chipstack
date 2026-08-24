@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useStore } from '../store';
 import Chip from '../components/Chip';
+import { chip3dSupported, clearChipCache } from '../lib/chip3d';
 import { useT, useFmt } from '../lib/i18n';
 import type { Appearance, AccentId, Skin, ChipArt } from '../types';
 import { useConfirm } from '../components/Confirm';
@@ -53,6 +54,9 @@ export default function SettingsScreen() {
   const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
+  // WebGL is checked once: without it the 3D chips can never draw, so the option
+  // is disabled rather than silently falling back forever.
+  const [webgl] = useState(chip3dSupported);
 
   const activeStyle = STYLES.find((s) => s.id === settings.skin) ?? STYLES[0];
   const accentColor = (id: AccentId) => ACCENTS.find((a) => a.id === id)?.color ?? '#f0b429';
@@ -160,6 +164,31 @@ export default function SettingsScreen() {
       <div className="section-label">{t('settings.showOnTv')}</div>
       <div className="card">
         <p style={{ fontSize: 12.5, margin: 0, fontWeight: 600 }}>{t('settings.liveMovedToTable')}</p>
+      </div>
+
+      <div className="section-label">{t('settings.chipStyle')}</div>
+      <div className="card">
+        <div className="chip-toggle-row">
+          <button
+            className={`chip-toggle ${settings.chipStyle === 'render3d' ? '' : 'off'}`}
+            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { chipStyle: 'render3d' } })}
+            disabled={!webgl}
+          >
+            {t('settings.chipStyleRender')}
+          </button>
+          <button
+            className={`chip-toggle ${settings.chipStyle === 'vector' ? '' : 'off'}`}
+            onClick={() => {
+              clearChipCache();
+              dispatch({ type: 'UPDATE_SETTINGS', patch: { chipStyle: 'vector' } });
+            }}
+          >
+            {t('settings.chipStyleVector')}
+          </button>
+        </div>
+        <p className="muted mt12" style={{ fontSize: 12.5, margin: '12px 0 0' }}>
+          {webgl ? t('settings.chipStyleNote') : t('settings.chipStyleNoWebgl')}
+        </p>
       </div>
 
       <div className="section-label">{t('settings.chipArt')}</div>

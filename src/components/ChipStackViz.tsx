@@ -1,7 +1,9 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { Denomination } from '../types';
 import { useT } from '../lib/i18n';
+import { useStore } from '../store';
 import Chip from './Chip';
+import Chip3D from './Chip3D';
 
 interface Props {
   denoms: Denomination[];
@@ -11,12 +13,13 @@ interface Props {
 
 /**
  * Poker-table view: one physical stack per denomination, drawn as a real
- * 3D chip cylinder — curved body, per-chip edge divisions and SLOWPLAY-style
- * edge spots, topped by the chip face. Sizes to the available width so the
+ * 3D chip cylinder — curved body, per-chip seams on a smooth SLOWPLAY-style
+ * ceramic rim, topped by the chip face. Sizes to the available width so the
  * whole spread is always visible with no scrolling.
  */
 export default function ChipStackViz({ denoms, counts, maxDiscs = 11 }: Props) {
   const t = useT();
+  const chipStyle = useStore().state.settings.chipStyle;
   const used = denoms.filter((d) => counts[d.id] > 0);
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(320);
@@ -55,9 +58,24 @@ export default function ChipStackViz({ denoms, counts, maxDiscs = 11 }: Props) {
             </div>
           );
         }
+        const visible = Math.min(n, maxDiscs);
+        const cylinder = <StackCylinder d={d} visible={visible} total={n} size={chipSize} />;
         return (
           <div className="stack-col" key={d.id}>
-            <StackCylinder d={d} visible={Math.min(n, maxDiscs)} total={n} size={chipSize} />
+            {chipStyle === 'render3d' ? (
+              <Chip3D
+                value={d.value}
+                color={d.color}
+                accent={d.accent}
+                size={chipSize}
+                view="stack"
+                discs={visible}
+                className="chip3d-in-stack"
+                fallback={cylinder}
+              />
+            ) : (
+              cylinder
+            )}
             <div className="cap" style={{ fontSize: capSize }}>×{n}</div>
           </div>
         );
@@ -110,6 +128,9 @@ function StackCylinder({ d, visible, total, size }: { d: Denomination; visible: 
           <stop offset="70%" stopColor={base} />
           <stop offset="100%" stopColor={shade(base, -0.16)} />
         </radialGradient>
+        <clipPath id={`${id}-body-clip`}>
+          <path d={`M1 ${topCy} L1 ${bottomCy} A ${rx} ${ry} 0 0 0 99 ${bottomCy} L99 ${topCy} A ${rx} ${ry} 0 0 1 1 ${topCy} Z`} />
+        </clipPath>
       </defs>
 
       {/* cylinder body */}
@@ -117,11 +138,19 @@ function StackCylinder({ d, visible, total, size }: { d: Denomination; visible: 
         d={`M1 ${topCy} L1 ${bottomCy} A ${rx} ${ry} 0 0 0 99 ${bottomCy} L99 ${topCy} A ${rx} ${ry} 0 0 1 1 ${topCy} Z`}
         fill={`url(#${id}-body)`}
       />
-      {/* per-chip edge divisions (smooth ceramic edge — no spots) */}
-      {Array.from({ length: Math.max(0, visible - 1) }).map((_, i) => {
-        const y = topCy + (i + 1) * perChip;
-        return <path key={i} d={`M1 ${y} A ${rx} ${ry} 0 0 0 99 ${y}`} fill="none" stroke={edge} strokeWidth="0.5" opacity="0.4" />;
-      })}
+      {/* Per-chip seams: a dark groove with a lit edge just under it, so a stack still
+          reads as separate discs on a smooth (spotless) ceramic rim. */}
+      <g clipPath={`url(#${id}-body-clip)`}>
+        {Array.from({ length: Math.max(0, visible - 1) }).map((_, i) => {
+          const y = topCy + (i + 1) * perChip;
+          return (
+            <g key={i}>
+              <path d={`M1 ${y} A ${rx} ${ry} 0 0 0 99 ${y}`} fill="none" stroke={edge} strokeWidth="0.7" opacity="0.7" />
+              <path d={`M1 ${y + 0.9} A ${rx} ${ry} 0 0 0 99 ${y + 0.9}`} fill="none" stroke="#fff" strokeWidth="0.5" opacity="0.13" />
+            </g>
+          );
+        })}
+      </g>
       {/* soft vertical highlight */}
       <path d={`M32 ${topCy} L32 ${bottomCy}`} stroke="#fff" strokeWidth="6" opacity="0.07" strokeLinecap="round" />
 

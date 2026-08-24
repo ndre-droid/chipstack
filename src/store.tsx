@@ -65,6 +65,7 @@ const defaultSettings: Settings = {
   tvBackgroundTone: null,
   appearance: 'dark',
   chipArt: 'deco',
+  chipStyle: 'render3d',
   language: 'en',
   gameMode: 'tournament',
   cashUseTimer: false,
@@ -897,6 +898,7 @@ function migrate(raw: string | null): AppState {
   if (!validAppear.includes(settings.appearance)) settings.appearance = 'dark';
   const validArt = ['deco', 'classic', 'diamond', 'sunburst'];
   if (!validArt.includes(settings.chipArt)) settings.chipArt = 'deco';
+  if (settings.chipStyle !== 'vector' && settings.chipStyle !== 'render3d') settings.chipStyle = 'render3d';
 
   const savedSession = (parsed.session ?? {}) as Record<string, unknown>;
   const session = { ...defaultSession, ...savedSession } as SessionConfig & {

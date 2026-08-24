@@ -777,6 +777,12 @@ const dict: Record<Lang, Record<string, string>> = {
     'connect.ended': 'The big screen ended the session — you\'ve been disconnected.',
     'guest.ended': 'The session is over. Thanks for playing!',
 
+    'settings.chipStyle': 'Chip look',
+    'settings.chipStyleVector': 'Drawn',
+    'settings.chipStyleRender': '3D render',
+    'settings.chipStyleNote': 'The 3D chips are rendered from the real model once per colour, then reused. Drawn chips stay sharp at any size and cost nothing to show.',
+    'settings.chipStyleNoWebgl': 'This device has no WebGL, so chips stay drawn.',
+
   },
   de: {
     'nav.plan': 'Plan',
@@ -1545,6 +1551,12 @@ const dict: Record<Lang, Record<string, string>> = {
 
     'connect.ended': 'Der Großbildschirm hat die Sitzung beendet — Verbindung getrennt.',
     'guest.ended': 'Die Sitzung ist beendet. Danke fürs Mitspielen!',
+
+    'settings.chipStyle': 'Chip-Optik',
+    'settings.chipStyleVector': 'Gezeichnet',
+    'settings.chipStyleRender': '3D-Render',
+    'settings.chipStyleNote': 'Die 3D-Chips werden einmal pro Farbe aus dem echten Modell gerendert und danach wiederverwendet. Gezeichnete Chips bleiben in jeder Größe scharf und kosten nichts.',
+    'settings.chipStyleNoWebgl': 'Dieses Gerät hat kein WebGL, die Chips bleiben gezeichnet.',
 
   },
 };

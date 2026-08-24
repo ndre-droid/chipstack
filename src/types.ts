@@ -25,6 +25,8 @@ export type Appearance = 'system' | 'light' | 'dark';
 export type AccentId = 'amber' | 'gold' | 'emerald' | 'cyan' | 'cobalt' | 'violet' | 'crimson' | 'coral';
 export type Skin = 'minimal' | 'casino' | 'playful' | 'scifi';
 export type ChipArt = 'deco' | 'classic' | 'diamond' | 'sunburst';
+/** How chips are drawn everywhere in the app. See `Settings.chipStyle`. */
+export type ChipStyle = 'vector' | 'render3d';
 
 export interface Settings {
   unitValue: number;        // real money value of 1 chip-unit (default 0.01)
@@ -62,6 +64,11 @@ export interface Settings {
   tvBackgroundTone: number | null; // mean luminance 0..1 of the background, drives scrim strength
   appearance: Appearance;   // system / light / dark — applies to the minimal skin
   chipArt: ChipArt;         // chip face art style
+  /** How a chip is drawn: 'vector' is the hand-built SVG chip; 'render3d' renders
+   *  the real 3D model (public/models/chip.glb) once per colour and reuses the
+   *  bitmap. Per-device — whether a device can afford WebGL is not part of a setup,
+   *  and a phone must not be able to switch the TV's renderer. */
+  chipStyle: ChipStyle;
   language: 'en' | 'de';
   /** Tournament: fixed prize pool, rising blinds, payout split + bust leaderboard.
    *  Cash: chips = money, blinds fixed (timer optional), players cash out anytime and

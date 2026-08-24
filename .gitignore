@@ -45,3 +45,6 @@ android/app/src/main/res/xml/config.xml
 # design reference material kept beside the project, not part of the app
 Chips source pics and links/
 koffer.png
+# the raw chip export (33 MB of OBJ); the app ships the slimmed public/models/chip.glb,
+# regenerated with scripts/slim-chip-glb.mjs
+3D chip design/

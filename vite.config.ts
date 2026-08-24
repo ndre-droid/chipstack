@@ -44,13 +44,20 @@ export default defineConfig({
                  pairs with a TV ever loads it — everyone else was downloading it on
                  install for nothing. Cached on first use instead; live sync needs
                  the network anyway, so there is nothing to keep offline here. */
-              globIgnores: ['**/liveSession-*.js'],
+              /* Same argument for three.js (~185kB gzipped) plus the loader and the
+                 chip model: only a device left on the 3D chips ever needs them. */
+              globIgnores: ['**/liveSession-*.js', '**/three.module-*.js', '**/GLTFLoader-*.js', '**/RoomEnvironment-*.js'],
               cleanupOutdatedCaches: true,
               runtimeCaching: [
                 {
                   urlPattern: /\/liveSession-[^/]*\.js$/,
                   handler: 'CacheFirst',
                   options: { cacheName: 'chipstack-live-sync', expiration: { maxEntries: 4 } },
+                },
+                {
+                  urlPattern: /\/(three\.module|GLTFLoader|RoomEnvironment)-[^/]*\.js$|\/models\/[^/]*\.glb$/,
+                  handler: 'CacheFirst',
+                  options: { cacheName: 'chipstack-chip-3d', expiration: { maxEntries: 8 } },
                 },
               ],
             },
