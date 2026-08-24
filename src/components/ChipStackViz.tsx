@@ -4,7 +4,16 @@ import { useT } from '../lib/i18n';
 import { useStore } from '../store';
 import { renderChip, type ChipRender } from '../lib/chip3d';
 import { animatedHere, type ChipAnimSurface } from '../lib/chipAnim';
-import { chipTilt, discMotions, idleDiscs, impactStrength, useStackDiscs, type DiscMotion } from '../lib/stackDrop';
+import {
+  chipTilt,
+  discMotions,
+  idleDiscs,
+  impactStrength,
+  useStackDiscs,
+  DROP_IN_MS,
+  DROP_OUT_MS,
+  type DiscMotion,
+} from '../lib/stackDrop';
 import Chip from './Chip';
 import { ChipValue } from './Chip3D';
 
@@ -129,7 +138,7 @@ function StackColumn({ d, count, frameDiscs, size, animate, use3d, total, visit 
         className="stack-layers"
         role="img"
         aria-label={label}
-        style={{ width: frameW, height: pileH, ['--drop' as string]: `${drop}px` }}
+        style={{ width: frameW, height: pileH, ...motionVars(drop) }}
       >
         {motions.map((m) => {
           const layer = layers[m.i];
@@ -223,6 +232,15 @@ function useTabEntries(ref: React.RefObject<HTMLElement | null>): number {
 
 /* ---------------- one chip's motion, as CSS ---------------- */
 
+/** The numbers styles.css animates with, handed over from the one place they live. */
+function motionVars(drop: number): React.CSSProperties {
+  return {
+    ['--drop' as string]: `${drop}px`,
+    ['--fall' as string]: `${DROP_IN_MS}ms`,
+    ['--lift' as string]: `${DROP_OUT_MS}ms`,
+  };
+}
+
 /**
  * Remounting is what restarts an animation: React keeps the same element for the same
  * key, and re-setting a delay on an element already carrying that animation does
@@ -298,7 +316,7 @@ function VectorColumn({
       className="stack-layers vector"
       role="img"
       aria-label={label}
-      style={{ width: size, height: pileH, ['--drop' as string]: `${drop}px` }}
+      style={{ width: size, height: pileH, ...motionVars(drop) }}
     >
       {motions.map((m) => (
         <div

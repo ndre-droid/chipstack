@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import {
   chipTilt,
   discMotions,
@@ -5,7 +6,9 @@ import {
   idleDiscs,
   impactStrength,
   DROP_STAGGER_MS,
+  IMPACT_AT,
   IMPACT_MS,
+  RESTITUTION,
   type Disc,
 } from './stackDrop.ts';
 import { animatedHere } from './chipAnim.ts';
@@ -116,6 +119,29 @@ console.log('\na knock fades as it travels down the pile');
   check('and squashes the most', hit.squash < one.squash && one.squash < three.squash);
   check('nothing squashes visibly far', three.squash > 0.985, `${three.squash}`);
   check('a small chip takes a smaller shove', impactStrength(0, 24).jolt < hit.jolt);
+}
+
+console.log('\nthe stylesheet still lands the chip where the code says it does');
+{
+  // The fall lives in CSS keyframes and the knock is scheduled in TS. If the touchdown
+  // frame is moved without moving IMPACT_AT, the pile reacts before or after the chip
+  // arrives — which is exactly the kind of drift nobody notices for weeks.
+  // the working copy is CRLF on Windows; compare against one shape of newline
+  const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const drop = css.slice(css.indexOf('@keyframes chip-drop-in'));
+  const body = drop.slice(0, drop.indexOf('}\n}') + 3);
+  const touchdown = body.match(/(\d+)% \{ transform: translate3d\(0, 0, 0\); \}/);
+
+  check('the drop keyframes are there', body.includes('chip-drop-in'));
+  eq('and it touches down at IMPACT_AT', Number(touchdown?.[1]), Math.round(IMPACT_AT * 100));
+
+  const start = body.match(/0% \{ transform: translate3d\(0, calc\(var\(--drop[^)]*\) \* (-?[\d.]+)\)/);
+  eq('starting a whole drop above the pile', Number(start?.[1]), -1);
+
+  // the first bounce should be about the restitution squared, not a hand-picked number
+  const peak = Number(body.match(/73% \{ transform: translate3d\(0, calc\(var\(--drop[^)]*\) \* (-?[\d.]+)\)/)?.[1]);
+  const want = -(RESTITUTION * RESTITUTION);
+  check('the first bounce is e^2 of the drop', Math.abs(peak - want) < 0.004, `${peak} vs ${want.toFixed(4)}`);
 }
 
 console.log('\nwhere the animation is allowed to play');

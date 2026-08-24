@@ -18,7 +18,8 @@ export interface Disc {
 
 /** How long one chip takes to land, and to leave again. Mirrored in styles.css. */
 export const DROP_IN_MS = 420;
-export const DROP_OUT_MS = 240;
+/** A chip taken off the pile is lifted away and only fades once it is well clear. */
+export const DROP_OUT_MS = 520;
 /** Gap between two neighbouring chips, so a pile builds instead of blinking. */
 export const DROP_STAGGER_MS = 45;
 /** A whole stack should never take longer than this to build, however tall it is. */
@@ -28,8 +29,16 @@ const MAX_SEQUENCE_MS = 620;
  * How far into its fall a chip touches down. The rest of the animation is the chip
  * bouncing on its own edge, so this — not the end of the animation — is the moment
  * the pile underneath has to react.
+ *
+ * The number is not a taste call: the whole move is one ballistic timeline. A chip
+ * dropped from a standstill falls for one unit of time; ceramic on ceramic gives back
+ * about a quarter of the speed it arrived with (`RESTITUTION`), so it bounces to e²
+ * of the height and stays up for 2e of the time, then does it again, smaller. Adding
+ * those up puts the first touchdown 57% of the way through — and `styles.css` places
+ * the keyframe there, which stackDrop.test.ts checks it still does.
  */
-export const IMPACT_AT = 0.64;
+export const RESTITUTION = 0.28;
+export const IMPACT_AT = 0.57;
 export const IMPACT_MS = Math.round(DROP_IN_MS * IMPACT_AT);
 /** How long a knock takes to travel down one chip of the pile. */
 const SHOCK_STEP_MS = 26;

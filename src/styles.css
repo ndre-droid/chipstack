@@ -607,7 +607,7 @@ input[type='number'] { -moz-appearance: textfield; }
 .blind-check.bad b { color: var(--bad); }
 
 /* ---- Chip stack viz (3D cylinders) ---- */
-.stack-viz { display: flex; align-items: flex-end; justify-content: center; width: 100%; margin: 30px 0 6px; }
+.stack-viz { display: flex; align-items: flex-end; justify-content: center; width: 100%; margin: 52px 0 6px; }
 .stack-col { display: flex; flex-direction: column; align-items: center; }
 .chip-stack-svg { display: block; filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.35)); }
 
@@ -652,58 +652,93 @@ input[type='number'] { -moz-appearance: textfield; }
 .stack-disc.in {
   animation:
     chip-drop-in var(--fall, 420ms) linear backwards,
-    chip-appear calc(var(--fall, 420ms) * 0.3) linear backwards,
-    chip-turn-in var(--fall, 420ms) cubic-bezier(0.3, 0.7, 0.35, 1) backwards;
+    chip-appear calc(var(--fall, 420ms) * 0.28) linear backwards,
+    chip-turn-in var(--fall, 420ms) linear backwards,
+    chip-slide-in var(--fall, 420ms) linear backwards;
 }
-/* Lifted off the pile again: it tips as it goes, the way a chip pinched off the top does */
+/* Pinched off the top: away fast, then coasting, and only fading once it is clear of
+   the pile — a chip leaving should be readable, not a blink. */
 .stack-disc.out {
   animation:
-    chip-lift-out var(--lift, 240ms) cubic-bezier(0.35, 0, 0.8, 0.45) forwards,
-    chip-fade-out var(--lift, 240ms) linear forwards,
-    chip-turn-out var(--lift, 240ms) cubic-bezier(0.35, 0, 0.8, 0.45) forwards;
+    chip-lift-out var(--lift, 520ms) cubic-bezier(0.1, 0.62, 0.24, 1) forwards,
+    chip-fade-out var(--lift, 520ms) linear forwards,
+    chip-turn-out var(--lift, 520ms) cubic-bezier(0.15, 0.5, 0.3, 1) forwards,
+    chip-slide-out var(--lift, 520ms) cubic-bezier(0.15, 0.5, 0.3, 1) forwards;
 }
 /* The chip that just landed, and the chips underneath taking the knock. */
 .stack-disc.in > .stack-disc-hit,
 .stack-disc.struck > .stack-disc-hit {
-  animation: chip-impact 240ms cubic-bezier(0.25, 0.7, 0.35, 1) backwards;
+  animation: chip-impact 300ms linear backwards;
 }
 
+/* The fall is one ballistic timeline, not an eased slide: the frames below are a
+   parabola sampled in time (y = drop x (1 - u^2) as it falls), then two bounces at the
+   restitution ceramic actually has — each rises to e^2 of the last height and hangs
+   for 2e of the time, which is why they arrive so much closer together than they look
+   like they should. Timing stays linear because the curve is in the numbers. */
 @keyframes chip-drop-in {
-  /* gravity: slow to leave, quick to arrive */
-  0% { transform: translate3d(0, calc(var(--drop, 30px) * -1), 0); animation-timing-function: cubic-bezier(0.42, 0, 0.85, 0.42); }
+  0% { transform: translate3d(0, calc(var(--drop, 30px) * -1), 0); }
+  26% { transform: translate3d(0, calc(var(--drop, 30px) * -0.798), 0); }
+  40% { transform: translate3d(0, calc(var(--drop, 30px) * -0.51), 0); }
+  49% { transform: translate3d(0, calc(var(--drop, 30px) * -0.243), 0); }
   /* touchdown — lib/stackDrop.ts calls this moment IMPACT_AT */
-  64% { transform: translate3d(0, 0, 0); animation-timing-function: cubic-bezier(0.18, 0.62, 0.4, 1); }
-  76% { transform: translate3d(0, calc(var(--drop, 30px) * -0.1), 0); animation-timing-function: cubic-bezier(0.5, 0, 0.85, 0.45); }
-  87% { transform: translate3d(0, 0, 0); animation-timing-function: cubic-bezier(0.18, 0.62, 0.4, 1); }
-  94% { transform: translate3d(0, calc(var(--drop, 30px) * -0.03), 0); animation-timing-function: cubic-bezier(0.5, 0, 0.9, 0.5); }
+  57% { transform: translate3d(0, 0, 0); }
+  65% { transform: translate3d(0, calc(var(--drop, 30px) * -0.058), 0); }
+  73% { transform: translate3d(0, calc(var(--drop, 30px) * -0.078), 0); }
+  81% { transform: translate3d(0, calc(var(--drop, 30px) * -0.058), 0); }
+  /* second touchdown, a fifth of the height and a third of the time */
+  89% { transform: translate3d(0, 0, 0); }
+  93% { transform: translate3d(0, calc(var(--drop, 30px) * -0.0062), 0); }
+  97% { transform: translate3d(0, 0, 0); }
   100% { transform: translate3d(0, 0, 0); }
 }
 @keyframes chip-appear {
   0% { opacity: 0; }
   100% { opacity: 1; }
 }
+/* Turning into its resting angle: it swings a little past on the way down, is stopped
+   flat by the touchdown, and rocks back over the two bounces. */
 @keyframes chip-turn-in {
   0% { rotate: var(--tilt-from, 0deg); }
+  57% { rotate: calc(var(--tilt, 0deg) * 1.55); }
+  73% { rotate: calc(var(--tilt, 0deg) * 0.82); }
+  89% { rotate: calc(var(--tilt, 0deg) * 1.08); }
   100% { rotate: var(--tilt, 0deg); }
+}
+/* Chips are not dropped down a chimney: it drifts in from the side and settles. */
+@keyframes chip-slide-in {
+  0% { translate: calc(var(--shift, 0px) * 3.4) 0; }
+  57% { translate: calc(var(--shift, 0px) * 1.25) 0; }
+  100% { translate: var(--shift, 0px) 0; }
 }
 @keyframes chip-lift-out {
   0% { transform: translate3d(0, 0, 0); }
-  100% { transform: translate3d(0, calc(var(--drop, 30px) * -0.7), 0); }
+  100% { transform: translate3d(0, calc(var(--drop, 30px) * -1.35), 0); }
 }
+/* Full opacity while it clears the pile, gone by the top of the lift. */
 @keyframes chip-fade-out {
   0% { opacity: 1; }
+  34% { opacity: 1; }
   100% { opacity: 0; }
 }
 @keyframes chip-turn-out {
   0% { rotate: var(--tilt, 0deg); }
-  100% { rotate: calc(var(--tilt, 0deg) * 3.2); }
+  100% { rotate: calc(var(--tilt, 0deg) * 4.5); }
 }
-/* One chip's weight arriving on the one below: a shove down, a slight squash, and a
-   small overshoot back. Weaker the further down the pile it is felt. */
+@keyframes chip-slide-out {
+  0% { translate: var(--shift, 0px) 0; }
+  100% { translate: calc(var(--shift, 0px) * 5) 0; }
+}
+/* One chip's weight arriving on the one below: a shove down, a slight squash, a small
+   overshoot back — and then the lighter second tap, when the chip that bounced comes
+   down again. Weaker the further down the pile it is felt. */
 @keyframes chip-impact {
   0% { transform: translate3d(0, 0, 0) scaleY(1); }
-  18% { transform: translate3d(0, var(--jolt, 1.5px), 0) scaleY(var(--squash, 0.96)); }
-  55% { transform: translate3d(0, calc(var(--jolt, 1.5px) * -0.22), 0) scaleY(calc(1 + (1 - var(--squash, 0.96)) * 0.3)); }
+  9% { transform: translate3d(0, var(--jolt, 1.5px), 0) scaleY(var(--squash, 0.96)); }
+  26% { transform: translate3d(0, calc(var(--jolt, 1.5px) * -0.2), 0) scaleY(calc(1 + (1 - var(--squash, 0.96)) * 0.28)); }
+  44% { transform: translate3d(0, 0, 0) scaleY(1); }
+  52% { transform: translate3d(0, calc(var(--jolt, 1.5px) * 0.34), 0) scaleY(calc(1 - (1 - var(--squash, 0.96)) * 0.34)); }
+  68% { transform: translate3d(0, calc(var(--jolt, 1.5px) * -0.07), 0) scaleY(1); }
   100% { transform: translate3d(0, 0, 0) scaleY(1); }
 }
 .stack-col .cap { font-family: var(--mono); color: var(--text-dim); margin-top: 7px; font-weight: 600; font-variant-numeric: tabular-nums; }
