@@ -607,7 +607,7 @@ input[type='number'] { -moz-appearance: textfield; }
 .blind-check.bad b { color: var(--bad); }
 
 /* ---- Chip stack viz (3D cylinders) ---- */
-.stack-viz { display: flex; align-items: flex-end; justify-content: center; width: 100%; margin: 16px 0 6px; }
+.stack-viz { display: flex; align-items: flex-end; justify-content: center; width: 100%; margin: 30px 0 6px; }
 .stack-col { display: flex; flex-direction: column; align-items: center; }
 .chip-stack-svg { display: block; filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.35)); }
 
@@ -633,25 +633,78 @@ input[type='number'] { -moz-appearance: textfield; }
   transition: height 220ms cubic-bezier(0.25, 0.8, 0.3, 1);
 }
 .stack-layers .chip-stack-svg { filter: none; }
-.stack-disc { position: absolute; left: 0; bottom: 0; width: 100%; line-height: 0; }
-.stack-disc > img { display: block; width: 100%; height: 100%; }
+/* A chip sits at its own small angle, a touch off centre — no two chips in a real
+   pile line up. These are separate CSS properties, not `transform`, so the fall and
+   the knock can animate on top of them without wiping them out. */
+.stack-disc {
+  position: absolute; left: 0; bottom: 0; width: 100%; line-height: 0;
+  rotate: var(--tilt, 0deg);
+  translate: var(--shift, 0) 0;
+}
+.stack-disc-hit { display: block; line-height: 0; transform-origin: 50% 88%; }
+.stack-disc img { display: block; width: 100%; height: 100%; }
 .stack-disc.in,
 .stack-disc.out { will-change: transform, opacity; }
-/* out of thin air, then a short fall onto the pile, with a hair of rebound */
-.stack-disc.in { animation: chip-drop-in 300ms cubic-bezier(0.24, 0.66, 0.3, 1) backwards; }
-/* taken off the pile again: the same move, reversed */
-.stack-disc.out { animation: chip-lift-out 200ms cubic-bezier(0.4, 0, 0.85, 0.5) forwards; }
+
+/* Out of thin air, then a fall that gathers speed, a touchdown, and two shrinking
+   bounces on the rim below. Three animations, one property each: the fall moves it,
+   the fade brings it into being, the turn settles its angle. */
+.stack-disc.in {
+  animation:
+    chip-drop-in var(--fall, 420ms) linear backwards,
+    chip-appear calc(var(--fall, 420ms) * 0.3) linear backwards,
+    chip-turn-in var(--fall, 420ms) cubic-bezier(0.3, 0.7, 0.35, 1) backwards;
+}
+/* Lifted off the pile again: it tips as it goes, the way a chip pinched off the top does */
+.stack-disc.out {
+  animation:
+    chip-lift-out var(--lift, 240ms) cubic-bezier(0.35, 0, 0.8, 0.45) forwards,
+    chip-fade-out var(--lift, 240ms) linear forwards,
+    chip-turn-out var(--lift, 240ms) cubic-bezier(0.35, 0, 0.8, 0.45) forwards;
+}
+/* The chip that just landed, and the chips underneath taking the knock. */
+.stack-disc.in > .stack-disc-hit,
+.stack-disc.struck > .stack-disc-hit {
+  animation: chip-impact 240ms cubic-bezier(0.25, 0.7, 0.35, 1) backwards;
+}
 
 @keyframes chip-drop-in {
-  0% { opacity: 0; transform: translate3d(0, calc(var(--drop, 18px) * -1), 0); }
-  50% { opacity: 1; }
-  86% { transform: translate3d(0, 0, 0); }
-  93% { transform: translate3d(0, calc(var(--drop, 18px) * -0.07), 0); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0); }
+  /* gravity: slow to leave, quick to arrive */
+  0% { transform: translate3d(0, calc(var(--drop, 30px) * -1), 0); animation-timing-function: cubic-bezier(0.42, 0, 0.85, 0.42); }
+  /* touchdown — lib/stackDrop.ts calls this moment IMPACT_AT */
+  64% { transform: translate3d(0, 0, 0); animation-timing-function: cubic-bezier(0.18, 0.62, 0.4, 1); }
+  76% { transform: translate3d(0, calc(var(--drop, 30px) * -0.1), 0); animation-timing-function: cubic-bezier(0.5, 0, 0.85, 0.45); }
+  87% { transform: translate3d(0, 0, 0); animation-timing-function: cubic-bezier(0.18, 0.62, 0.4, 1); }
+  94% { transform: translate3d(0, calc(var(--drop, 30px) * -0.03), 0); animation-timing-function: cubic-bezier(0.5, 0, 0.9, 0.5); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+@keyframes chip-appear {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes chip-turn-in {
+  0% { rotate: var(--tilt-from, 0deg); }
+  100% { rotate: var(--tilt, 0deg); }
 }
 @keyframes chip-lift-out {
-  0% { opacity: 1; transform: translate3d(0, 0, 0); }
-  100% { opacity: 0; transform: translate3d(0, calc(var(--drop, 18px) * -0.8), 0); }
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(0, calc(var(--drop, 30px) * -0.7), 0); }
+}
+@keyframes chip-fade-out {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes chip-turn-out {
+  0% { rotate: var(--tilt, 0deg); }
+  100% { rotate: calc(var(--tilt, 0deg) * 3.2); }
+}
+/* One chip's weight arriving on the one below: a shove down, a slight squash, and a
+   small overshoot back. Weaker the further down the pile it is felt. */
+@keyframes chip-impact {
+  0% { transform: translate3d(0, 0, 0) scaleY(1); }
+  18% { transform: translate3d(0, var(--jolt, 1.5px), 0) scaleY(var(--squash, 0.96)); }
+  55% { transform: translate3d(0, calc(var(--jolt, 1.5px) * -0.22), 0) scaleY(calc(1 + (1 - var(--squash, 0.96)) * 0.3)); }
+  100% { transform: translate3d(0, 0, 0) scaleY(1); }
 }
 .stack-col .cap { font-family: var(--mono); color: var(--text-dim); margin-top: 7px; font-weight: 600; font-variant-numeric: tabular-nums; }
 

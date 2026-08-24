@@ -4,7 +4,7 @@ import { useT } from '../lib/i18n';
 import { useStore } from '../store';
 import { renderChip, type ChipRender } from '../lib/chip3d';
 import { animatedHere, type ChipAnimSurface } from '../lib/chipAnim';
-import { dropDelay, idleDiscs, useStackDiscs, type Disc } from '../lib/stackDrop';
+import { chipTilt, discMotions, idleDiscs, impactStrength, useStackDiscs, type DiscMotion } from '../lib/stackDrop';
 import Chip from './Chip';
 import { ChipValue } from './Chip3D';
 
@@ -111,8 +111,8 @@ function StackColumn({ d, count, frameDiscs, size, animate, use3d, total, visit 
   // Three.js and the model load on first use. Until the bitmaps are there the vector
   // stack stands in — it holds still, so the pile can't play its build twice.
   const discs = use3d && !layers ? idleDiscs(count) : tracked;
-  const drop = Math.round(Math.max(14, Math.min(34, size * 0.55)));
-  const delays = dropDelays(discs);
+  const drop = Math.round(Math.max(22, Math.min(56, size * 0.85)));
+  const motions = discMotions(discs);
   const label = `${total} chips of ${d.value}`;
 
   if (use3d && layers && layers.length > 0 && needed > 0) {
@@ -131,21 +131,23 @@ function StackColumn({ d, count, frameDiscs, size, animate, use3d, total, visit 
         aria-label={label}
         style={{ width: frameW, height: pileH, ['--drop' as string]: `${drop}px` }}
       >
-        {discs.map(({ i, state }) => {
-          const layer = layers[i];
+        {motions.map((m) => {
+          const layer = layers[m.i];
           if (!layer) return null;
           return (
             <div
-              key={i}
-              className={`stack-disc ${state}`}
+              key={discKey(m)}
+              className={discClass(m)}
               style={{
+                ...discStyle(m, size),
                 height: layer.height,
                 bottom: frameH - (layer.offsetTop ?? 0) - layer.height,
-                animationDelay: `${delays[i] ?? 0}ms`,
               }}
             >
-              <img src={layer.url} width={frameW} height={layer.height} alt="" draggable={false} />
-              <ChipValue render={layer} value={d.value} color={d.color} />
+              <div className="stack-disc-hit" style={hitStyle(m, size)}>
+                <img src={layer.url} width={frameW} height={layer.height} alt="" draggable={false} />
+                <ChipValue render={layer} value={d.value} color={d.color} />
+              </div>
             </div>
           );
         })}
@@ -153,7 +155,7 @@ function StackColumn({ d, count, frameDiscs, size, animate, use3d, total, visit 
     );
   }
 
-  return <VectorColumn d={d} discs={discs} count={count} size={size} drop={drop} delays={delays} label={label} />;
+  return <VectorColumn d={d} motions={motions} count={count} size={size} drop={drop} label={label} />;
 }
 
 /* ---------------- 3D layers ---------------- */
@@ -219,18 +221,43 @@ function useTabEntries(ref: React.RefObject<HTMLElement | null>): number {
   return visits;
 }
 
-/** When each chip moves: added chips land bottom-up, removed chips leave top-down. */
-function dropDelays(discs: Disc[]): Record<number, number> {
-  const moving = (s: Disc['state']) => discs.filter((x) => x.state === s).map((x) => x.i);
-  const out: Record<number, number> = {};
-  for (const state of ['in', 'out'] as const) {
-    const idx = moving(state);
-    if (idx.length === 0) continue;
-    const from = Math.min(...idx);
-    const to = Math.max(...idx) + 1;
-    for (const i of idx) out[i] = dropDelay(i, from, to, state === 'out');
-  }
-  return out;
+/* ---------------- one chip's motion, as CSS ---------------- */
+
+/**
+ * Remounting is what restarts an animation: React keeps the same element for the same
+ * key, and re-setting a delay on an element already carrying that animation does
+ * nothing. So a chip's key carries what it is currently doing — a chip that starts
+ * falling, or takes a fresh knock, comes back as a new element and moves.
+ */
+function discKey(m: DiscMotion): string {
+  return `${m.i}:${m.state}:${m.impactAt ?? 'still'}`;
+}
+
+function discClass(m: DiscMotion): string {
+  if (m.state === 'idle') return `stack-disc${m.impactAt === null ? '' : ' struck'}`;
+  return `stack-disc ${m.state}`;
+}
+
+/** Resting angle and side-shift, plus where the chip turns in from while it falls. */
+function discStyle(m: DiscMotion, size: number): React.CSSProperties {
+  const tilt = chipTilt(m.i);
+  return {
+    ['--tilt' as string]: `${tilt.deg.toFixed(2)}deg`,
+    ['--shift' as string]: `${((tilt.shift * size) / 58).toFixed(2)}px`,
+    ['--tilt-from' as string]: `${(tilt.deg * -2.1).toFixed(2)}deg`,
+    animationDelay: `${m.delay}ms`,
+  };
+}
+
+/** The knock: when it arrives, how hard it shoves, how much it squashes. */
+function hitStyle(m: DiscMotion, size: number): React.CSSProperties {
+  if (m.impactAt === null) return {};
+  const { jolt, squash } = impactStrength(m.depth, size);
+  return {
+    ['--jolt' as string]: `${jolt}px`,
+    ['--squash' as string]: squash,
+    animationDelay: `${m.impactAt}ms`,
+  };
 }
 
 /* ---------------- vector layers ---------------- */
@@ -248,25 +275,23 @@ const DISC_VH = TOP_CY + PER_CHIP + RY + 2;
  */
 function VectorColumn({
   d,
-  discs,
+  motions,
   count,
   size,
   drop,
-  delays,
   label,
 }: {
   d: Denomination;
-  discs: Disc[];
+  motions: DiscMotion[];
   count: number;
   size: number;
   drop: number;
-  delays: Record<number, number>;
   label: string;
 }) {
   const pitch = (size * PER_CHIP) / 100;
   const discH = (size * DISC_VH) / 100;
   const pileH = Math.max(discH, (Math.max(1, count) - 1) * pitch + discH);
-  const moving = new Set(discs.filter((x) => x.state !== 'idle').map((x) => x.i));
+  const moving = new Set(motions.filter((x) => x.state !== 'idle').map((x) => x.i));
 
   return (
     <div
@@ -275,13 +300,15 @@ function VectorColumn({
       aria-label={label}
       style={{ width: size, height: pileH, ['--drop' as string]: `${drop}px` }}
     >
-      {discs.map(({ i, state }) => (
+      {motions.map((m) => (
         <div
-          key={i}
-          className={`stack-disc ${state}`}
-          style={{ bottom: i * pitch, height: discH, animationDelay: `${delays[i] ?? 0}ms` }}
+          key={discKey(m)}
+          className={discClass(m)}
+          style={{ ...discStyle(m, size), bottom: m.i * pitch, height: discH }}
         >
-          <VectorDisc d={d} size={size} showFace={i >= count - 1 || moving.has(i + 1) || moving.has(i)} />
+          <div className="stack-disc-hit" style={hitStyle(m, size)}>
+            <VectorDisc d={d} size={size} showFace={m.i >= count - 1 || moving.has(m.i + 1) || moving.has(m.i)} />
+          </div>
         </div>
       ))}
     </div>

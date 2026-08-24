@@ -1,4 +1,13 @@
-import { dropDelay, idleDiscs, DROP_STAGGER_MS } from './stackDrop.ts';
+import {
+  chipTilt,
+  discMotions,
+  dropDelay,
+  idleDiscs,
+  impactStrength,
+  DROP_STAGGER_MS,
+  IMPACT_MS,
+  type Disc,
+} from './stackDrop.ts';
 import { animatedHere } from './chipAnim.ts';
 
 /**
@@ -52,6 +61,61 @@ console.log('\na stack that is not moving is simply there');
   check('all of them at rest', idleDiscs(5).every((d) => d.state === 'idle'));
   eq('bottom chip is index 0', idleDiscs(5)[0].i, 0);
   eq('no chips, no entries', idleDiscs(0).length, 0);
+}
+
+console.log('\na chip that lands is felt by the chips under it');
+{
+  // a pile of six that just grew to eight
+  const discs: Disc[] = [
+    ...idleDiscs(6),
+    { i: 6, state: 'in' },
+    { i: 7, state: 'in' },
+  ];
+  const m = discMotions(discs);
+  const at = (i: number) => m.find((x) => x.i === i)!;
+
+  eq('the first new chip touches down after its fall', at(6).impactAt, IMPACT_MS);
+  eq('the second lands a stagger later', at(7).impactAt, IMPACT_MS + DROP_STAGGER_MS);
+  eq('a landing chip is its own impact', at(6).depth, 0);
+
+  check('the chip directly below is struck', at(5).impactAt !== null);
+  eq('one chip down', at(5).depth, 1);
+  check('later than the chip that hit it', (at(5).impactAt as number) > IMPACT_MS);
+  eq('three down still feels it', at(3).depth, 3);
+  eq('four down does not', at(2).impactAt, null);
+  check('and the knock travels downward in time', (at(3).impactAt as number) > (at(4).impactAt as number));
+}
+
+console.log('\nchips being taken off take no knock');
+{
+  const discs: Disc[] = [...idleDiscs(4), { i: 4, state: 'out' }, { i: 5, state: 'out' }];
+  const m = discMotions(discs);
+  const at = (i: number) => m.find((x) => x.i === i)!;
+  eq('the top chip leaves first', at(5).delay, 0);
+  eq('the one below follows', at(4).delay, DROP_STAGGER_MS);
+  eq('nothing lands, so nothing is struck', at(5).impactAt, null);
+  eq('and the pile below is left alone', at(3).impactAt, null);
+}
+
+console.log('\nno two chips in a pile sit at the same angle');
+{
+  const a = chipTilt(4);
+  const b = chipTilt(5);
+  check('neighbours lean opposite ways', Math.sign(a.deg) !== Math.sign(b.deg));
+  check('and shift opposite ways with them', Math.sign(a.shift) !== Math.sign(b.shift));
+  check('the lean stays small', Math.abs(a.deg) >= 1.3 && Math.abs(a.deg) <= 2.4, `${a.deg}deg`);
+  eq('a chip keeps its angle when the pile changes', chipTilt(4).deg, a.deg);
+}
+
+console.log('\na knock fades as it travels down the pile');
+{
+  const hit = impactStrength(0, 58);
+  const one = impactStrength(1, 58);
+  const three = impactStrength(3, 58);
+  check('the chip that landed takes the most', hit.jolt > one.jolt && one.jolt > three.jolt);
+  check('and squashes the most', hit.squash < one.squash && one.squash < three.squash);
+  check('nothing squashes visibly far', three.squash > 0.985, `${three.squash}`);
+  check('a small chip takes a smaller shove', impactStrength(0, 24).jolt < hit.jolt);
 }
 
 console.log('\nwhere the animation is allowed to play');
