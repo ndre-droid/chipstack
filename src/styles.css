@@ -607,8 +607,27 @@ input[type='number'] { -moz-appearance: textfield; }
 .blind-check.bad b { color: var(--bad); }
 
 /* ---- Chip stack viz (3D cylinders) ---- */
-.stack-viz { display: flex; align-items: flex-end; justify-content: center; width: 100%; margin: 52px 0 6px; }
+/* The row leaves room above for a chip to fall through — the component sets it from
+   the chip size, so a big-screen spread gets a big-screen drop. */
+.stack-viz { display: flex; align-items: flex-end; justify-content: center; width: 100%; margin: 0 0 6px; }
+/* The gap lives on the columns, not the row: a pile folding away has to take its
+   share of the spacing with it, or the row twitches when it finally goes. */
 .stack-col { display: flex; flex-direction: column; align-items: center; }
+/* A whole denomination arriving or leaving the plan: quick, and it carries its own
+   width, so the rest of the row slides over instead of jumping. */
+.stack-col.col-in { animation: col-in 260ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards; }
+.stack-col.col-out { animation: col-out 220ms cubic-bezier(0.4, 0, 0.7, 0.4) forwards; pointer-events: none; }
+
+@keyframes col-in {
+  0% { width: 0; padding-inline: 0; opacity: 0; transform: translateY(6px) scale(0.86); }
+  55% { opacity: 1; }
+  100% { width: var(--col-w); padding-inline: var(--col-pad); opacity: 1; transform: none; }
+}
+@keyframes col-out {
+  0% { width: var(--col-w); padding-inline: var(--col-pad); opacity: 1; transform: none; }
+  45% { opacity: 0.35; }
+  100% { width: 0; padding-inline: 0; opacity: 0; transform: translateY(4px) scale(0.8); }
+}
 .chip-stack-svg { display: block; filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.35)); }
 
 /* ---- 3D chip: a rendered bitmap with the value laid over its face ---- */
@@ -1755,7 +1774,13 @@ input[type='color'] { cursor: pointer; }
 /* The spread on the big screen is the same component as on the phone, so the count
    under each pile arrives sized for a hand — from an inline style, which is why this
    has to shout to be heard. Room to fall, too: a chip drops from above the pile. */
-.tv-startstack .stack-viz { margin: clamp(52px, 9vmin, 132px) 0 0; }
+/* The overlay is a centred column, so its children shrink to their own content — and
+   a spread that measures itself would then size to whatever it already was. Stretching
+   the grid gives the chips the real width of the screen to fill. */
+.tv-startstack .tv-startstack-grid {
+  align-self: stretch; width: 100%; padding-inline: clamp(16px, 4vmin, 90px);
+}
+.tv-startstack .stack-viz { margin: 0; }
 .tv-startstack .stack-col .cap {
   font-family: var(--tv-num);
   font-size: clamp(20px, 3vmin, 52px) !important;

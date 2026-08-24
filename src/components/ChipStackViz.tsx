@@ -4,6 +4,7 @@ import { useT } from '../lib/i18n';
 import { useStore } from '../store';
 import { renderChip, type ChipRender } from '../lib/chip3d';
 import { animatedHere, type ChipAnimSurface } from '../lib/chipAnim';
+import { useColumnFlow } from '../lib/columnFlow';
 import {
   chipTilt,
   discMotions,
@@ -51,6 +52,13 @@ export default function ChipStackViz({
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(320);
   const visit = useTabEntries(ref);
+  // A denomination joining or leaving the plan is a whole pile arriving or going, not
+  // chips moving inside one: it unfolds into the row, or folds up and takes its space
+  // with it, instead of the row jumping to fill a hole.
+  const columns = useColumnFlow(
+    used.map((d) => ({ id: d.id, item: { d, n: counts[d.id] } })),
+    animate,
+  );
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -62,24 +70,34 @@ export default function ChipStackViz({
     return () => ro.disconnect();
   }, []);
 
-  if (used.length === 0) return <div className="empty">{t('plan.noChipsYet')}</div>;
+  if (columns.length === 0) return <div className="empty">{t('plan.noChipsYet')}</div>;
 
-  // The gap belongs to the chips, not the screen: bigger chips, bigger gaps.
+  // The gap belongs to the chips, not the screen: bigger chips, bigger gaps. It rides
+  // on the columns rather than the row, so a pile folding away takes its gap with it.
   const gap = Math.round(maxChipSize * 0.21);
   const weight = (d: Denomination) => (d.shape === 'plaque' ? 1.5 : 1);
-  const totalWeight = used.reduce((s, d) => s + weight(d), 0) || 1;
+  const totalWeight = columns.reduce((s, c) => s + weight(c.item.d), 0) || 1;
   const w = Number.isFinite(width) && width > 0 ? width : 320;
-  const rawSize = Math.floor((w - (used.length - 1) * gap - 2) / totalWeight);
+  const rawSize = Math.floor((w - columns.length * gap - 2) / totalWeight);
   const chipSize = Math.max(20, Math.min(maxChipSize, Number.isFinite(rawSize) ? rawSize : 34));
+  // Room above the pile for a chip to fall through, in proportion to the chip.
+  const headroom = Math.round(chipSize * 0.95);
 
   return (
-    <div className="stack-viz" ref={ref} style={{ gap }}>
-      {used.map((d) => {
-        const n = counts[d.id];
+    <div className="stack-viz" ref={ref} style={{ paddingTop: headroom }}>
+      {columns.map(({ id, item: { d, n }, state }) => {
         const capSize = Math.max(10, Math.round(chipSize * 0.24));
+        const colW = Math.round(chipSize * (d.shape === 'plaque' ? 1.35 : 1)) + gap;
+        const style = {
+          width: colW,
+          paddingInline: gap / 2,
+          ['--col-w' as string]: `${colW}px`,
+          ['--col-pad' as string]: `${gap / 2}px`,
+        };
+        const className = `stack-col${state === 'idle' ? '' : ` col-${state}`}`;
         if (d.shape === 'plaque') {
           return (
-            <div className="stack-col" key={d.id}>
+            <div className={className} key={id} style={style}>
               <div className="plaque-stack">
                 <Chip value={d.value} color={d.color} accent={d.accent} size={chipSize} shape="plaque" />
               </div>
@@ -88,7 +106,7 @@ export default function ChipStackViz({
           );
         }
         return (
-          <div className="stack-col" key={d.id}>
+          <div className={className} key={id} style={style}>
             <StackColumn
               d={d}
               count={Math.min(n, maxDiscs)}

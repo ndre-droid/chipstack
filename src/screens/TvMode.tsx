@@ -104,6 +104,11 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('resize', onResize);
   }, []);
   const tvCompact = viewportH / tvScale < 860;
+  /* How big a chip may be drawn on the big screen. The row already fills the width on
+     its own; this is the height bound, because a pile of eleven plus the room a chip
+     falls through is roughly two and a half chips tall. Measured against the SCALED
+     viewport: the whole TV is laid out at 100%/--tv-scale and scaled back up. */
+  const tvChipSize = Math.round(Math.max(72, Math.min(240, (viewportH / tvScale) * 0.2)));
   const isCash = gameMode === 'cash';
   // Cash game with the timer off = no countdown. There's still a ladder, though:
   // a cash table raises the blinds when it feels like it, not on a clock, so the
@@ -1294,7 +1299,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               denoms={startStack.denomsUsed}
               counts={startStack.counts}
               surface="tv"
-              maxChipSize={96}
+              maxChipSize={tvChipSize}
             />
           </div>
           <div className="tv-startstack-total">
