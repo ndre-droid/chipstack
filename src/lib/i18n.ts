@@ -783,6 +783,12 @@ const dict: Record<Lang, Record<string, string>> = {
     'settings.chipStyleNote': 'The 3D chips are rendered from the real model once per colour, then reused. Drawn chips stay sharp at any size and cost nothing to show.',
     'settings.chipStyleNoWebgl': 'This device has no WebGL, so chips stay drawn.',
 
+    'settings.chipAnim': 'Falling chips',
+    'settings.chipAnim.off': 'Off',
+    'settings.chipAnim.plan': 'Plan only',
+    'settings.chipAnim.all': 'Everywhere',
+    'settings.chipAnimNote': 'When a stack grows, the new chips appear above it and drop on; when it shrinks, they lift off again. Most visible on the Plan screen, where the chip-mix slider moves the stacks while you watch.',
+
   },
   de: {
     'nav.plan': 'Plan',
@@ -1557,6 +1563,12 @@ const dict: Record<Lang, Record<string, string>> = {
     'settings.chipStyleRender': '3D-Render',
     'settings.chipStyleNote': 'Die 3D-Chips werden einmal pro Farbe aus dem echten Modell gerendert und danach wiederverwendet. Gezeichnete Chips bleiben in jeder Größe scharf und kosten nichts.',
     'settings.chipStyleNoWebgl': 'Dieses Gerät hat kein WebGL, die Chips bleiben gezeichnet.',
+
+    'settings.chipAnim': 'Fallende Chips',
+    'settings.chipAnim.off': 'Aus',
+    'settings.chipAnim.plan': 'Nur Plan',
+    'settings.chipAnim.all': 'Überall',
+    'settings.chipAnimNote': 'Wächst ein Stapel, erscheinen die neuen Chips darüber und fallen darauf; schrumpft er, heben sie wieder ab. Am deutlichsten im Plan-Tab, wo der Chip-Mix-Regler die Stapel live verschiebt.',
 
   },
 };

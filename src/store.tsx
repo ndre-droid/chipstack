@@ -66,6 +66,7 @@ const defaultSettings: Settings = {
   appearance: 'dark',
   chipArt: 'deco',
   chipStyle: 'render3d',
+  chipAnim: 'plan',
   language: 'en',
   gameMode: 'tournament',
   cashUseTimer: false,
@@ -899,6 +900,7 @@ function migrate(raw: string | null): AppState {
   const validArt = ['deco', 'classic', 'diamond', 'sunburst'];
   if (!validArt.includes(settings.chipArt)) settings.chipArt = 'deco';
   if (settings.chipStyle !== 'vector' && settings.chipStyle !== 'render3d') settings.chipStyle = 'render3d';
+  if (!['off', 'plan', 'all'].includes(settings.chipAnim as string)) settings.chipAnim = 'plan';
 
   const savedSession = (parsed.session ?? {}) as Record<string, unknown>;
   const session = { ...defaultSession, ...savedSession } as SessionConfig & {

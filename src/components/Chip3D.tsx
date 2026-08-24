@@ -44,10 +44,7 @@ export default function Chip3D({ value, color, accent, size, view, discs = 1, cl
 
   if (failed || !render) return <>{fallback}</>;
 
-  const { width, height, label } = render;
-  const isLight = isLightColor(color);
-  // The cartouche is about a third of the face; keep the number inside it.
-  const fontSize = Math.max(7, render.width * label.widthFraction * fontScale(String(value)));
+  const { width, height } = render;
 
   return (
     <div
@@ -57,19 +54,34 @@ export default function Chip3D({ value, color, accent, size, view, discs = 1, cl
       aria-label={view === 'stack' ? `${discs} chips of ${value}` : `${value} chip`}
     >
       <img src={render.url} width={width} height={height} alt="" draggable={false} />
-      <span
-        className="chip3d-value"
-        style={{
-          left: `${label.x * 100}%`,
-          top: `${label.y * 100}%`,
-          fontSize,
-          color: isLight ? '#2a2205' : '#fff',
-          transform: `translate(-50%, -50%) scaleY(${label.squash.toFixed(3)})`,
-        }}
-      >
-        {value}
-      </span>
+      <ChipValue render={render} value={value} color={color} />
     </div>
+  );
+}
+
+/**
+ * The denomination, laid on the face of a rendered chip: placed and foreshortened by
+ * the same camera that drew the bitmap. Shared with the stack view, where every disc
+ * of a pile carries its own number.
+ */
+export function ChipValue({ render, value, color }: { render: ChipRender; value: number | string; color: string }) {
+  const { label } = render;
+  const isLight = isLightColor(color);
+  // The cartouche is about a third of the face; keep the number inside it.
+  const fontSize = Math.max(7, render.width * label.widthFraction * fontScale(String(value)));
+  return (
+    <span
+      className="chip3d-value"
+      style={{
+        left: `${label.x * 100}%`,
+        top: `${label.y * 100}%`,
+        fontSize,
+        color: isLight ? '#2a2205' : '#fff',
+        transform: `translate(-50%, -50%) scaleY(${label.squash.toFixed(3)})`,
+      }}
+    >
+      {value}
+    </span>
   );
 }
 

@@ -27,6 +27,8 @@ export type Skin = 'minimal' | 'casino' | 'playful' | 'scifi';
 export type ChipArt = 'deco' | 'classic' | 'diamond' | 'sunburst';
 /** How chips are drawn everywhere in the app. See `Settings.chipStyle`. */
 export type ChipStyle = 'vector' | 'render3d';
+/** Where a stack is allowed to grow and shrink by dropping chips. See `Settings.chipAnim`. */
+export type ChipAnim = 'off' | 'plan' | 'all';
 
 export interface Settings {
   unitValue: number;        // real money value of 1 chip-unit (default 0.01)
@@ -69,6 +71,11 @@ export interface Settings {
    *  bitmap. Per-device — whether a device can afford WebGL is not part of a setup,
    *  and a phone must not be able to switch the TV's renderer. */
   chipStyle: ChipStyle;
+  /** Where chips drop into the pile when a stack changes: nowhere, the Plan screen
+   *  only (default — that is where the chip-mix slider moves stacks while you watch),
+   *  or every chip spread. Per-device: it is a matter of taste and of what the phone
+   *  can afford, not part of a setup. */
+  chipAnim: ChipAnim;
   language: 'en' | 'de';
   /** Tournament: fixed prize pool, rising blinds, payout split + bust leaderboard.
    *  Cash: chips = money, blinds fixed (timer optional), players cash out anytime and

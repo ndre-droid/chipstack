@@ -191,6 +191,24 @@ export default function SettingsScreen() {
         </p>
       </div>
 
+      <div className="section-label">{t('settings.chipAnim')}</div>
+      <div className="card">
+        <div className="chip-toggle-row">
+          {(['off', 'plan', 'all'] as const).map((mode) => (
+            <button
+              key={mode}
+              className={`chip-toggle ${settings.chipAnim === mode ? '' : 'off'}`}
+              onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { chipAnim: mode } })}
+            >
+              {t(`settings.chipAnim.${mode}` as 'settings.chipAnim.off')}
+            </button>
+          ))}
+        </div>
+        <p className="muted mt12" style={{ fontSize: 12.5, margin: '12px 0 0' }}>
+          {t('settings.chipAnimNote')}
+        </p>
+      </div>
+
       <div className="section-label">{t('settings.chipArt')}</div>
       <div className="card">
         <div className="chip-art-grid">

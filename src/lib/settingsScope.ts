@@ -34,6 +34,8 @@ export const DEVICE_LOCAL_SETTINGS = [
   // how chips are drawn: a weak phone and a TV stick want different answers, and
   // the 3D renderer needs WebGL this device may not have
   'chipStyle',
+  // whether chips are allowed to move: taste, and what this phone can afford
+  'chipAnim',
   // a break armed for tonight at 21:30 means nothing to anyone else
   'breakAt',
   // the big-screen photo is per-device by design (see lib/photoStore) and is by
@@ -78,6 +80,7 @@ function pinned(s: Settings): Pick<Settings, DeviceLocalKey> {
     countMode: s.countMode,
     levelAlerts: s.levelAlerts,
     chipStyle: s.chipStyle,
+    chipAnim: s.chipAnim,
     breakAt: s.breakAt,
     tvBackground: s.tvBackground,
     tvBackgroundFocus: s.tvBackgroundFocus,

@@ -217,7 +217,7 @@ export default function PlanScreen() {
           {edited && <span className="badge-soft" style={{ marginLeft: 8 }}>{t('plan.edited')}</span>}
         </div>
 
-        <ChipStackViz denoms={effUsed} counts={displayCounts} />
+        <ChipStackViz denoms={effUsed} counts={displayCounts} surface="plan" />
 
         {/* small-chip slider — lives with the visual it controls */}
         <div className="hero-slider">

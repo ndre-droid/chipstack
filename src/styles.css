@@ -621,6 +621,38 @@ input[type='number'] { -moz-appearance: textfield; }
 }
 .chip3d-in-stack img { filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.35)); }
 .plaque-stack { filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.35)); line-height: 0; }
+
+/* ---- a stack built out of one layer per chip, so chips can drop into it ----
+   Every layer is the same picture size seen through the same camera (3D) or the
+   same disc offset by one thickness (vector), stacked bottom-up in DOM order.
+   The shadow sits on the pile, not on each chip: eleven drop-shadow filters per
+   column is a repaint a phone can't afford while something is moving. */
+.stack-layers {
+  position: relative; line-height: 0; overflow: visible;
+  filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.35));
+  transition: height 220ms cubic-bezier(0.25, 0.8, 0.3, 1);
+}
+.stack-layers .chip-stack-svg { filter: none; }
+.stack-disc { position: absolute; left: 0; bottom: 0; width: 100%; line-height: 0; }
+.stack-disc > img { display: block; width: 100%; height: 100%; }
+.stack-disc.in,
+.stack-disc.out { will-change: transform, opacity; }
+/* out of thin air, then a short fall onto the pile, with a hair of rebound */
+.stack-disc.in { animation: chip-drop-in 300ms cubic-bezier(0.24, 0.66, 0.3, 1) backwards; }
+/* taken off the pile again: the same move, reversed */
+.stack-disc.out { animation: chip-lift-out 200ms cubic-bezier(0.4, 0, 0.85, 0.5) forwards; }
+
+@keyframes chip-drop-in {
+  0% { opacity: 0; transform: translate3d(0, calc(var(--drop, 18px) * -1), 0); }
+  50% { opacity: 1; }
+  86% { transform: translate3d(0, 0, 0); }
+  93% { transform: translate3d(0, calc(var(--drop, 18px) * -0.07), 0); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes chip-lift-out {
+  0% { opacity: 1; transform: translate3d(0, 0, 0); }
+  100% { opacity: 0; transform: translate3d(0, calc(var(--drop, 18px) * -0.8), 0); }
+}
 .stack-col .cap { font-family: var(--mono); color: var(--text-dim); margin-top: 7px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* ---- small-chip slider inside the hero ---- */

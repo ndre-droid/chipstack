@@ -35,6 +35,14 @@ export interface ChipRenderRequest {
   size: number;
   /** How many discs to stack. 1 = a single chip; only used by the 'stack' view. */
   discs?: number;
+  /**
+   * Stack view: draw ONLY this disc (0 = bottom) instead of the whole pile, while
+   * still framing the shot for a `discs`-high stack. Every layer of one pile is then
+   * the same bitmap size seen through the same camera, so laying them on top of each
+   * other rebuilds the stack pixel-for-pixel — and any one of them can be moved on
+   * its own, which is what makes a chip able to fall onto the pile.
+   */
+  layer?: number;
   view: ChipView;
   /** Device pixel ratio to render at (capped, so a 4x phone doesn't melt). */
   dpr?: number;
@@ -58,10 +66,15 @@ let rendererFailed = false;
 
 /** Cache: key -> finished render. Bounded by MAX_CACHE entries. */
 const cache = new Map<string, ChipRender>();
-const MAX_CACHE = 160;
+/** A stack is now one entry per chip: eight denominations, eleven discs each, at the
+ *  Plan and Table sizes, is already ~176 pictures — a cache that evicted them would
+ *  re-render the same pile on every slider step. */
+const MAX_CACHE = 260;
 
 const keyOf = (r: ChipRenderRequest, dpr: number) =>
-  `${r.view}|${r.color}|${r.accent}|${Math.round(r.size)}|${r.view === 'stack' ? r.discs ?? 1 : 1}|${dpr}`;
+  `${r.view}|${r.color}|${r.accent}|${Math.round(r.size)}|${r.view === 'stack' ? r.discs ?? 1 : 1}|${
+    r.view === 'stack' ? r.layer ?? 'all' : 'all'
+  }|${dpr}`;
 
 /** Is a 3D chip possible at all on this device? Cheap enough to call per component. */
 export function chip3dSupported(): boolean {
@@ -159,7 +172,9 @@ function buildScene(three: typeof THREE, template: THREE.Object3D, req: ChipRend
   const discs = req.view === 'stack' ? Math.max(1, req.discs ?? 1) : 1;
 
   const group = new three.Group();
-  for (let i = 0; i < discs; i++) {
+  const first = req.view === 'stack' && req.layer !== undefined ? Math.max(0, Math.min(discs - 1, req.layer)) : 0;
+  const last = req.view === 'stack' && req.layer !== undefined ? first : discs - 1;
+  for (let i = first; i <= last; i++) {
     const disc = tinted(three, template, req.color, req.accent);
     disc.position.y = i * DISC_THICKNESS;
     // A hand-made stack never lines up perfectly; a degree of rotation per chip
@@ -198,7 +213,10 @@ function buildScene(three: typeof THREE, template: THREE.Object3D, req: ChipRend
     camera.lookAt(0, centre, 0);
   }
   const frame = fitFrame(three, camera, stackHeight);
-  return { scene, camera, stackHeight, frame };
+  // Where the value belongs: on top of the pile normally, on top of THIS disc when
+  // only one layer is being drawn.
+  const faceHeight = req.view === 'stack' && req.layer !== undefined ? (first + 1) * DISC_THICKNESS : stackHeight;
+  return { scene, camera, stackHeight, faceHeight, frame };
 }
 
 /**
@@ -244,6 +262,12 @@ export interface ChipLabelSpot {
   squash: number;
   /** Diameter of the top face across the bitmap's width. */
   widthFraction: number;
+  /**
+   * Highest point of ink on this face (its back edge), as a fraction of the bitmap's
+   * height. A layer's bitmap is framed for the whole pile, so this is what says how
+   * much of that frame a stack of this height actually fills.
+   */
+  topFraction: number;
 }
 
 export interface ChipRender {
@@ -252,6 +276,15 @@ export interface ChipRender {
   width: number;
   height: number;
   label: ChipLabelSpot;
+  /**
+   * Single-layer renders only: the shot is framed for the whole pile, but the bitmap
+   * is cut down to the band this one chip occupies — a pile of eleven would otherwise
+   * hold eleven copies of the same mostly-empty frame in memory. `frameHeight` is the
+   * full frame it was cut from and `offsetTop` how far down the cut starts, both in
+   * CSS pixels, which is all the caller needs to put the chip back where it belongs.
+   */
+  frameHeight?: number;
+  offsetTop?: number;
 }
 
 /**
@@ -273,7 +306,7 @@ export async function renderChip(req: ChipRenderRequest): Promise<ChipRender> {
   const { three, chip } = await load();
   const renderer = getRenderer(three);
 
-  const { scene, camera, stackHeight, frame } = buildScene(three, chip, req);
+  const { scene, camera, faceHeight, frame } = buildScene(three, chip, req);
   const cssWidth = req.size;
   const cssHeight = req.size * frame.heightRatio;
   const w = Math.max(16, Math.round(cssWidth * dpr));
@@ -286,8 +319,12 @@ export async function renderChip(req: ChipRenderRequest): Promise<ChipRender> {
   renderer.setPixelRatio(1);
   renderer.setSize(w, h, false);
   renderer.render(scene, camera);
-  const url = renderer.domElement.toDataURL('image/png');
-  const label = labelSpot(three, camera, stackHeight);
+  const label = labelSpot(three, camera, faceHeight);
+
+  // A single layer keeps only its own band of the frame; everything else is a whole
+  // picture already.
+  const band = req.view === 'stack' && req.layer !== undefined ? discBand(three, camera, req.layer, h, dpr) : null;
+  const url = band ? crop(renderer.domElement, w, band.y0, band.y1) : renderer.domElement.toDataURL('image/png');
 
   scene.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
@@ -298,10 +335,56 @@ export async function renderChip(req: ChipRenderRequest): Promise<ChipRender> {
     }
   });
 
-  const render: ChipRender = { url, width: cssWidth, height: cssHeight, label };
+  const render: ChipRender = band
+    ? {
+        url,
+        width: cssWidth,
+        height: (band.y1 - band.y0) / dpr,
+        // The value sits at the same place on the chip; say where that is inside the
+        // piece that was kept, not inside the frame it came from.
+        label: { ...label, y: (label.y * h - band.y0) / (band.y1 - band.y0) },
+        frameHeight: cssHeight,
+        offsetTop: band.y0 / dpr,
+      }
+    : { url, width: cssWidth, height: cssHeight, label };
   cache.set(key, render);
   if (cache.size > MAX_CACHE) cache.delete(cache.keys().next().value as string);
   return render;
+}
+
+/**
+ * The rows of the frame one disc actually covers: sample the rings at its base and at
+ * its top, take the highest and lowest pixel they project to, and add a couple of
+ * pixels for the bevel and the antialiased edge.
+ */
+function discBand(three: typeof THREE, camera: THREE.PerspectiveCamera, layer: number, h: number, dpr: number) {
+  const point = new three.Vector3();
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2;
+    for (const y of [layer * DISC_THICKNESS, (layer + 1) * DISC_THICKNESS]) {
+      point.set(Math.cos(a) * CHIP_RADIUS, y, Math.sin(a) * CHIP_RADIUS).project(camera);
+      const py = ((1 - point.y) / 2) * h;
+      minY = Math.min(minY, py);
+      maxY = Math.max(maxY, py);
+    }
+  }
+  const pad = Math.ceil(2 * dpr);
+  const y0 = Math.max(0, Math.floor(minY) - pad);
+  const y1 = Math.min(h, Math.ceil(maxY) + pad);
+  return { y0, y1: Math.max(y0 + 1, y1) };
+}
+
+/** Cut rows [y0, y1) out of the rendered canvas and hand back a PNG of just those. */
+function crop(source: HTMLCanvasElement, w: number, y0: number, y1: number): string {
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = y1 - y0;
+  const ctx = out.getContext('2d');
+  if (!ctx) return source.toDataURL('image/png');
+  ctx.drawImage(source, 0, y0, w, y1 - y0, 0, 0, w, y1 - y0);
+  return out.toDataURL('image/png');
 }
 
 /**
@@ -317,6 +400,7 @@ function labelSpot(three: typeof THREE, camera: THREE.PerspectiveCamera, stackHe
   const centre = toScreen(0, stackHeight, 0);
   const right = toScreen(CHIP_RADIUS, stackHeight, 0);
   const front = toScreen(0, stackHeight, CHIP_RADIUS);
+  const back = toScreen(0, stackHeight, -CHIP_RADIUS);
   const halfWidth = Math.hypot(right.x - centre.x, right.y - centre.y);
   const halfDepth = Math.hypot(front.x - centre.x, front.y - centre.y);
   return {
@@ -324,6 +408,7 @@ function labelSpot(three: typeof THREE, camera: THREE.PerspectiveCamera, stackHe
     y: centre.y,
     squash: halfWidth > 0 ? Math.min(1, halfDepth / halfWidth) : 1,
     widthFraction: halfWidth * 2,
+    topFraction: Math.max(0, Math.min(1, back.y)),
   };
 }
 
