@@ -58,6 +58,8 @@ export default function PlayerRoster() {
   // stray tap while scrolling the roster silently renamed somebody.
   const [nameId, setNameId] = useState<string | null>(null);
   const [handout, setHandout] = useState<Handout | null>(null);
+  // a stack typed for a player who held nothing: buy-in, or only a correction?
+  const [restake, setRestake] = useState<{ id: string; amount: number } | null>(null);
   const [tableMenu, setTableMenu] = useState(false);
   const [pickPeople, setPickPeople] = useState(false);
   const confirm = useConfirm();
@@ -149,9 +151,10 @@ export default function PlayerRoster() {
      anywhere near leaving the app. The sheets (counting round, player sheet) register
      themselves, so they are not listed here. */
   useBackHandler(
-    !!(handout || koPickId || tableMenu || emojiId || stackId || prompt || menuId || nameId),
+    !!(restake || handout || koPickId || tableMenu || emojiId || stackId || prompt || menuId || nameId),
     () => {
-      if (handout) setHandout(null);
+      if (restake) setRestake(null);
+      else if (handout) setHandout(null);
       else if (koPickId) setKoPickId(null);
       else if (tableMenu) setTableMenu(false);
       else if (emojiId) setEmojiId(null);
@@ -193,6 +196,9 @@ export default function PlayerRoster() {
         out: false,
         outAt: undefined,
         chips: (p.chips || 0) + moneyToUnits(amount, unitValue),
+        // where this stake starts from, so the big screen can show how the CURRENT
+        // money is going on its own — not only against every euro they ever put in
+        stakeChips: (p.chips || 0) + moneyToUnits(amount, unitValue),
       },
     });
     offerUndo(ledger, t('roster.undoRebuy', { name: p.name || '' }));
@@ -210,9 +216,18 @@ export default function PlayerRoster() {
    * uses, so the trail, the sparkline, the undo offer and the single TV push all
    * behave identically — only the input is faster.
    */
-  const setStackMoney = (id: string, amount: number) => {
+  const setStackMoney = (id: string, amount: number, asCorrection = false) => {
     const p = ledger.find((x) => x.id === id);
     if (!p) return;
+    /* Somebody who is out — or sitting behind nothing — cannot suddenly hold chips
+       unless money went in. Typing the amount straight into the stack field looks
+       like a rebuy but records none, which quietly turns €85 bought in into €40,
+       and a −€40 night into +€5 on the big screen. Ask rather than guess. */
+    if (!asCorrection && amount > 0 && (p.out || (p.chips || 0) === 0)) {
+      setRestake({ id, amount });
+      setStackId(null);
+      return;
+    }
     const units = moneyToUnits(Math.max(0, amount), unitValue);
     // same reason as the counting round: the trail point lands on every in-play row
     offerUndo(ledger);
@@ -461,6 +476,39 @@ export default function PlayerRoster() {
                         onCancel={() => setStackId(null)}
                         onConfirm={(v) => setStackMoney(p.id, v)}
                       />
+                    )}
+
+                    {restake?.id === p.id && (
+                      <div className="pr-restake">
+                        <div className="pr-restake-q">
+                          {t('roster.restakeAsk', {
+                            name: p.name || 'Player',
+                            amount: money(restake.amount, currency),
+                          })}
+                        </div>
+                        <div className="pr-restake-btns">
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => {
+                              const { id, amount } = restake;
+                              setRestake(null);
+                              buyIn(id, amount);
+                            }}
+                          >
+                            {t('roster.restakeBuyIn', { amount: money(restake.amount, currency) })}
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => {
+                              const { id, amount } = restake;
+                              setRestake(null);
+                              setStackMoney(id, amount, true);
+                            }}
+                          >
+                            {t('roster.restakeCorrect')}
+                          </button>
+                        </div>
+                      </div>
                     )}
 
                     {prompt?.id === p.id && (

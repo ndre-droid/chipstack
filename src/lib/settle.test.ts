@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { settleUp, settleLedger, netOf } from './settle.ts';
+import { settleUp, settleLedger, netOf, sinceLastBuyIn } from './settle.ts';
 import type { PlayerBalance, SettlePlayer } from './settle.ts';
 
 /**
@@ -154,6 +154,20 @@ const off = settleLedger(
 );
 check('drift reports the missing or extra money', off.drift === 10);
 
+
+
+console.log('\nrebought after busting');
+/* 20 + 20 lost, then back in for 45. UNIT is what one chip-unit is worth, so 45 euro
+   of chips is 45 / UNIT units - and that is exactly what they sat back down behind. */
+const stake = 45 / UNIT;
+const rebought: SettlePlayer = { name: 'A', buyIn: 85, cashOut: 0, chips: stake, stakeChips: stake };
+check('the honest net counts every buy-in', round(netOf(rebought, UNIT)) === -40);
+check('right after the rebuy the current stake is flat', round(sinceLastBuyIn(rebought, UNIT)!) === 0);
+const won = { ...rebought, chips: 60 / UNIT };
+check('winning with the new stack shows on the current stake', round(sinceLastBuyIn(won, UNIT)!) === 15);
+check('and the honest net stays negative', round(netOf(won, UNIT)) === -25);
+check('nothing to say once they leave', sinceLastBuyIn({ ...won, out: true }, UNIT) === null);
+check('nor for a row from before this was tracked', sinceLastBuyIn({ name: 'B', buyIn: 20, cashOut: 0, chips: 10 }, UNIT) === null);
 
 console.log(`\n${failures === 0 ? 'ALL PASS' : `${failures} FAILED`}`);
 assert.equal(failures, 0, `${failures} settlement check(s) failed`);

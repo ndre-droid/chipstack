@@ -570,6 +570,7 @@ function baseReducer(state: AppState, action: Action): AppState {
           buyIn: state.session.buyIn,
           cashOut: 0,
           chips: freshChips(state),
+          stakeChips: freshChips(state),
         }));
       if (!add.length) return state;
       return {
@@ -591,6 +592,7 @@ function baseReducer(state: AppState, action: Action): AppState {
           buyIn: state.session.buyIn,
           cashOut: 0,
           chips: freshChips(state),
+          stakeChips: freshChips(state),
         }));
       if (!add.length) return state;
       return { ...state, ledger: [...state.ledger, ...add] };
@@ -607,13 +609,21 @@ function baseReducer(state: AppState, action: Action): AppState {
             buyIn: state.session.buyIn,
             cashOut: 0,
             chips: freshChips(state),
+            stakeChips: freshChips(state),
           },
         ],
       };
     case 'LEDGER_ADD_MANY': {
       const add: LedgerPlayer[] = [];
       for (let i = 0; i < action.n; i++)
-        add.push({ id: uid(), name: `Player ${state.ledger.length + add.length + 1}`, buyIn: state.session.buyIn, cashOut: 0, chips: freshChips(state) });
+        add.push({
+          id: uid(),
+          name: `Player ${state.ledger.length + add.length + 1}`,
+          buyIn: state.session.buyIn,
+          cashOut: 0,
+          chips: freshChips(state),
+          stakeChips: freshChips(state),
+        });
       return { ...state, ledger: [...state.ledger, ...add] };
     }
     case 'LEDGER_UPDATE': {
@@ -670,7 +680,17 @@ function baseReducer(state: AppState, action: Action): AppState {
         ...state,
         ledger: state.ledger.map((p) =>
           p.id === action.id
-            ? { ...p, buyIn: state.session.buyIn, cashOut: 0, out: false, outAt: undefined, chips: freshChips(state), chipHistory: undefined, knockouts: 0 }
+            ? {
+                ...p,
+                buyIn: state.session.buyIn,
+                cashOut: 0,
+                out: false,
+                outAt: undefined,
+                chips: freshChips(state),
+                stakeChips: freshChips(state),
+                chipHistory: undefined,
+                knockouts: 0,
+              }
             : p,
         ),
       };
@@ -686,6 +706,7 @@ function baseReducer(state: AppState, action: Action): AppState {
           out: false,
           outAt: undefined,
           chips: freshChips(state),
+          stakeChips: freshChips(state),
           chipHistory: undefined,
           knockouts: 0,
         })),

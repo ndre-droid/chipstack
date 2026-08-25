@@ -17,6 +17,7 @@ import { autoTvScale, clampTvScale, TV_SCALE_MIN, TV_SCALE_MAX, TV_SCALE_STEP } 
 import { colorUpEvents } from '../lib/planning';
 import { payoutsFor } from '../lib/payouts';
 import { lateRegState } from '../lib/lateReg';
+import { sinceLastBuyIn } from '../lib/settle';
 import type { MomentVotes } from '../lib/liveSession';
 import { customAccentVars } from '../lib/color';
 import Sparkline from '../components/Sparkline';
@@ -698,14 +699,24 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
                 ? (p.cashOut || 0) - (p.buyIn || 0)
                 : null
               : stackMoney !== null
-                ? stackMoney - (p.buyIn || 0)
+                ? // everything that came off the table plus what is still in front of
+                  // them, minus everything that went on it — the same definition the
+                  // settle-up tab uses, cash-outs included
+                  stackMoney + (p.cashOut || 0) - (p.buyIn || 0)
                 : null;
+            /* Anybody who bought in more than once reads deep in the red against
+               their TOTAL stake even while the current stake is winning, so the
+               honest figure alone is only half the story. Shown only when it says
+               something the net doesn't — for a single buy-in the two are equal. */
+            const sinceRaw = left ? null : sinceLastBuyIn(p, unitValue);
+            const since = net !== null && sinceRaw !== null && Math.abs(sinceRaw - net) > 0.005 ? sinceRaw : null;
             return {
               id: p.id,
               name: p.name || 'Player',
               amount: p.buyIn || 0,
               out: left,
               net,
+              since,
               stackMoney,
               emoji: p.emoji || '',
               chips,
@@ -715,7 +726,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               knockouts: p.knockouts || 0,
             };
           })
-        : Array.from({ length: playerCount }, (_, i) => ({ id: String(i), name: `Seat ${i + 1}`, amount: buyIn, out: false, net: null as number | null, stackMoney: null as number | null, emoji: '', chips: 0, trail: [] as number[], trailBase: 0, knockouts: 0 })),
+        : Array.from({ length: playerCount }, (_, i) => ({ id: String(i), name: `Seat ${i + 1}`, amount: buyIn, out: false, net: null as number | null, since: null as number | null, stackMoney: null as number | null, emoji: '', chips: 0, trail: [] as number[], trailBase: 0, knockouts: 0 })),
     [ledger, playerCount, buyIn, unitValue],
   );
 
@@ -1116,6 +1127,11 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
                         {p.net !== null && (
                           <small className={`tv-stack-net ${p.net >= 0 ? 'pos' : 'neg'}`}>
                             {p.net >= 0 ? '+' : '−'}{money(Math.abs(p.net), currency)}
+                          </small>
+                        )}
+                        {p.since !== null && (
+                          <small className={`tv-stack-since ${p.since >= 0 ? 'pos' : 'neg'}`}>
+                            {t('tv.sinceBuyIn')} {p.since >= 0 ? '+' : '−'}{money(Math.abs(p.since), currency)}
                           </small>
                         )}
                       </span>

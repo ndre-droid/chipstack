@@ -1763,6 +1763,11 @@ input[type='color'] { cursor: pointer; }
 .tv-players-row .tv-stack-net { font-size: 0.68em; font-variant-numeric: tabular-nums; }
 .tv-players-row .tv-stack-net.pos { color: var(--good); }
 .tv-players-row .tv-stack-net.neg { color: var(--bad); }
+/* second line: how the money they put in MOST RECENTLY is doing, for players who
+   bought in more than once — quieter than the honest net above it */
+.tv-players-row .tv-stack-since { font-size: 0.55em; opacity: 0.75; font-variant-numeric: tabular-nums; }
+.tv-players-row .tv-stack-since.pos { color: var(--good); }
+.tv-players-row .tv-stack-since.neg { color: var(--bad); }
 
 /* Starting-stack overlay cast to the TV */
 .tv-startstack-grid {
@@ -2083,6 +2088,12 @@ input[type='color'] { cursor: pointer; }
   background: var(--surface-2); border: 1px solid var(--line); color: inherit;
   font-variant-numeric: tabular-nums; }
 .quick-chip:active { background: var(--surface-3); }
+
+/* --- Stack typed for somebody who held nothing: buy-in, or just a correction? --- */
+.pr-restake { margin-top: 8px; padding: 9px 10px; border-radius: var(--r-sm);
+  background: var(--acc-wash); border: 1px solid var(--acc-line); }
+.pr-restake-q { font-size: 12.5px; font-weight: 600; }
+.pr-restake-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 
 /* --- What to physically hand over after a buy-in --- */
 .pr-handout { margin-top: 8px; padding: 9px 10px; border-radius: var(--r-sm);

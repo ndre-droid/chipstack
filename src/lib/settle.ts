@@ -17,6 +17,8 @@ export interface SettlePlayer {
   chips?: number;
   out?: boolean;
   emoji?: string;
+  /** stack held right after their last buy-in — see `sinceLastBuyIn` */
+  stakeChips?: number;
 }
 
 /**
@@ -39,6 +41,24 @@ export function stackMoney(p: SettlePlayer, unitValue: number): number {
  */
 export function netOf(p: SettlePlayer, unitValue: number): number {
   return (p.cashOut || 0) + stackMoney(p, unitValue) - (p.buyIn || 0);
+}
+
+/**
+ * How a player stands against the money they put on the table MOST RECENTLY,
+ * rather than against everything they ever put on it.
+ *
+ * `netOf` counts every buy-in — that is the honest figure and the one that settles
+ * up. But somebody who busted €40 and rebought for €45 reads as −€40 all night even
+ * while they are winning with the new stack, which is not what the table sees. This
+ * is that second half of the story: their stack now, minus the stack they sat down
+ * with after that last buy-in.
+ *
+ * Null when there is nothing to say: they have left the table, or the row predates
+ * this being tracked.
+ */
+export function sinceLastBuyIn(p: SettlePlayer, unitValue: number): number | null {
+  if (p.out || p.stakeChips === undefined) return null;
+  return stackMoney(p, unitValue) - p.stakeChips * unitValue;
 }
 
 /**

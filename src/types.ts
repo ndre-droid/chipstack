@@ -205,6 +205,12 @@ export interface LedgerPlayer {
   chips?: number;  // current live chip count (in chip-units) — optional, drives the TV chip-leader crown
   /** one entry per counting round, oldest first, capped — drives the stack sparkline */
   chipHistory?: { at: number; chips: number }[];
+  /** The stack (in chip-units) they held the moment their LAST buy-in landed — the
+   *  baseline for "how are they doing with the money they put in most recently".
+   *  `buyIn` is cumulative, so a player who rebought after busting reads as deeply
+   *  down even while winning with the new stack; this is the other half of that
+   *  story. Undefined on rows from before this was tracked. */
+  stakeChips?: number;
   emoji?: string;  // optional avatar emoji shown next to the name
   knockouts?: number; // knockout bounties won (count) — earnings = knockouts × bountyAmount
   /** links this night's row back to the saved Person it was seated from */
