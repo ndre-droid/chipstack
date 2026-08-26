@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useReducer, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AppState, CarryBalance, ChipSet, Denomination, TimelineEvent, BlindLevel, Preset, Settings, SessionConfig, LedgerPlayer, AccentId, Skin, ChipArt, LeagueGame, Moment, CountingProgress, Person } from './types';
+import type { AppState, CarryBalance, ChipSet, Denomination, TimelineEvent, BlindLevel, Preset, Settings, SessionConfig, LedgerPlayer, AccentId, Skin, ChipArt, LeagueGame, Moment, CountingProgress, Person, TvLayout, TvTextScale } from './types';
 
 import { applySharedSettings, shareableSettings } from './lib/settingsScope';
+import { DEFAULT_TV_TEXT_SCALE, isDefaultTvLayout, normalizeTvLayout, normalizeTvTextScale } from './lib/tvLayout';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -80,6 +81,8 @@ const defaultSettings: Settings = {
   customAccent: null,
   tvPenalties: [],
   tvHouseRules: [],
+  tvLayout: null,
+  tvTextScale: { ...DEFAULT_TV_TEXT_SCALE },
   deviceIsTv: false,
   tvScale: null,
   liveSessionCode: null,
@@ -190,6 +193,8 @@ type Action =
       customAccent?: string | null;
       tvPenalties?: string[];
       tvHouseRules?: string[];
+      tvLayout?: TvLayout | null;
+      tvTextScale?: TvTextScale;
       moments?: Moment[];
       counting?: CountingProgress | null;
     }
@@ -446,6 +451,10 @@ function baseReducer(state: AppState, action: Action): AppState {
           ...(action.customAccent !== undefined ? { customAccent: action.customAccent } : {}),
           ...(action.tvPenalties !== undefined ? { tvPenalties: action.tvPenalties } : {}),
           ...(action.tvHouseRules !== undefined ? { tvHouseRules: action.tvHouseRules } : {}),
+          // The screen has no pointer to drag with: the arrangement and the text
+          // sizes are set on the phone and mirrored here like the rest of the look.
+          ...(action.tvLayout !== undefined ? { tvLayout: action.tvLayout } : {}),
+          ...(action.tvTextScale !== undefined ? { tvTextScale: action.tvTextScale } : {}),
         },
       };
     /* Chip sets. `denominations` stays THE active box of chips that the rest of the
@@ -900,6 +909,14 @@ function migrate(raw: string | null): AppState {
   if (typeof settings.customAccent !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(settings.customAccent)) settings.customAccent = null;
   settings.tvPenalties = Array.isArray(settings.tvPenalties) ? settings.tvPenalties.filter((q): q is string => typeof q === 'string') : [];
   settings.tvHouseRules = Array.isArray(settings.tvHouseRules) ? settings.tvHouseRules.filter((q): q is string => typeof q === 'string') : [];
+  /* The big screen's arrangement. Kept as null while it is the stock one, so a
+     device that never touched it does not carry a copy of the default around (and
+     the phone does not push one to the TV on every change). */
+  {
+    const laid = normalizeTvLayout(settings.tvLayout);
+    settings.tvLayout = settings.tvLayout && !isDefaultTvLayout(laid) ? laid : null;
+  }
+  settings.tvTextScale = normalizeTvTextScale(settings.tvTextScale);
   if (typeof settings.deviceIsTv !== 'boolean') settings.deviceIsTv = false;
   settings.tvScale =
     typeof settings.tvScale === 'number' && settings.tvScale > 0

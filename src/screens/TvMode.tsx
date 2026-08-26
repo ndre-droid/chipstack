@@ -14,6 +14,20 @@ import { queueClock } from '../lib/liveSyncQueue';
 import { getLocalClock, setLocalClock } from '../lib/localClock';
 import { startingStackOf } from '../lib/startingStack';
 import { autoTvScale, clampTvScale, TV_SCALE_MIN, TV_SCALE_MAX, TV_SCALE_STEP } from '../lib/tvScale';
+import {
+  TV_COLS,
+  TV_MIN_H,
+  TV_MIN_W,
+  TV_ROWS,
+  clampSlot,
+  gridAreaOf,
+  isDefaultTvLayout,
+  normalizeTvLayout,
+  normalizeTvTextScale,
+  tvTextVars,
+  type TvPanelId,
+  type TvSlot,
+} from '../lib/tvLayout';
 import { colorUpEvents } from '../lib/planning';
 import { payoutsFor } from '../lib/payouts';
 import { lateRegState } from '../lib/lateReg';
@@ -79,6 +93,92 @@ const digitCells = (text: string) =>
 /** Smallest roster row still worth reading across a room; matches the CSS clamp. */
 const ROW_MIN_FS = 11;
 
+/**
+ * The side columns of the automatic layout.
+ *
+ * On the grid they would only get in the way — every panel names its own cell — so
+ * `on={false}` hands the children straight through and the cells become direct
+ * children of the grid.
+ */
+function Column({ side, on, children }: { side: 'left' | 'right'; on: boolean; children: React.ReactNode }) {
+  if (!on) return <>{children}</>;
+  return <aside className={`tv-side${side === 'right' ? ' tv-right' : ''}`}>{children}</aside>;
+}
+
+/** What the user is doing to a panel while the screen is being arranged. */
+type GrabMode = 'move' | 'resize';
+
+interface Grab {
+  id: TvPanelId;
+  mode: GrabMode;
+  /** the slot the panel had when the finger went down */
+  from: TvSlot;
+  /** and where it went down, plus how big a grid cell is in screen pixels */
+  x: number;
+  y: number;
+  unitW: number;
+  unitH: number;
+  /** where it is right now — what the screen draws until the finger lifts */
+  slot: TvSlot;
+}
+
+/**
+ * One panel in its cell of the big screen's grid.
+ *
+ * While the screen is being arranged it grows a grab bar and a resize corner. Those
+ * are the ONLY pointer targets: the panel's own content stays untouched, so nothing
+ * has to know it might be dragged.
+ */
+function TvCell({
+  id,
+  label,
+  slot,
+  arranging,
+  dragId,
+  onGrab,
+  placed,
+  children,
+}: {
+  id: TvPanelId;
+  label: string;
+  slot: TvSlot;
+  arranging: boolean;
+  /** the panel currently under a finger, if any — it lifts above the rest */
+  dragId: TvPanelId | null;
+  onGrab: (id: TvPanelId, mode: GrabMode, e: React.PointerEvent) => void;
+  /** false while the screen is still on its automatic three-column layout, where the
+   *  panels flow rather than sit in named cells */
+  placed: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`tv-cell tv-cell-${id}${arranging ? ' is-arranging' : ''}${dragId === id ? ' is-dragging' : ''}`}
+      style={placed ? { gridArea: gridAreaOf(slot) } : undefined}
+    >
+      {children}
+      {arranging && (
+        <>
+          <button
+            className="tv-cell-grab"
+            onPointerDown={(e) => onGrab(id, 'move', e)}
+            // the browser's own drag/scroll gestures would fight the pointer maths
+            style={{ touchAction: 'none' }}
+          >
+            ⠿ {label}
+          </button>
+          <button
+            className="tv-cell-size"
+            onPointerDown={(e) => onGrab(id, 'resize', e)}
+            aria-label={`${label} — size`}
+            style={{ touchAction: 'none' }}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function TvMode({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useStore();
   const t = useT();
@@ -93,6 +193,14 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const tvScale = state.settings.tvScale ?? autoTvScale();
   const setTvScale = (n: number) =>
     dispatch({ type: 'UPDATE_SETTINGS', patch: { tvScale: clampTvScale(n) } });
+
+  /* Where the panels sit, and how big each piece of text is. Both travel with the
+     setup (they are dialled in on the phone and mirrored here), and both are
+     normalised on the way in — a layout from an older build, a restored backup or a
+     half-written cloud document must never put a panel off a screen nobody can
+     scroll. */
+  const layout = useMemo(() => normalizeTvLayout(state.settings.tvLayout), [state.settings.tvLayout]);
+  const textScale = useMemo(() => normalizeTvTextScale(state.settings.tvTextScale), [state.settings.tvTextScale]);
 
   /* How tall the layout canvas actually is once the zoom is applied. Below the
      threshold the side panels can't all stand full height, so the stat tiles go
@@ -253,6 +361,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               customAccent: doc.data.customAccent,
               tvPenalties: doc.data.tvPenalties,
               tvHouseRules: doc.data.tvHouseRules,
+              tvLayout: doc.data.tvLayout ?? null,
+              tvTextScale: doc.data.tvTextScale ?? undefined,
               moments: doc.data.moments,
               counting: doc.data.counting ?? null,
             });
@@ -399,6 +509,114 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     }
   }, [liveSessionCode]);
 
+  /* ---------------------------------------------------------------- arranging --
+     Dragging the panels around the grid. Only offered where the result will stick:
+     a big screen that a phone is driving mirrors the phone's arrangement, so an edit
+     made on the TV itself would be overwritten by the host's next push. Everywhere
+     else — a standalone big screen, a laptop, the host phone previewing its own TV —
+     the change is this device's to make and travels from here. */
+  const [arranging, setArranging] = useState(false);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const grab = useRef<Grab | null>(null);
+  const [draft, setDraft] = useState<{ id: TvPanelId; slot: TvSlot } | null>(null);
+  const canArrange = !isTv || !paired;
+
+  const commitLayout = (id: TvPanelId, slot: TvSlot) => {
+    const nextLayout = { ...layout, [id]: slot };
+    // Back at the stock arrangement = nothing to remember, so nothing is stored (or
+    // pushed to the TV) — see the migration in store.tsx.
+    dispatch({ type: 'UPDATE_SETTINGS', patch: { tvLayout: isDefaultTvLayout(nextLayout) ? null : nextLayout } });
+  };
+
+  const onGrab = (id: TvPanelId, mode: GrabMode, e: React.PointerEvent) => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    e.preventDefault();
+    const rect = grid.getBoundingClientRect();
+    /* The measured rectangle is in the same (already scaled) pixels the pointer
+       reports, so `--tv-scale` needs no separate correction here — one cell is
+       simply the grid's width over its columns. */
+    const from = layout[id];
+    grab.current = {
+      id,
+      mode,
+      from,
+      x: e.clientX,
+      y: e.clientY,
+      unitW: rect.width / TV_COLS || 1,
+      unitH: rect.height / TV_ROWS || 1,
+      slot: from,
+    };
+    setDraft({ id, slot: from });
+  };
+
+  useEffect(() => {
+    if (!draft) return;
+    const move = (e: PointerEvent) => {
+      const g = grab.current;
+      if (!g) return;
+      const dx = Math.round((e.clientX - g.x) / g.unitW);
+      const dy = Math.round((e.clientY - g.y) / g.unitH);
+      const slot =
+        g.mode === 'move'
+          ? clampSlot({ ...g.from, col: g.from.col + dx, row: g.from.row + dy }, g.from)
+          : {
+              ...g.from,
+              // Resizing pins the top-left corner, so the span is what gives way at
+              // the edge — clamping the corner instead would slide the panel out
+              // from under the finger.
+              w: Math.min(TV_COLS - g.from.col + 1, Math.max(TV_MIN_W, g.from.w + dx)),
+              h: Math.min(TV_ROWS - g.from.row + 1, Math.max(TV_MIN_H, g.from.h + dy)),
+            };
+      if (
+        slot.col === g.slot.col &&
+        slot.row === g.slot.row &&
+        slot.w === g.slot.w &&
+        slot.h === g.slot.h
+      ) {
+        return; // still in the same cell — nothing to repaint
+      }
+      g.slot = slot;
+      setDraft({ id: g.id, slot });
+    };
+    const up = () => {
+      const g = grab.current;
+      grab.current = null;
+      setDraft(null);
+      if (g) commitLayout(g.id, g.slot);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+    // Re-bound per grab: the listeners read the live grab through the ref, so only
+    // starting and stopping a drag matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft?.id]);
+
+  // A screen that stopped being arrangeable (a phone just connected) must not leave
+  // the grab bars on the wall.
+  useEffect(() => {
+    if (!canArrange) setArranging(false);
+  }, [canArrange]);
+
+  /** The arrangement to draw: the stored one, with the panel under the finger where
+   *  the finger currently is. */
+  const shownLayout = draft ? { ...layout, [draft.id]: draft.slot } : layout;
+  /* Two layouts, and the automatic one is still the default.
+     Until somebody actually arranges the screen it flows exactly as it always has —
+     three columns that hand their leftover height to the players roster, which is
+     tuned around what each panel needs and what a short window does to it. The grid
+     takes over the moment there is an arrangement to honour (or while one is being
+     made), because THEN the placement is the user's answer, not a guess. */
+  const placed = arranging || state.settings.tvLayout !== null;
+  /** What every cell needs to know about the arranging session, in one spread. */
+  const cellProps = { arranging, dragId: draft?.id ?? null, onGrab, placed };
+
   const level = blindLevels[Math.min(levelIdx, blindLevels.length - 1)];
   const next = blindLevels[levelIdx + 1];
   const currentBB = level?.bigBlind ?? 1;
@@ -412,6 +630,34 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   // Keep the big screen awake for the whole session (see lib/useWakeLock.ts —
   // the browser hands the lock back only if you ask again after every hide).
   useWakeLock(true);
+
+  /* The page behind the big screen.
+     `.tv` is fixed at 100% of the viewport, but on a TV browser "the viewport" and
+     "what you can see" are not always the same thing — a collapsing toolbar, a
+     rounding error on a 4K panel scaled to 1080p — and whatever showed through was
+     the PHONE app's background, which in the light skins is near-white. That is the
+     pale strip across the top of the screen. Painting the page itself in the big
+     screen's own ground makes any such sliver invisible instead of a bar. */
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute('data-tv-full', '');
+    return () => root.removeAttribute('data-tv-full');
+  }, []);
+
+  /* …and the honest fix for the other half of it: if that strip IS the browser's own
+     chrome, only fullscreen removes it, and only a real tap may ask for it. */
+  const fsSupported = typeof document !== 'undefined' && !!document.documentElement.requestFullscreen;
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const sync = () => setIsFullscreen(!!document.fullscreenElement);
+    sync();
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  }, []);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    else void document.documentElement.requestFullscreen?.().catch(() => {});
+  };
 
 
   // main clock — read off the deadline every tick, so a slow or skipped timer can
@@ -754,6 +1000,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
      side by side and lose some bulk so the roster keeps its share of the height. */
   const statsTwoUp = tvCompact || (tvShowPlayers && rosterRows >= 6);
   const rosterListRef = useRef<HTMLDivElement | null>(null);
+  /** the roster's share of the per-role text sizing — see lib/tvLayout */
+  const playersScale = textScale.players;
   const [rowFs, setRowFs] = useState(0); // px; 0 = not measured yet, CSS default applies
   const [rosterHidden, setRosterHidden] = useState(0); // players that still didn't fit
   useEffect(() => {
@@ -771,15 +1019,29 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       const first = el.querySelector('.tv-players-row') as HTMLElement | null;
       if (!avail || !first) return;
       const gap = parseFloat(getComputedStyle(el).rowGap) || 0;
-      const rowH = first.getBoundingClientRect().height + gap;
+      /* Both sides of the ratio below must be in the SAME pixels. The whole big
+         screen is laid out small and scaled back up (`--tv-scale`), so a measured
+         rectangle is in screen pixels while `clientHeight`, the gap and the font size
+         are in the layout's own. Comparing the two directly is what kept every roster
+         a third smaller than it was allowed to be on a zoomed display — the names
+         sat near the legibility floor with room to spare above them. The zoom is read
+         off the element itself rather than from the setting, so a transform anywhere
+         up the tree is accounted for. */
+      const zoom = el.clientHeight > 0 ? el.getBoundingClientRect().height / el.clientHeight : 1;
+      const rowH = first.getBoundingClientRect().height / (zoom || 1) + gap;
       if (rowH <= 0) return;
       const nameEl = first.querySelector('.tv-players-name') as HTMLElement | null;
       const currentFs = rowFs || (nameEl ? parseFloat(getComputedStyle(nameEl).fontSize) : 0);
       if (!currentFs) return;
-      // never bigger than the design size, never too small to read from the sofa
-      const cap = Math.min(40, 0.018 * Math.min(window.innerWidth, window.innerHeight));
+      /* Never bigger than the design size, never too small to read from the sofa —
+         both shifted by the roster's own text-size setting, which is how "the names
+         are too small" gets an answer that the fitter does not immediately undo.
+         Asking for MORE than fits still cannot win: the rows that overflow are
+         counted into the header rather than dropped silently. */
+      const cap = Math.min(40 * playersScale, 0.018 * Math.min(window.innerWidth, window.innerHeight) * playersScale);
+      const floor = ROW_MIN_FS * Math.min(1, playersScale);
       const target = avail / rosterRows;
-      const next = Math.max(ROW_MIN_FS, Math.min(cap, (currentFs * target) / rowH));
+      const next = Math.max(floor, Math.min(cap, (currentFs * target) / rowH));
       if (Math.abs(next - currentFs) > 0.3) setRowFs(next);
       // Only a roster pinned at the smallest readable size can still lose rows.
       // Count the ones that really don't fit — this runs again after the size
@@ -808,7 +1070,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     // rowFs is a dependency on purpose: re-measuring after the size changed is how
     // this converges. The list's height comes from `flex: 1 1 0`, so it cannot be
     // pushed around by the font size it is being measured for.
-  }, [rosterRows, rosterCols, rowFs, sortedRoster.length, viewportH, tvScale, statsTwoUp]);
+  }, [rosterRows, rosterCols, rowFs, sortedRoster.length, viewportH, tvScale, statsTwoUp, playersScale]);
 
   // header hint for the right-hand column — it only says "buy-in" while nobody has
   // a counted stack to value.
@@ -979,6 +1241,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       data-tv-compact={tvCompact ? '' : undefined}
       style={{
         ['--tv-scale']: tvScale,
+        // per-role text size, on top of whatever the layout already worked out
+        ...tvTextVars(textScale),
         ...(accentStyle ?? {}),
         ...(tvBackground
           ? {
@@ -1059,9 +1323,16 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      <div className="tv-grid">
-        {/* left: standings + colour-up */}
-        <aside className="tv-side">
+      <div
+        className="tv-grid"
+        ref={gridRef}
+        data-mode={placed ? 'grid' : 'auto'}
+        data-arranging={arranging ? '' : undefined}
+      >
+        {/* Automatic layout: the panels still flow in three columns. Arranged: every
+            cell names its own place and the wrappers get out of the way. */}
+        <Column side="left" on={!placed}>
+        <TvCell id="stats" label={t('tv.panel.stats')} slot={shownLayout.stats} {...cellProps}>
           {/* Wrapped so a short screen (a laptop standing in for the TV) can lay the
               tiles two-up instead of eating the roster's vertical space. */}
           <div className="tv-stats" data-2up={statsTwoUp ? '' : undefined}>
@@ -1084,7 +1355,10 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               </div>
             )}
           </div>
-          {tvShowPlayers && roster.length > 0 && (
+        </TvCell>
+
+        {tvShowPlayers && roster.length > 0 && (
+          <TvCell id="roster" label={t('tv.panel.roster')} slot={shownLayout.roster} {...cellProps}>
             <div
               className="tv-players tv-roster"
               data-dense={rosterRows > 7 ? '' : undefined}
@@ -1146,11 +1420,19 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
             </div>
-          )}
-          {bustPanel}
-        </aside>
+          </TvCell>
+        )}
 
-        {/* center: the clock (or, cash game with timer off, just the fixed blinds) */}
+        {bustPanel && (
+          <TvCell id="bust" label={t('tv.panel.bust')} slot={shownLayout.bust} {...cellProps}>
+            {bustPanel}
+          </TvCell>
+        )}
+
+        </Column>
+
+        {/* the clock (or, cash game with timer off, just the fixed blinds) */}
+        <TvCell id="clock" label={t('tv.panel.clock')} slot={shownLayout.clock} {...cellProps}>
         <main className={`tv-clock ${showTimer ? '' : 'tv-clock-static'}`}>
           <div className="tv-level">
             {!showTimer
@@ -1215,10 +1497,10 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             </div>
           )}
         </main>
+        </TvCell>
 
-        {/* right: chip legend (plus, on a short screen, the panels the left column
-            can no longer hold — otherwise they squeeze the players roster away) */}
-        <aside className="tv-side tv-right">
+        <Column side="right" on={!placed}>
+        <TvCell id="legend" label={t('tv.panel.legend')} slot={shownLayout.legend} {...cellProps}>
           <div className="tv-legend">
             <div className="tv-legend-h">{t('tv.chipValues')}</div>
             {legend.map((d) => (
@@ -1229,8 +1511,14 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               </div>
             ))}
           </div>
-          {payoutsPanel}
-        </aside>
+        </TvCell>
+
+        {payoutsPanel && (
+          <TvCell id="payouts" label={t('tv.panel.payouts')} slot={shownLayout.payouts} {...cellProps}>
+            {payoutsPanel}
+          </TvCell>
+        )}
+        </Column>
       </div>
 
       {/* quip ticker */}
@@ -1282,6 +1570,30 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             A<sup>+</sup>
           </button>
         </span>
+        {/* Arranging the panels. Only where the change will stick — a big screen a
+            phone is driving mirrors the phone's arrangement. */}
+        {canArrange &&
+          (arranging ? (
+            <>
+              <button
+                className="tv-txt"
+                onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvLayout: null } })}
+                disabled={isDefaultTvLayout(layout)}
+              >
+                {t('tv.resetLayout')}
+              </button>
+              <button className="tv-txt tv-arrange-done" onClick={() => setArranging(false)}>
+                ✓ {t('tv.arrangeDone')}
+              </button>
+            </>
+          ) : (
+            <button className="tv-txt" onClick={() => setArranging(true)}>⠿ {t('tv.arrange')}</button>
+          ))}
+        {fsSupported && (
+          <button className="tv-txt" onClick={toggleFullscreen} aria-pressed={isFullscreen}>
+            {isFullscreen ? `⤡ ${t('tv.exitFullscreen')}` : `⤢ ${t('tv.fullscreen')}`}
+          </button>
+        )}
         <button className="tv-txt" onClick={() => setShot(30)}>{t('tv.shotClock')}</button>
         <button className="tv-txt" onClick={spinRound}>{t('tv.whoDrinks')}</button>
         <button

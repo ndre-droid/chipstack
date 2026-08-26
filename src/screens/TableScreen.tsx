@@ -303,11 +303,16 @@ export default function TableScreen() {
         {isHost ? t('table.hostHint') : t('table.castHint')}
       </p>
 
+      {/* The big screen's own settings sit at the top level, not inside the setup
+          fold: they are the one thing here you reach for DURING a night (the text is
+          too small, the panels want moving), and two taps to get at them is one too
+          many. */}
+      <TvBroadcast />
+
       {/* Everything you set once and stop touching, folded away so the running game
           is what fills the screen. Open by default until anybody has sat down. */}
       <SetupSection open={setupOpen || state.ledger.length === 0} onToggle={() => setSetupOpen((v) => !v)}>
         <GameModeCard />
-        <TvBroadcast />
         <DealerAndSeats />
         {!isCash && (
           <p className="faint" style={{ fontSize: 12, textAlign: 'center', marginTop: 6 }}>

@@ -30,6 +30,22 @@ export type ChipStyle = 'vector' | 'render3d';
 /** Where a stack is allowed to grow and shrink by dropping chips. See `Settings.chipAnim`. */
 export type ChipAnim = 'off' | 'plan' | 'all';
 
+/* --- the big screen's arrangement (helpers + defaults live in lib/tvLayout) --- */
+
+/** The movable pieces of the big screen. */
+export type TvPanelId = 'stats' | 'roster' | 'bust' | 'clock' | 'legend' | 'payouts';
+/** One panel's place on the TV grid: 1-based top-left cell plus how many it spans. */
+export interface TvSlot {
+  col: number;
+  row: number;
+  w: number;
+  h: number;
+}
+export type TvLayout = Record<TvPanelId, TvSlot>;
+/** The pieces of TV text that can be sized by hand, on top of the layout's own sizing. */
+export type TvTextRole = 'clock' | 'blinds' | 'level' | 'players' | 'legend' | 'stats' | 'quips';
+export type TvTextScale = Record<TvTextRole, number>;
+
 export interface Settings {
   unitValue: number;        // real money value of 1 chip-unit (default 0.01)
   currency: string;         // symbol, e.g. "€"
@@ -108,6 +124,16 @@ export interface Settings {
   /** Custom entries added to the "who drinks?" penalty spinner + break house rules. */
   tvPenalties: string[];
   tvHouseRules: string[];
+  /** Where the big screen's panels sit on its grid (see lib/tvLayout). `null` means
+   *  it has never been arranged, and the default three columns apply. Part of the
+   *  SETUP, not of the device: the arrangement is dragged into place on the phone
+   *  (or on a laptop previewing the big screen) and mirrored to the TV, which has no
+   *  pointer to drag with. */
+  tvLayout: TvLayout | null;
+  /** Per-role text size on the big screen, as a multiplier on the size the layout
+   *  already worked out. `tvScale` zooms everything at once; this is for "the clock
+   *  is fine, the names are too small". Synced, for the same reason as `tvLayout`. */
+  tvTextScale: TvTextScale;
   /** This device is designated the big screen: it boots straight into TV mode,
    *  advertises a pairing code, and a phone connects to it. Per-device (never
    *  synced or shared), so only the actual TV carries it. */

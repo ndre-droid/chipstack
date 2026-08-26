@@ -1,4 +1,5 @@
-import type { AppState, Denomination, SessionConfig, LedgerPlayer, Skin, AccentId, ChipArt, Moment, CountingProgress } from '../types';
+import type { AppState, Denomination, SessionConfig, LedgerPlayer, Skin, AccentId, ChipArt, Moment, CountingProgress, TvLayout, TvTextScale } from '../types';
+import { DEFAULT_TV_TEXT_SCALE } from './tvLayout';
 
 /**
  * The shape + selectors for the slice of app state the host phone pushes and the
@@ -54,6 +55,11 @@ export interface LiveData {
   /** custom penalty spinner entries + break house rules */
   tvPenalties: string[];
   tvHouseRules: string[];
+  /** where the big screen's panels sit, and how big each piece of its text is. The
+   *  TV has no pointer to arrange itself with, so both are dragged/dialled in on the
+   *  phone and mirrored. Null layout = the stock three columns. */
+  tvLayout: TvLayout | null;
+  tvTextScale: TvTextScale;
   /** logged hand-of-the-night moments, rotated on the TV */
   moments: Moment[];
   /** a counting round in progress on the phone — the TV shows how far around the table it is */
@@ -94,6 +100,8 @@ export function dataOf(state: AppState): LiveData {
     customAccent: state.settings.customAccent ?? null,
     tvPenalties: state.settings.tvPenalties ?? [],
     tvHouseRules: state.settings.tvHouseRules ?? [],
+    tvLayout: state.settings.tvLayout ?? null,
+    tvTextScale: state.settings.tvTextScale ?? DEFAULT_TV_TEXT_SCALE,
     moments: state.moments ?? [],
     counting: state.counting ?? null,
   };

@@ -2,9 +2,10 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Denomination } from '../types';
 import { useT } from '../lib/i18n';
 import { useStore } from '../store';
-import { peekChip, renderChip, type ChipRender } from '../lib/chip3d';
+import { chip3dSupported, peekChip, renderChip, type ChipRender } from '../lib/chip3d';
 import { animatedHere, type ChipAnimSurface } from '../lib/chipAnim';
 import { useColumnFlow } from '../lib/columnFlow';
+import { useGlidedCounts } from '../lib/countGlide';
 import {
   chipTilt,
   discMotions,
@@ -40,7 +41,7 @@ interface Props {
  */
 export default function ChipStackViz({
   denoms,
-  counts,
+  counts: target,
   maxDiscs = 11,
   surface = 'table',
   maxChipSize = 58,
@@ -48,6 +49,11 @@ export default function ChipStackViz({
   const t = useT();
   const settings = useStore().state.settings;
   const animate = animatedHere(settings.chipAnim, surface);
+  /* The big screen learns about the phone's slider in lumps — one cloud write every
+     three quarters of a second — so it walks to each new spread a few chips at a
+     time instead of jumping (see lib/countGlide). The phone's own slider is local
+     and instant, and gliding it would only add lag where there is none. */
+  const counts = useGlidedCounts(target, animate && surface === 'tv');
   const used = denoms.filter((d) => counts[d.id] > 0);
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(320);
@@ -113,7 +119,7 @@ export default function ChipStackViz({
               frameDiscs={maxDiscs}
               size={chipSize}
               animate={animate}
-              use3d={settings.chipStyle === 'render3d'}
+              use3d={settings.chipStyle === 'render3d' && chip3dSupported()}
               total={n}
               visit={visit}
             />
@@ -143,11 +149,16 @@ interface ColumnProps {
 const StackColumn = memo(function StackColumn({ d, count, frameDiscs, size, animate, use3d, total, visit }: ColumnProps) {
   const tracked = useStackDiscs(count, animate, visit);
   const needed = tracked.reduce((m, x) => Math.max(m, x.i + 1), count);
-  const layers = useChipLayers(d.color, d.accent, size, frameDiscs, use3d);
+  const { layers, failed } = useChipLayers(d.color, d.accent, size, frameDiscs, use3d);
   // Three.js and the model load on first use. Until the bitmaps this pile needs are
   // there the vector stack stands in — it holds still, so the pile can't play its
   // build twice.
   const ready = use3d && layers !== null && layers.length >= needed;
+  /* …and while it stands in for the RENDERED chip it stands in as a shadow of one:
+     the pile's shape and colour, no faces, dimmed. Drawn in full it is simply a
+     different chip design, and the swap a second later reads as the app changing its
+     mind about what its chips look like. */
+  const ghost = use3d && !ready && !failed;
   const motions = use3d && !ready ? discMotions(idleDiscs(count)) : tracked;
   const drop = Math.round(Math.max(22, Math.min(56, size * 0.85)));
   const label = `${total} chips of ${d.value}`;
@@ -163,7 +174,7 @@ const StackColumn = memo(function StackColumn({ d, count, frameDiscs, size, anim
     const pileH = Math.max(size * 0.3, frameH * (1 - top.label.topFraction));
     return (
       <div
-        className="stack-layers"
+        className="stack-layers is-render"
         role="img"
         aria-label={label}
         style={{ width: frameW, height: pileH, ...motionVars(drop) }}
@@ -192,7 +203,7 @@ const StackColumn = memo(function StackColumn({ d, count, frameDiscs, size, anim
     );
   }
 
-  return <VectorColumn d={d} motions={motions} count={count} size={size} drop={drop} label={label} />;
+  return <VectorColumn d={d} motions={motions} count={count} size={size} drop={drop} label={label} ghost={ghost} />;
 });
 
 /* ---------------- 3D layers ---------------- */
@@ -208,13 +219,17 @@ const StackColumn = memo(function StackColumn({ d, count, frameDiscs, size, anim
  * Layers are handed over as they arrive, and a pile already in the cache is returned
  * on the spot — a re-render of a stack that has been drawn before costs nothing.
  *
- * Returns null until the first layer is ready, or for good if the device can't
- * render, which is what puts the vector stack on screen instead.
+ * `layers` is null until the first one is ready; `failed` says the device can't
+ * render at all, which is what puts the drawn stack on screen for good.
  */
 function useChipLayers(color: string, accent: string, size: number, frameDiscs: number, enabled: boolean) {
   const [layers, setLayers] = useState<ChipRender[] | null>(() =>
     enabled ? cachedLayers(color, accent, size, frameDiscs) : null,
   );
+  /* Told apart from "not there yet" on purpose: a pile still waiting shows a dimmed
+     placeholder, but a pile that can never be rendered has to fall back to the drawn
+     chip — a placeholder that never resolves is worse than the other chip design. */
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (!enabled || frameDiscs <= 0) return;
@@ -239,13 +254,17 @@ function useChipLayers(color: string, accent: string, size: number, frameDiscs: 
         }
       }
       if (alive) setLayers(out);
-    })().catch(() => alive && setLayers(null));
+    })().catch(() => {
+      if (!alive) return;
+      setLayers(null);
+      setFailed(true);
+    });
     return () => {
       alive = false;
     };
   }, [color, accent, size, frameDiscs, enabled]);
 
-  return layers;
+  return { layers, failed };
 }
 
 /** Every layer of this pile that has already been rendered — null if any is missing. */
@@ -354,6 +373,7 @@ function VectorColumn({
   size,
   drop,
   label,
+  ghost = false,
 }: {
   d: Denomination;
   motions: DiscMotion[];
@@ -361,6 +381,9 @@ function VectorColumn({
   size: number;
   drop: number;
   label: string;
+  /** Standing in for a rendered chip that has not arrived — draw a shadow, not a
+   *  second chip design. */
+  ghost?: boolean;
 }) {
   const pitch = (size * PER_CHIP) / 100;
   const discH = (size * DISC_VH) / 100;
@@ -369,7 +392,7 @@ function VectorColumn({
 
   return (
     <div
-      className="stack-layers vector"
+      className={`stack-layers vector${ghost ? ' is-ghost' : ''}`}
       role="img"
       aria-label={label}
       style={{ width: size, height: pileH, ...motionVars(drop) }}
@@ -381,7 +404,11 @@ function VectorColumn({
           style={{ ...discStyle(m, size), bottom: m.i * pitch, height: discH }}
         >
           <div className="stack-disc-hit" style={hitStyle(m, size)}>
-            <VectorDisc d={d} size={size} showFace={m.i >= count - 1 || moving.has(m.i + 1) || moving.has(m.i)} />
+            <VectorDisc
+              d={d}
+              size={size}
+              showFace={!ghost && (m.i >= count - 1 || moving.has(m.i + 1) || moving.has(m.i))}
+            />
           </div>
         </div>
       ))}

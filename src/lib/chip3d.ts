@@ -92,16 +92,40 @@ export function peekChip(req: ChipRenderRequest): ChipRender | null {
   return cache.get(keyOf(req, dprOf(req))) ?? null;
 }
 
-/** Is a 3D chip possible at all on this device? Cheap enough to call per component. */
+/**
+ * Start fetching three.js and the model before anything asks for a chip.
+ *
+ * Both are code-split and load on first use, so the first screen of the app used to
+ * wait for a download before it could draw a single chip — which is the whole reason
+ * a placeholder is on screen at all. Kicking it off at boot (on idle, so it never
+ * competes with the first paint) usually means the bitmaps are ready by the time the
+ * first spread is laid out. Safe to call more than once: `load()` is a singleton.
+ */
+export function warmChip3d(): void {
+  if (rendererFailed || typeof window === 'undefined') return;
+  if (!chip3dSupported()) return;
+  const go = () => void load().catch(() => {});
+  const idle = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => void })
+    .requestIdleCallback;
+  if (idle) idle(go, { timeout: 1200 });
+  else window.setTimeout(go, 200);
+}
+
+/** Answered once: whether a context can be had at all does not change mid-session. */
+let webglOk: boolean | null = null;
+
+/** Is a 3D chip possible at all on this device? Cheap enough to call per render. */
 export function chip3dSupported(): boolean {
   if (rendererFailed) return false;
   if (typeof document === 'undefined') return false;
+  if (webglOk !== null) return webglOk;
   try {
     const canvas = document.createElement('canvas');
-    return !!(canvas.getContext('webgl2') || canvas.getContext('webgl'));
+    webglOk = !!(canvas.getContext('webgl2') || canvas.getContext('webgl'));
   } catch {
-    return false;
+    webglOk = false;
   }
+  return webglOk;
 }
 
 async function load(): Promise<Loaded> {

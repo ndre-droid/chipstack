@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { renderChip, type ChipRender, type ChipView } from '../lib/chip3d';
+import { chip3dSupported, renderChip, type ChipRender, type ChipView } from '../lib/chip3d';
 
 interface Props {
   value: number | string;
@@ -11,7 +11,7 @@ interface Props {
   /** Stack view only: how many discs to pile up. */
   discs?: number;
   className?: string;
-  /** Drawn while the bitmap renders — the vector chip, so nothing flashes empty. */
+  /** Drawn if this device can never render — the vector chip, for good. */
   fallback: React.ReactNode;
 }
 
@@ -24,8 +24,13 @@ interface Props {
  * is placed and foreshortened using the same camera that drew the chip, so it sits on
  * the face rather than floating over it.
  *
- * Until the render resolves — and permanently, if the device has no WebGL or the
- * model fails to load — the vector chip passed as `fallback` is shown instead.
+ * If the device has no WebGL, or the model fails to load, the vector chip passed as
+ * `fallback` takes over for good — that IS this device's chip.
+ *
+ * While the first render is still in flight it draws a dim disc in the chip's own
+ * colour instead. The vector chip used to stand in here, and on a cold start the
+ * whole app came up in one chip design and swapped to another a moment later, which
+ * looks like a bug rather than like loading.
  */
 export default function Chip3D({ value, color, accent, size, view, discs = 1, className, fallback }: Props) {
   const [render, setRender] = useState<ChipRender | null>(null);
@@ -42,7 +47,18 @@ export default function Chip3D({ value, color, accent, size, view, discs = 1, cl
     };
   }, [color, accent, size, discs, view]);
 
-  if (failed || !render) return <>{fallback}</>;
+  // No WebGL here, or the renderer already gave up: the drawn chip IS this device's
+  // chip, so show it straight away rather than waiting out a render that cannot come.
+  if (failed || !chip3dSupported()) return <>{fallback}</>;
+  if (!render) {
+    return (
+      <span
+        className={`chip-svg chip-ph ${className ?? ''}`}
+        style={{ width: size, height: size, ['--chip-ph' as string]: color }}
+        aria-hidden
+      />
+    );
+  }
 
   const { width, height } = render;
 

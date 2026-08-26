@@ -5,12 +5,24 @@ import { backgroundOf, backgroundSignature, liveSignature } from './liveData';
 import { pushDelay } from './pushPacing';
 import {
   cancelLiveSync,
+  flushLiveSync,
   getLiveSyncState,
   queueBackground,
   queueData,
   subscribeLiveSync,
   type LiveSyncState,
 } from './liveSyncQueue';
+
+/**
+ * A big screen beats every 25 seconds. One that has been silent for longer than this
+ * and then speaks again is a screen that was just (re)opened — the link typed into a
+ * TV browser, a reload, a set-top box waking up — and what it is showing right now is
+ * whatever the session document has been carrying since the last time anybody played.
+ * That is the "it opened on a very old session" bug: the phone had nothing new to
+ * say, so it said nothing, and the TV sat on last week's table until the user hit
+ * Push by hand.
+ */
+const TV_RESTART_GAP_MS = 60_000;
 
 /**
  * Mounted once at the app root. While this phone is the host of a Live Session
@@ -79,6 +91,78 @@ export function useLiveHostSync() {
     queueBackground(liveSessionCode, () => backgroundOf(stateRef.current));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bgSig, liveSessionCode, liveSessionRole]);
+
+  /* Answer a big screen that has just turned up.
+     The host pushes on CHANGE, which is exactly the wrong trigger for "a TV joined":
+     nothing about this phone changed, so nothing went out, and the screen showed
+     whatever was in the document. Two things now count as "it needs the table":
+     the document holding no data at all (a screen that just claimed the code), and a
+     TV heartbeat arriving after a long silence (a screen that was just opened). */
+  useEffect(() => {
+    if (!firebaseConfigured || liveSessionRole !== 'host' || !liveSessionCode) return;
+    const code = liveSessionCode;
+    let cancelled = false;
+    let unsub: (() => void) | null = null;
+    let lastBeat = 0; // the server stamp we last saw
+    let lastBeatAt = 0; // …and when, on THIS device's clock (no skew to reason about)
+
+    const pushNow = () => {
+      lastPush.current = Date.now();
+      queueData(code, () => stateRef.current);
+      flushLiveSync();
+    };
+
+    void import('./liveSession')
+      .then(({ subscribeSession }) => {
+        if (cancelled) return;
+        unsub = subscribeSession(code, (doc) => {
+          if (doc.data == null) {
+            // advertising a code and holding nothing — fill it in at once
+            pushNow();
+            return;
+          }
+          const beat = doc.tvSeenAt?.toMillis?.() ?? 0;
+          if (!beat || beat === lastBeat) return;
+          const now = Date.now();
+          const silence = lastBeatAt === 0 ? Number.POSITIVE_INFINITY : now - lastBeatAt;
+          lastBeat = beat;
+          lastBeatAt = now;
+          if (silence > TV_RESTART_GAP_MS) pushNow();
+        });
+      })
+      .catch(() => {
+        /* the live-sync chunk is fetched on demand; without it the ordinary
+           change-driven push is still in place */
+      });
+
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveSessionCode, liveSessionRole]);
+
+  /* Coming back to the phone is the other moment the TV may be behind: Android can
+     freeze or discard a backgrounded tab mid-write, and the queue's own
+     visibility hook can only re-send what is still pending — it cannot know about a
+     write that was dropped on the floor. Re-sending the current state costs one
+     write and removes a whole class of "I had to press Push". */
+  useEffect(() => {
+    if (!firebaseConfigured || liveSessionRole !== 'host' || !liveSessionCode) return;
+    const code = liveSessionCode;
+    const wake = () => {
+      if (document.hidden) return;
+      lastPush.current = Date.now();
+      queueData(code, () => stateRef.current);
+      flushLiveSync();
+    };
+    document.addEventListener('visibilitychange', wake);
+    window.addEventListener('focus', wake);
+    return () => {
+      document.removeEventListener('visibilitychange', wake);
+      window.removeEventListener('focus', wake);
+    };
+  }, [liveSessionCode, liveSessionRole]);
 
   /* Say "still here" on a slow interval. A table where nothing happens for ten
      minutes (no rebuy, no count, clock running on the TV) sends no data at all, and

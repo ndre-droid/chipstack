@@ -14,6 +14,7 @@ import { useNativeDeepLink, appSchemeUrl } from './lib/deepLink';
 import { customAccentVars } from './lib/color';
 import { runBackHandlers } from './lib/backHandler';
 import { isNative } from './lib/platform';
+import { warmChip3d } from './lib/chip3d';
 import Onboarding from './components/Onboarding';
 import GuestView from './screens/GuestView';
 
@@ -141,6 +142,14 @@ function AppShell() {
     const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
     if (meta && bg) meta.setAttribute('content', bg);
   }, [activeSkin, activeAccent, appearance, customAccent]);
+
+  /* The renderer and the chip model are code-split, so the first screen would
+     otherwise wait on a download before it could draw a chip. Started at boot, on
+     idle — see warmChip3d. */
+  const chipStyle = state.settings.chipStyle;
+  useEffect(() => {
+    if (chipStyle === 'render3d') warmChip3d();
+  }, [chipStyle]);
 
   /* Keep <html lang> honest: it drives how a screen reader pronounces the page and
      how the browser hyphenates it, and the app ships German text under lang="en"

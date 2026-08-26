@@ -5,8 +5,18 @@ import { TV_BACKGROUNDS, backgroundsFor } from '../lib/tvBackgrounds';
 import { addPhoto, deletePhoto, listPhotos, type SavedPhoto } from '../lib/photoStore';
 import { useT } from '../lib/i18n';
 import { analyzeBackground } from '../lib/imageAnalysis';
-import type { AccentId, Skin } from '../types';
+import type { AccentId, Skin, TvTextRole } from '../types';
 import { Toggle } from './Toggle';
+import {
+  DEFAULT_TV_TEXT_SCALE,
+  TV_TEXT_MAX,
+  TV_TEXT_MIN,
+  TV_TEXT_ROLES,
+  TV_TEXT_STEP,
+  clampTvText,
+  isDefaultTvTextScale,
+  normalizeTvTextScale,
+} from '../lib/tvLayout';
 
 const WEB_URL = 'https://ndre-droid.github.io/chipstack/';
 
@@ -23,6 +33,23 @@ const ACCENTS: { id: AccentId; color: string }[] = [
   { id: 'crimson', color: '#ff6b6b' }, { id: 'coral', color: '#ff7a4d' },
 ];
 const accentColor = (id: AccentId) => ACCENTS.find((a) => a.id === id)?.color ?? '#f0b429';
+
+/**
+ * Which panel name to show for a text role. Most roles ARE a panel; the three that
+ * make up the clock (its countdown, its blinds, its level line) are sized apart
+ * because that is exactly the complaint — the clock is fine and the line under it
+ * is not — so they borrow the labels below.
+ */
+const ROLE_LABEL: Record<TvTextRole, string> = {
+  clock: 'clock',
+  blinds: 'blinds',
+  level: 'level',
+  players: 'roster',
+  legend: 'legend',
+  stats: 'stats',
+  quips: 'quips',
+};
+const roleLabel = (role: TvTextRole) => ROLE_LABEL[role];
 
 
 /**
@@ -77,6 +104,10 @@ export default function TvBroadcast() {
   const removeFromList = (key: 'tvPenalties' | 'tvHouseRules', i: number) => {
     dispatch({ type: 'UPDATE_SETTINGS', patch: { [key]: (settings[key] ?? []).filter((_, idx) => idx !== i) } });
   };
+
+  const textScale = normalizeTvTextScale(settings.tvTextScale);
+  const setTextScale = (role: TvTextRole, v: number) =>
+    dispatch({ type: 'UPDATE_SETTINGS', patch: { tvTextScale: { ...textScale, [role]: clampTvText(v) } } });
 
   const activeSkin = settings.skin ?? 'minimal';
   const activeStyleBg = STYLES.find((s) => s.id === activeSkin)?.bg ?? STYLES[0].bg;
@@ -225,6 +256,63 @@ export default function TvBroadcast() {
                   {label}
                 </button>
               ))}
+            </div>
+            <div className="divider" />
+            {/* Sizing the big screen's text, piece by piece. The overall zoom is
+                per-device and lives on the TV itself (it answers "this laptop is not
+                a TV"); these are part of the setup and travel to the screen, because
+                the screen has no keyboard to dial them in on. */}
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{t('settings.tvTextSize')}</div>
+            <div className="faint" style={{ fontSize: 12, marginBottom: 8 }}>{t('settings.tvTextSizeDesc')}</div>
+            <div className="tv-text-sizes">
+              {TV_TEXT_ROLES.map((role) => (
+                <div className="row tv-text-row" key={role}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>{t(`tv.panel.${roleLabel(role)}` as 'tv.panel.clock')}</div>
+                  <div className="spacer" />
+                  <div className="stepper">
+                    <button
+                      onClick={() => setTextScale(role, textScale[role] - TV_TEXT_STEP)}
+                      disabled={textScale[role] <= TV_TEXT_MIN}
+                      aria-label="−"
+                    >
+                      −
+                    </button>
+                    <span className="val">{Math.round(textScale[role] * 100)}%</span>
+                    <button
+                      onClick={() => setTextScale(role, textScale[role] + TV_TEXT_STEP)}
+                      disabled={textScale[role] >= TV_TEXT_MAX}
+                      aria-label="+"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {!isDefaultTvTextScale(textScale) && (
+              <button
+                className="btn btn-ghost btn-sm mt8"
+                onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvTextScale: { ...DEFAULT_TV_TEXT_SCALE } } })}
+              >
+                {t('settings.tvTextReset')}
+              </button>
+            )}
+            <div className="divider" />
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{t('settings.tvLayoutHead')}</div>
+            <div className="faint" style={{ fontSize: 12, marginBottom: 8 }}>{t('settings.tvLayoutDesc')}</div>
+            <div className="row" style={{ gap: 8 }}>
+              <span className="faint" style={{ fontSize: 12.5 }}>
+                {settings.tvLayout ? t('settings.tvLayoutCustom') : t('settings.tvLayoutDefault')}
+              </span>
+              <div className="spacer" />
+              {settings.tvLayout && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvLayout: null } })}
+                >
+                  {t('settings.tvLayoutReset')}
+                </button>
+              )}
             </div>
             <div className="divider" />
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{t('settings.tvBackground')}</div>
