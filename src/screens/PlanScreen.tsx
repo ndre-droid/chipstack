@@ -27,22 +27,10 @@ export default function PlanScreen() {
   const startIdx = Math.min(session.startLevelIdx, Math.max(0, session.blindLevels.length - 1));
   const setStartIdx = (i: number) => dispatch({ type: 'UPDATE_SESSION', patch: { startLevelIdx: i } });
   /* The chip-mix slider drives the whole screen — the stacks, the table, the later
-     stages — so putting it straight into the store made the thumb wait for all of
-     that on every step. The thumb now moves on its own copy (instant, whatever else
-     is going on) and the store catches up in a transition, which React is free to
-     interrupt: a fast drag renders the mixes it can keep up with instead of queueing
-     every one of them. The draft is dropped once nothing is pending, so anything else
-     that sets the mix — a preset, the TV — takes the slider back. */
-  const [draftBias, setDraftBias] = useState<number | null>(null);
-  const [biasPending, startBias] = useTransition();
-  const bias = draftBias ?? smallBias;
-  const moveBias = (v: number) => {
-    setDraftBias(v);
-    startBias(() => dispatch({ type: 'UPDATE_SESSION', patch: { smallBias: v } }));
-  };
-  useEffect(() => {
-    if (!biasPending) setDraftBias(null);
-  }, [biasPending]);
+     stages — so it keeps its own draft value and lives in its own component (see
+     ChipMixSlider at the bottom of this file). All this screen does is take the value
+     once the finger has spoken. */
+  const moveBias = (v: number) => dispatch({ type: 'UPDATE_SESSION', patch: { smallBias: v } });
 
   const [showMins, setShowMins] = useState(false);
   const [showChips, setShowChips] = useState(false);
@@ -238,27 +226,7 @@ export default function PlanScreen() {
         <ChipStackViz denoms={effUsed} counts={displayCounts} surface="plan" />
 
         {/* small-chip slider — lives with the visual it controls */}
-        <div className="hero-slider">
-          <div className="hero-slider-head">
-            <span>{t('plan.chipMix')}</span>
-            <span className="badge-soft">{t('plan.pctSmall', { n: Math.round(bias * 100) })}</span>
-          </div>
-          <input
-            type="range"
-            className="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={bias}
-            style={{ ['--pct' as string]: `${bias * 100}%` }}
-            onChange={(e) => moveBias(+e.target.value)}
-            aria-label={t('plan.smallEmphasis')}
-          />
-          <div className="slider-ends">
-            <span>{t('plan.fewerBigger')}</span>
-            <span>{t('plan.moreSmall')}</span>
-          </div>
-        </div>
+        <ChipMixSlider value={smallBias} onChange={moveBias} />
 
         {effUsed.length > 0 && effTotal > 0 && (
           <div className="valbar" aria-hidden>
@@ -835,6 +803,62 @@ function StageCard({ blind, level, stack }: { blind: BlindLevel; level: number; 
       <div className="mini-row stage-total">
         <span>{stack.chipCount} chips</span>
         <span className="m-count">{num(stack.totalValue)} pts</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The chip-mix slider, holding its own draft value.
+ *
+ * The thumb has to answer the finger, and what it controls — the spread, the stack
+ * table, every later stage — is the most expensive thing on the Plan screen to
+ * redraw. Keeping the draft HERE is what separates the two: moving the thumb
+ * re-renders these few elements and nothing else, while the store update that redraws
+ * the rest goes out in a transition, which React is free to interrupt and to
+ * coalesce. Held on the screen itself, every step of a drag re-rendered the whole
+ * screen twice — once for the thumb and once for the stacks.
+ *
+ * The value itself still belongs in `session` (and therefore in LiveData), not in
+ * local state, or the tuned mix never reaches the TV — see lib/startingStack.ts. The
+ * draft is dropped once nothing is pending, so anything else that sets the mix — a
+ * preset, the TV — takes the slider back.
+ */
+function ChipMixSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const t = useT();
+  const [draft, setDraft] = useState<number | null>(null);
+  const [pending, startBias] = useTransition();
+  const shown = draft ?? value;
+
+  useEffect(() => {
+    if (!pending) setDraft(null);
+  }, [pending]);
+
+  const move = (v: number) => {
+    setDraft(v);
+    startBias(() => onChange(v));
+  };
+
+  return (
+    <div className="hero-slider">
+      <div className="hero-slider-head">
+        <span>{t('plan.chipMix')}</span>
+        <span className="badge-soft">{t('plan.pctSmall', { n: Math.round(shown * 100) })}</span>
+      </div>
+      <input
+        type="range"
+        className="range"
+        min={0}
+        max={1}
+        step={0.05}
+        value={shown}
+        style={{ ['--pct' as string]: `${shown * 100}%` }}
+        onChange={(e) => move(+e.target.value)}
+        aria-label={t('plan.smallEmphasis')}
+      />
+      <div className="slider-ends">
+        <span>{t('plan.fewerBigger')}</span>
+        <span>{t('plan.moreSmall')}</span>
       </div>
     </div>
   );

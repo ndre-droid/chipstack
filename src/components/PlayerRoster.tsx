@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { useT, useFmt } from '../lib/i18n';
 import { IconPlus, IconTrash } from './Icons';
@@ -35,7 +35,7 @@ type Handout = { id: string; amount: number; denoms: { value: number; color: str
  * later re-entry ADDS to `buyIn` — the earlier cash-out stays on the record and the
  * net stays right. Stacks (`chips`) are an overview figure and never feed settlement.
  */
-export default function PlayerRoster() {
+function PlayerRoster() {
   const { state, dispatch } = useStore();
   const t = useT();
   const { money } = useFmt();
@@ -837,3 +837,9 @@ function StackPrompt({
     </div>
   );
 }
+
+/* Wrapped in `memo` because it takes no props: the Table tab repaints once a second
+   while the blind clock runs, and without this every tick rebuilt this whole subtree
+   for a countdown that lives somewhere else entirely. Store changes still reach it —
+   it reads the store itself, and context goes straight past `memo`. */
+export default memo(PlayerRoster);

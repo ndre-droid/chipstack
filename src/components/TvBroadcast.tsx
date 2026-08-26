@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { IconCheck, IconChevron } from './Icons';
 import { TV_BACKGROUNDS, backgroundsFor } from '../lib/tvBackgrounds';
@@ -71,7 +71,7 @@ const BG_STEPS: [number, number][] = [
 /** ~150 kB of base64. A Firestore document caps at 1 MiB including everything else. */
 const BG_MAX_CHARS = 200_000;
 
-export default function TvBroadcast() {
+function TvBroadcast() {
   const { state, dispatch, storageFull } = useStore();
   const t = useT();
   const { settings } = state;
@@ -478,3 +478,9 @@ export default function TvBroadcast() {
     </>
   );
 }
+
+/* Wrapped in `memo` because it takes no props: the Table tab repaints once a second
+   while the blind clock runs, and without this every tick rebuilt this whole subtree
+   for a countdown that lives somewhere else entirely. Store changes still reach it —
+   it reads the store itself, and context goes straight past `memo`. */
+export default memo(TvBroadcast);

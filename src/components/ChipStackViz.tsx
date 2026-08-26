@@ -2,7 +2,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Denomination } from '../types';
 import { useT } from '../lib/i18n';
 import { useStore } from '../store';
-import { chip3dSupported, peekChip, renderChip, type ChipRender } from '../lib/chip3d';
+import { chip3dSupported, peekChip, renderChip, renderSize, type ChipRender } from '../lib/chip3d';
 import { animatedHere, type ChipAnimSurface } from '../lib/chipAnim';
 import { useColumnFlow } from '../lib/columnFlow';
 import { useGlidedCounts } from '../lib/countGlide';
@@ -86,6 +86,13 @@ export default function ChipStackViz({
   const w = Number.isFinite(width) && width > 0 ? width : 320;
   const rawSize = Math.floor((w - columns.length * gap - 2) / totalWeight);
   const chipSize = Math.max(20, Math.min(maxChipSize, Number.isFinite(rawSize) ? rawSize : 34));
+  /* …but the 3D piles are RENDERED at one size per surface and scaled to fit. The
+     chip size above moves every time a denomination joins or leaves the spread, and
+     re-rendering a pile costs ~11 ms per disc — dragging the mix slider used to spend
+     seconds redrawing chips that look identical. Rendering at the biggest size this
+     surface can ask for means the bitmaps are drawn once and every later spread is a
+     cache hit. */
+  const drawnAt = renderSize(maxChipSize);
   // Room above the pile for a chip to fall through, in proportion to the chip.
   const headroom = Math.round(chipSize * 0.95);
 
@@ -118,6 +125,7 @@ export default function ChipStackViz({
               count={Math.min(n, maxDiscs)}
               frameDiscs={maxDiscs}
               size={chipSize}
+              drawnAt={drawnAt}
               animate={animate}
               use3d={settings.chipStyle === 'render3d' && chip3dSupported()}
               total={n}
@@ -138,6 +146,8 @@ interface ColumnProps {
   /** Height the 3D shot is framed for, so every layer of every stack shares a camera. */
   frameDiscs: number;
   size: number;
+  /** Pixel size the bitmaps are rendered at; `size` is what they are scaled to. */
+  drawnAt: number;
   animate: boolean;
   use3d: boolean;
   total: number;
@@ -146,10 +156,13 @@ interface ColumnProps {
 }
 
 /** One denomination's pile: a layer per chip, each able to move on its own. */
-const StackColumn = memo(function StackColumn({ d, count, frameDiscs, size, animate, use3d, total, visit }: ColumnProps) {
+const StackColumn = memo(function StackColumn({ d, count, frameDiscs, size, drawnAt, animate, use3d, total, visit }: ColumnProps) {
   const tracked = useStackDiscs(count, animate, visit);
   const needed = tracked.reduce((m, x) => Math.max(m, x.i + 1), count);
-  const { layers, failed } = useChipLayers(d.color, d.accent, size, frameDiscs, use3d);
+  const { layers, failed } = useChipLayers(d.color, d.accent, drawnAt, frameDiscs, use3d);
+  // The bitmaps are drawn once at `drawnAt` and every dimension read off them is
+  // brought down to the size this spread wants — see `drawnAt` in ChipStackViz.
+  const scale = drawnAt > 0 ? size / drawnAt : 1;
   // Three.js and the model load on first use. Until the bitmaps this pile needs are
   // there the vector stack stands in — it holds still, so the pile can't play its
   // build twice.
@@ -164,10 +177,10 @@ const StackColumn = memo(function StackColumn({ d, count, frameDiscs, size, anim
   const label = `${total} chips of ${d.value}`;
 
   if (ready && layers && needed > 0) {
-    const frameW = layers[0].width;
+    const frameW = layers[0].width * scale;
     // Each layer is a band cut out of the pile's frame; the frame is what the discs
     // are positioned in.
-    const frameH = layers[0].frameHeight ?? layers[0].height;
+    const frameH = (layers[0].frameHeight ?? layers[0].height) * scale;
     // The chip count can be a render ahead of the bitmaps (the disc list settles in an
     // effect, the layers arrive from the renderer): size the pile by what is drawable.
     const top = layers[Math.min(Math.max(count, 1), layers.length) - 1];
@@ -182,19 +195,20 @@ const StackColumn = memo(function StackColumn({ d, count, frameDiscs, size, anim
         {motions.map((m) => {
           const layer = layers[m.i];
           if (!layer) return null;
+          const discH = layer.height * scale;
           return (
             <div
               key={discKey(m)}
               className={discClass(m)}
               style={{
                 ...discStyle(m, size),
-                height: layer.height,
-                bottom: frameH - (layer.offsetTop ?? 0) - layer.height,
+                height: discH,
+                bottom: frameH - (layer.offsetTop ?? 0) * scale - discH,
               }}
             >
               <div className="stack-disc-hit" style={hitStyle(m, size)}>
-                <img src={layer.url} width={frameW} height={layer.height} alt="" draggable={false} />
-                <ChipValue render={layer} value={d.value} color={d.color} />
+                <img src={layer.url} width={frameW} height={discH} alt="" draggable={false} />
+                <ChipValue render={layer} value={d.value} color={d.color} scale={scale} />
               </div>
             </div>
           );
@@ -243,15 +257,11 @@ function useChipLayers(color: string, accent: string, size: number, frameDiscs: 
       const out: ChipRender[] = [];
       for (let i = 0; i < frameDiscs && alive; i++) {
         out.push(await renderChip({ color, accent, size, view: 'stack', discs: frameDiscs, layer: i }));
-        // Eleven discs times a spread of denominations is a lot of PNG encoding for one
-        // go; hand the thread back every few so the first open of the tab still scrolls,
-        // and show what is finished so the pile builds instead of appearing at the end.
-        // A timer, not requestAnimationFrame: a hidden tab paints no frames, and the
-        // stack must still be finished and waiting when it is opened again.
-        if (i % 4 === 3) {
-          setLayers([...out]);
-          await new Promise((r) => setTimeout(r, 0));
-        }
+        /* The renderer takes its own turn and hands the thread back between discs
+           (see `renderChip`), so nothing needs to be yielded here. What IS wanted here
+           is showing the discs that are finished, so the pile builds instead of
+           appearing all at once at the end — in batches, not one commit per disc. */
+        if (i % 4 === 3) setLayers([...out]);
       }
       if (alive) setLayers(out);
     })().catch(() => {

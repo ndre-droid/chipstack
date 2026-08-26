@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useStore } from '../store';
 import { fmtMoney, fmtNum } from './money';
 
@@ -1647,11 +1648,18 @@ export function translate(lang: Lang, key: string, vars?: Record<string, string 
   return s;
 }
 
-/** Hook: `const t = useT(); t('nav.plan')` — reads the language from the store. */
+/**
+ * Hook: `const t = useT(); t('nav.plan')` — reads the language from the store.
+ *
+ * This and `useFmt` hand back the SAME function objects until the language changes.
+ * They were rebuilt on every render, which quietly cost the whole app twice: a
+ * component holding `t` in a dependency array re-ran that effect on every render, and
+ * no `memo()` anywhere could ever hit while `t` or `money` was among its props.
+ */
 export function useT() {
   const { state } = useStore();
   const lang: Lang = state.settings.language ?? 'en';
-  return (key: string, vars?: Record<string, string | number>) => translate(lang, key, vars);
+  return useMemo(() => (key: string, vars?: Record<string, string | number>) => translate(lang, key, vars), [lang]);
 }
 
 /** Hook: money/number formatters bound to the current app language, so grouping
@@ -1659,8 +1667,11 @@ export function useT() {
 export function useFmt() {
   const { state } = useStore();
   const lang: Lang = state.settings.language ?? 'en';
-  return {
-    money: (amount: number, currency: string) => fmtMoney(amount, currency, lang),
-    num: (n: number) => fmtNum(n, lang),
-  };
+  return useMemo(
+    () => ({
+      money: (amount: number, currency: string) => fmtMoney(amount, currency, lang),
+      num: (n: number) => fmtNum(n, lang),
+    }),
+    [lang],
+  );
 }

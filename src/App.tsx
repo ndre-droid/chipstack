@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { StoreProvider, useStore } from './store';
+import { ScreenStore, StoreProvider, useStore } from './store';
 import PlanScreen from './screens/PlanScreen';
 import ChipsScreen from './screens/ChipsScreen';
 import TableScreen from './screens/TableScreen';
@@ -30,6 +30,17 @@ const TABS: { id: Tab; key: string; icon: (p: { size?: number }) => React.ReactN
 
 const VIEWS: View[] = ['plan', 'chips', 'table', 'cash', 'settings'];
 const VIEW_KEY = 'chipstack.view';
+
+/* Built once, at module scope, and NOT rebuilt per render on purpose: a screen that
+   is not on top only skips its re-render while the element handed to it stays the
+   same object (see ScreenStore). These take no props, so there is nothing to rebuild. */
+const SCREENS: Record<View, React.ReactNode> = {
+  plan: <PlanScreen />,
+  chips: <ChipsScreen />,
+  table: <TableScreen />,
+  cash: <CashScreen />,
+  settings: <SettingsScreen />,
+};
 
 // Token ring — matches the app icon: accent tile, ring + centre dot in the on-accent
 // colour. Minimal, themeable (follows the active skin's accent).
@@ -301,14 +312,6 @@ function AppShell() {
     );
   }
 
-  const SCREENS: Record<View, React.ReactNode> = {
-    plan: <PlanScreen />,
-    chips: <ChipsScreen />,
-    table: <TableScreen />,
-    cash: <CashScreen />,
-    settings: <SettingsScreen />,
-  };
-
   return (
     <div className="app">
       {openAppBar && initialTvCode && (
@@ -344,7 +347,10 @@ function AppShell() {
           onScroll={(e) => rememberScroll(v, e.currentTarget)}
           aria-hidden={v !== view}
         >
-          {SCREENS[v]}
+          {/* Always wrapped, never conditionally — swapping the element type here
+              would remount the screen and throw away exactly what keeping it mounted
+              was for. See ScreenStore. */}
+          <ScreenStore live={v === view}>{SCREENS[v]}</ScreenStore>
         </main>
       ))}
 

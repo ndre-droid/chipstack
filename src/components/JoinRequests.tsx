@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { useT } from '../lib/i18n';
 import { haptic } from '../lib/platform';
@@ -12,7 +12,7 @@ import type { JoinRequest } from '../lib/liveSession';
  * type their own and this card is the only thing the host touches — one tap to seat
  * somebody, one to wave them off.
  */
-export default function JoinRequests() {
+function JoinRequests() {
   const { state, dispatch } = useStore();
   const t = useT();
   const code = state.settings.liveSessionCode;
@@ -92,3 +92,9 @@ export default function JoinRequests() {
     </>
   );
 }
+
+/* Wrapped in `memo` because it takes no props: the Table tab repaints once a second
+   while the blind clock runs, and without this every tick rebuilt this whole subtree
+   for a countdown that lives somewhere else entirely. Store changes still reach it —
+   it reads the store itself, and context goes straight past `memo`. */
+export default memo(JoinRequests);

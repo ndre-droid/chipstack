@@ -68,8 +68,31 @@ let rendererFailed = false;
 const cache = new Map<string, ChipRender>();
 /** A stack is now one entry per chip: eight denominations, eleven discs each, at the
  *  Plan and Table sizes, is already ~176 pictures — a cache that evicted them would
- *  re-render the same pile on every slider step. */
-const MAX_CACHE = 260;
+ *  re-render the same pile on every slider step. With `renderSize` snapping every
+ *  request onto the ladder below there are only a handful of sizes to hold, so this
+ *  is sized to fit all of them rather than to trade one pile against another. */
+const MAX_CACHE = 480;
+
+/**
+ * The sizes a chip is actually drawn at.
+ *
+ * A render is keyed on its pixel size, so asking for the exact size a chip happens to
+ * be on screen meant every layout wobble was a full re-render: a denomination joining
+ * the spread shrinks each chip by a pixel, and that alone re-rendered every pile — 11
+ * bitmaps per pile, ~11 ms of blocked main thread each. Measured on the Plan tab, one
+ * drag of the chip-mix slider cost 60 renders and two seconds of frozen UI.
+ *
+ * Requests are snapped up onto this ladder instead and the caller scales the bitmap
+ * down to the size it needs (see `ChipStackViz`, `Chip3D`). Downscaling an image is
+ * free and stays crisp, so the chip looks the same and the cache stops missing.
+ */
+const SIZE_STEP = 16;
+
+/** The size a request for `size` px is really rendered at — always ≥ `size`. */
+export function renderSize(size: number): number {
+  const px = Number.isFinite(size) && size > 0 ? size : 44;
+  return Math.max(SIZE_STEP, Math.ceil(px / SIZE_STEP) * SIZE_STEP);
+}
 
 const keyOf = (r: ChipRenderRequest, dpr: number) =>
   `${r.view}|${r.color}|${r.accent}|${Math.round(r.size)}|${r.view === 'stack' ? r.discs ?? 1 : 1}|${
@@ -328,11 +351,27 @@ export interface ChipRender {
 }
 
 /**
+ * Renders take their turn, one at a time, with the thread handed back in between.
+ *
+ * A screen full of chips asks for all of them in the same commit, and one render is
+ * ~10 ms of GPU work and PNG encoding: nine of them back to back is a tenth of a
+ * second in which the app answers nothing (measured: opening the Chips tab was a
+ * single 106 ms task). Queueing them costs the last chip a few extra milliseconds and
+ * costs the user nothing, because the gap between two renders is long enough for a
+ * tap to get in.
+ *
+ * A timer, not requestAnimationFrame: a hidden tab paints no frames, and a spread
+ * must still finish rendering while it is off screen so it is ready when opened.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+const breathe = () => new Promise((r) => setTimeout(r, 0));
+
+/**
  * Render one chip (or stack) and return its bitmap plus where the value belongs.
  * Repeated calls with the same colours and size hand back the cache without touching
  * the GPU.
  */
-export async function renderChip(req: ChipRenderRequest): Promise<ChipRender> {
+export function renderChip(req: ChipRenderRequest): Promise<ChipRender> {
   const dpr = dprOf(req);
   const key = keyOf(req, dpr);
   const hit = cache.get(key);
@@ -340,8 +379,18 @@ export async function renderChip(req: ChipRenderRequest): Promise<ChipRender> {
     // refresh recency
     cache.delete(key);
     cache.set(key, hit);
-    return hit;
+    return Promise.resolve(hit);
   }
+  const run = queue.then(() => draw(req, key, dpr));
+  // The chain must survive a failed render, and it breathes between every one.
+  queue = run.then(breathe, breathe);
+  return run;
+}
+
+async function draw(req: ChipRenderRequest, key: string, dpr: number): Promise<ChipRender> {
+  // Another pile may have asked for this very bitmap while this call sat in the queue.
+  const waited = cache.get(key);
+  if (waited) return waited;
 
   const { three, chip } = await load();
   const renderer = getRenderer(three);

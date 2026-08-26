@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { chip3dSupported, renderChip, type ChipRender, type ChipView } from '../lib/chip3d';
+import { chip3dSupported, renderChip, renderSize, type ChipRender, type ChipView } from '../lib/chip3d';
 
 interface Props {
   value: number | string;
@@ -35,17 +35,23 @@ interface Props {
 export default function Chip3D({ value, color, accent, size, view, discs = 1, className, fallback }: Props) {
   const [render, setRender] = useState<ChipRender | null>(null);
   const [failed, setFailed] = useState(false);
+  /* Drawn at one of a handful of fixed sizes and scaled to the size asked for: a
+     render is keyed on its pixel size, so honouring every one-pixel difference meant
+     the same chip was rendered again for every layout it appeared in. See
+     `renderSize`. */
+  const drawnAt = renderSize(size);
+  const scale = drawnAt > 0 ? size / drawnAt : 1;
 
   useEffect(() => {
     let alive = true;
     setRender(null);
-    renderChip({ color, accent, size, discs, view })
+    renderChip({ color, accent, size: drawnAt, discs, view })
       .then((r) => alive && setRender(r))
       .catch(() => alive && setFailed(true));
     return () => {
       alive = false;
     };
-  }, [color, accent, size, discs, view]);
+  }, [color, accent, drawnAt, discs, view]);
 
   // No WebGL here, or the renderer already gave up: the drawn chip IS this device's
   // chip, so show it straight away rather than waiting out a render that cannot come.
@@ -60,7 +66,8 @@ export default function Chip3D({ value, color, accent, size, view, discs = 1, cl
     );
   }
 
-  const { width, height } = render;
+  const width = render.width * scale;
+  const height = render.height * scale;
 
   return (
     <div
@@ -70,7 +77,7 @@ export default function Chip3D({ value, color, accent, size, view, discs = 1, cl
       aria-label={view === 'stack' ? `${discs} chips of ${value}` : `${value} chip`}
     >
       <img src={render.url} width={width} height={height} alt="" draggable={false} />
-      <ChipValue render={render} value={value} color={color} />
+      <ChipValue render={render} value={value} color={color} scale={scale} />
     </div>
   );
 }
@@ -80,11 +87,23 @@ export default function Chip3D({ value, color, accent, size, view, discs = 1, cl
  * the same camera that drew the bitmap. Shared with the stack view, where every disc
  * of a pile carries its own number.
  */
-export function ChipValue({ render, value, color }: { render: ChipRender; value: number | string; color: string }) {
+export function ChipValue({
+  render,
+  value,
+  color,
+  scale = 1,
+}: {
+  render: ChipRender;
+  value: number | string;
+  color: string;
+  /** How far the bitmap is scaled down from the size it was rendered at. */
+  scale?: number;
+}) {
   const { label } = render;
   const isLight = isLightColor(color);
-  // The cartouche is about a third of the face; keep the number inside it.
-  const fontSize = Math.max(7, render.width * label.widthFraction * fontScale(String(value)));
+  // The cartouche is about a third of the face; keep the number inside it. `label` is
+  // all fractions of the bitmap, so only the width it is measured against scales.
+  const fontSize = Math.max(7, render.width * scale * label.widthFraction * fontScale(String(value)));
   return (
     <span
       className="chip3d-value"

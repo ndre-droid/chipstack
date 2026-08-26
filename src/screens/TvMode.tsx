@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import qrcode from 'qrcode-generator';
 import { useStore } from '../store';
@@ -58,6 +58,129 @@ const digitCells = (text: string) =>
 
 /** Smallest roster row still worth reading across a room; matches the CSS clamp. */
 const ROW_MIN_FS = 11;
+
+/** One row of the big screen's player list, as the panel needs it. */
+export interface TvRosterRow {
+  id: string;
+  name: string;
+  amount: number;
+  out: boolean;
+  net: number | null;
+  since: number | null;
+  stackMoney: number | null;
+  emoji: string;
+  chips: number;
+  trail: number[];
+  trailBase: number;
+  knockouts: number;
+}
+
+/**
+ * The big screen's player list.
+ *
+ * Lifted out of the screen and memoised because the clock ticks: every second the
+ * countdown repainted TvMode, and this panel — a row per player, each with its own
+ * trend line — was half of what that cost. Nothing in here changes with the clock, so
+ * now it simply does not run. Everything it needs arrives as props, all of them either
+ * primitives or memoised upstream (see `roster`, `sortedRoster`, `chipLeaderId`), or
+ * the memo could never hit.
+ */
+const TvRoster = memo(function TvRoster({
+  rows,
+  rosterRows,
+  rosterCols,
+  rowFs,
+  hidden,
+  amountLabel,
+  chipLeaderId,
+  showTrend,
+  trendSpan,
+  bounties,
+  currency,
+  listRef,
+}: {
+  rows: TvRosterRow[];
+  rosterRows: number;
+  rosterCols: number;
+  /** Fitted row font size in px; 0 = not measured yet, the CSS default applies. */
+  rowFs: number;
+  hidden: number;
+  amountLabel: string;
+  chipLeaderId: string | null;
+  showTrend: boolean;
+  trendSpan: number;
+  bounties: boolean;
+  currency: string;
+  listRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const t = useT();
+  const { money } = useFmt();
+  return (
+    <div
+      className="tv-players tv-roster"
+      data-dense={rosterRows > 7 ? '' : undefined}
+      style={{
+        ['--tv-roster-rows']: rosterRows,
+        ...(rowFs ? { ['--tv-row-fs']: `${rowFs}px` } : {}),
+      } as CSSProperties}
+    >
+      <div className="tv-players-h">
+        <span>{t('tv.players')}</span>
+        <span className="tv-players-h-sub">
+          {hidden > 0 && <span className="tv-players-more">+{hidden} · </span>}
+          {amountLabel}
+        </span>
+      </div>
+      <div className="tv-players-list" data-cols={rosterCols} ref={listRef}>
+        {rows.map((p) => (
+          <div className={`tv-players-row ${p.out ? 'out' : ''}`} key={p.id}>
+            {p.emoji && <span className="tv-players-emoji">{p.emoji}</span>}
+            <span className={`tv-players-name${p.id === chipLeaderId ? ' leader' : ''}`}>{p.name}</span>
+            {showTrend && !p.out && p.trail.length > 1 && (
+              // sized off the fitted row so the trail can never be the thing
+              // that makes a row too tall to fit
+              <Sparkline
+                className="tv-spark"
+                points={p.trail}
+                baseline={p.trailBase}
+                span={trendSpan}
+                stretch
+                width={Math.round((rowFs || 19) * 3.3)}
+                height={Math.round((rowFs || 19) * 1.05)}
+              />
+            )}
+            {bounties && p.knockouts > 0 && (
+              <span className="tv-bounty" title={t('tv.bounties')}>🎯{p.knockouts}</span>
+            )}
+            {p.stackMoney !== null ? (
+              // still in, chips counted: what the stack is worth, with the
+              // running profit/loss underneath it
+              <span className="tv-players-amt tv-stackcell">
+                <span className="tv-stack-money">{money(p.stackMoney, currency)}</span>
+                {p.net !== null && (
+                  <small className={`tv-stack-net ${p.net >= 0 ? 'pos' : 'neg'}`}>
+                    {p.net >= 0 ? '+' : '−'}{money(Math.abs(p.net), currency)}
+                  </small>
+                )}
+                {p.since !== null && (
+                  <small className={`tv-stack-since ${p.since >= 0 ? 'pos' : 'neg'}`}>
+                    {t('tv.sinceBuyIn')} {p.since >= 0 ? '+' : '−'}{money(Math.abs(p.since), currency)}
+                  </small>
+                )}
+              </span>
+            ) : p.net !== null ? (
+              <span className={`tv-players-amt tv-net ${p.net >= 0 ? 'pos' : 'neg'}`}>
+                {p.net >= 0 ? '+' : '−'}{money(Math.abs(p.net), currency)}
+              </span>
+            ) : (
+              <span className="tv-players-amt">{money(p.amount, currency)}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+});
 
 /**
  * The side columns of the automatic layout.
@@ -1385,69 +1508,20 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
 
         {tvShowPlayers && roster.length > 0 && (
           <TvCell id="roster" label={t('tv.panel.roster')} slot={shownLayout.roster} {...cellProps}>
-            <div
-              className="tv-players tv-roster"
-              data-dense={rosterRows > 7 ? '' : undefined}
-              style={{
-                ['--tv-roster-rows']: rosterRows,
-                ...(rowFs ? { ['--tv-row-fs']: `${rowFs}px` } : {}),
-              } as CSSProperties}
-            >
-              <div className="tv-players-h">
-                <span>{t('tv.players')}</span>
-                <span className="tv-players-h-sub">
-                  {rosterHidden > 0 && <span className="tv-players-more">+{rosterHidden} · </span>}
-                  {rosterAmountLabel}
-                </span>
-              </div>
-              <div className="tv-players-list" data-cols={rosterCols} ref={rosterListRef}>
-                {sortedRoster.map((p) => (
-                  <div className={`tv-players-row ${p.out ? 'out' : ''}`} key={p.id}>
-                    {p.emoji && <span className="tv-players-emoji">{p.emoji}</span>}
-                    <span className={`tv-players-name${p.id === chipLeaderId ? ' leader' : ''}`}>{p.name}</span>
-                    {showTrend !== false && !p.out && p.trail.length > 1 && (
-                      // sized off the fitted row so the trail can never be the thing
-                      // that makes a row too tall to fit
-                      <Sparkline
-                        className="tv-spark"
-                        points={p.trail}
-                        baseline={p.trailBase}
-                        span={trendSpan}
-                        stretch
-                        width={Math.round((rowFs || 19) * 3.3)}
-                        height={Math.round((rowFs || 19) * 1.05)}
-                      />
-                    )}
-                    {bountyMode && !isCash && p.knockouts > 0 && (
-                      <span className="tv-bounty" title={t('tv.bounties')}>🎯{p.knockouts}</span>
-                    )}
-                    {p.stackMoney !== null ? (
-                      // still in, chips counted: what the stack is worth, with the
-                      // running profit/loss underneath it
-                      <span className="tv-players-amt tv-stackcell">
-                        <span className="tv-stack-money">{money(p.stackMoney, currency)}</span>
-                        {p.net !== null && (
-                          <small className={`tv-stack-net ${p.net >= 0 ? 'pos' : 'neg'}`}>
-                            {p.net >= 0 ? '+' : '−'}{money(Math.abs(p.net), currency)}
-                          </small>
-                        )}
-                        {p.since !== null && (
-                          <small className={`tv-stack-since ${p.since >= 0 ? 'pos' : 'neg'}`}>
-                            {t('tv.sinceBuyIn')} {p.since >= 0 ? '+' : '−'}{money(Math.abs(p.since), currency)}
-                          </small>
-                        )}
-                      </span>
-                    ) : p.net !== null ? (
-                      <span className={`tv-players-amt tv-net ${p.net >= 0 ? 'pos' : 'neg'}`}>
-                        {p.net >= 0 ? '+' : '−'}{money(Math.abs(p.net), currency)}
-                      </span>
-                    ) : (
-                      <span className="tv-players-amt">{money(p.amount, currency)}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+            <TvRoster
+              rows={sortedRoster}
+              rosterRows={rosterRows}
+              rosterCols={rosterCols}
+              rowFs={rowFs}
+              hidden={rosterHidden}
+              amountLabel={rosterAmountLabel}
+              chipLeaderId={chipLeaderId}
+              showTrend={showTrend !== false}
+              trendSpan={trendSpan}
+              bounties={bountyMode && !isCash}
+              currency={currency}
+              listRef={rosterListRef}
+            />
           </TvCell>
         )}
 

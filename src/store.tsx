@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useReducer, useState } from 'react';
+import { createContext, useContext, useDeferredValue, useEffect, useMemo, useReducer, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AppState, CarryBalance, ChipSet, Denomination, TimelineEvent, BlindLevel, Preset, Settings, SessionConfig, LedgerPlayer, AccentId, Skin, ChipArt, LeagueGame, Moment, CountingProgress, Person, TvLayout, TvTextScale } from './types';
 
@@ -1085,6 +1085,35 @@ export function useStore() {
   const ctx = useContext(StoreContext);
   if (!ctx) throw new Error('useStore must be used within StoreProvider');
   return ctx;
+}
+
+/**
+ * The store as one screen sees it.
+ *
+ * Every screen the user has opened stays mounted (App.tsx keeps them so a half-typed
+ * name or a half-open panel survives a tab change), and every one of them reads the
+ * whole state — so a single tap on the Table tab was re-rendering the Plan, Chips and
+ * Cash screens too, before the tap could paint. Measured on the Table tab with ten
+ * players, that was ~35 of the ~55 ms a rebuy button cost: work for screens nobody was
+ * looking at.
+ *
+ * A screen that is not on top follows the state through `useDeferredValue` instead.
+ * The urgent pass hands it the value it already had — same object, so React skips the
+ * subtree outright — and it catches up in a low-priority pass after the paint, which
+ * React is free to interrupt and to coalesce. A burst of edits (dragging the chip-mix
+ * slider) therefore costs the background screens ONE render instead of one per step,
+ * and it costs the tap nothing at all.
+ *
+ * Deliberately not `<Activity>`, which would also do this: hiding an Activity unmounts
+ * the effects inside it, and the Table tab holds the wake lock and the level-end
+ * notification precisely so they keep running while the phone is on another tab.
+ */
+export function ScreenStore({ live, children }: { live: boolean; children: ReactNode }) {
+  const { state, dispatch, storageFull } = useStore();
+  const deferred = useDeferredValue(state);
+  const seen = live ? state : deferred;
+  const value = useMemo(() => ({ state: seen, dispatch, storageFull }), [seen, dispatch, storageFull]);
+  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 
 export { defaultBlinds };

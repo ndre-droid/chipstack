@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../store';
 import { IconPlay, IconPause, IconReset, IconChevron, IconDice, IconExpand } from '../components/Icons';
@@ -365,8 +365,9 @@ function SetupSection({ open, onToggle, children }: { open: boolean; onToggle: (
   );
 }
 
-/** Tournament vs cash game — reshapes the plan, the table and the TV. */
-function GameModeCard() {
+/** Tournament vs cash game — reshapes the plan, the table and the TV.
+ *  Memoised: it takes no props and the tab repaints every second while the clock runs. */
+const GameModeCard = memo(function GameModeCard() {
   const { state, dispatch } = useStore();
   const t = useT();
   const isCash = state.settings.gameMode === 'cash';
@@ -475,7 +476,7 @@ function GameModeCard() {
       </div>
     </>
   );
-}
+});
 
 const SUITS = ['♠', '♥', '♦', '♣'];
 const RANKS: Record<number, string> = {
@@ -483,7 +484,8 @@ const RANKS: Record<number, string> = {
   11: 'J', 12: 'Q', 13: 'K', 14: 'A',
 };
 
-function DealerAndSeats() {
+/** Memoised for the same reason as GameModeCard: no props, and the clock ticks. */
+const DealerAndSeats = memo(function DealerAndSeats() {
   const { state, dispatch } = useStore();
   const t = useT();
   const { ledger } = state;
@@ -609,4 +611,4 @@ function DealerAndSeats() {
       )}
     </>
   );
-}
+});
