@@ -459,7 +459,11 @@ function baseReducer(state: AppState, action: Action): AppState {
              made on the TV lived until the host's next push, which is why arranging
              used to be hidden on a paired screen entirely. */
           ...(action.tvLayout !== undefined && !state.settings.tvLayoutOwn ? { tvLayout: action.tvLayout } : {}),
-          ...(action.tvTextScale !== undefined && !state.settings.tvLayoutOwn ? { tvTextScale: action.tvTextScale } : {}),
+          /* Text size is NOT part of that claim. It rode along with `tvLayoutOwn`
+             and so went dead the moment a screen was arranged on itself — the
+             phone's steppers moved and the TV never changed, which is the whole
+             point of having them (the TV has no keyboard to dial sizes in on). */
+          ...(action.tvTextScale !== undefined ? { tvTextScale: action.tvTextScale } : {}),
         },
       };
     /* Chip sets. `denominations` stays THE active box of chips that the rest of the

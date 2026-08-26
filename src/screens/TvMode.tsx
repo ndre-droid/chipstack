@@ -462,18 +462,22 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
 
   // Deep-link QR: opening this URL on a phone loads the app and auto-connects as
   // host to this code (App reads `?tv=`), so the phone can pair by scanning too.
+  const pairUrl = liveSessionCode ? `${window.location.origin}${window.location.pathname}?tv=${liveSessionCode}` : '';
   const pairQr = useMemo(() => {
-    if (!liveSessionCode) return null;
+    if (!pairUrl) return null;
     try {
-      const url = `${window.location.origin}${window.location.pathname}?tv=${liveSessionCode}`;
       const qr = qrcode(0, 'M');
-      qr.addData(url);
+      qr.addData(pairUrl);
       qr.make();
       return qr.createDataURL(6, 12);
     } catch {
       return null;
     }
-  }, [liveSessionCode]);
+  }, [pairUrl]);
+  /* The same code, on demand. The pairing banner is only up while the screen is
+     waiting for its phone, so once someone is driving it there was no way to get a
+     second phone (or a re-installed one) connected without leaving TV mode. */
+  const [showQr, setShowQr] = useState(false);
 
   /* ---------------------------------------------------------------- arranging --
      Dragging the panels around the grid. Offered on EVERY big screen, always: it
@@ -994,6 +998,19 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     return [...roster].sort((a, b) => Number(a.out) - Number(b.out) || rank(b) - rank(a));
   }, [roster, tvRosterSort]);
 
+  /* One scale for every trail on screen. Scaled to itself a trend line always
+     fills the row, so a player who drifted 200 chips and one who doubled through
+     drew the same picture — "up" or "down" and nothing else. Measured against the
+     table's biggest swing, the height of the line is the size of the swing. */
+  const trendSpan = useMemo(() => {
+    let max = 0;
+    for (const p of roster) {
+      if (p.out) continue;
+      for (const v of p.trail) max = Math.max(max, Math.abs(v - p.trailBase));
+    }
+    return max || 1;
+  }, [roster]);
+
   /* Layout of the roster panel: past eight players the list goes two-up, and the
      rows are sized from the height the panel actually got. A TV has no scrollbar
      anyone can reach, so a list that doesn't fit doesn't merely scroll out of
@@ -1395,6 +1412,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
                         className="tv-spark"
                         points={p.trail}
                         baseline={p.trailBase}
+                        span={trendSpan}
+                        stretch
                         width={Math.round((rowFs || 19) * 3.3)}
                         height={Math.round((rowFs || 19) * 1.05)}
                       />
@@ -1593,6 +1612,15 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         ) : (
           <button className="tv-txt" onClick={() => setArranging(true)}>⠿ {t('tv.arrange')}</button>
         )}
+        {pairQr && <button className="tv-txt" onClick={() => setShowQr(true)}>📱 {t('tv.showQr')}</button>}
+        {tvShowPlayers && (
+          <button
+            className="tv-txt"
+            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { showTrend: showTrend === false } })}
+          >
+            {showTrend !== false ? '✓ ' : ''}📈 {t('tv.trend')}
+          </button>
+        )}
         <button className="tv-txt" onClick={() => setShot(30)}>{t('tv.shotClock')}</button>
         <button className="tv-txt" onClick={spinRound}>{t('tv.whoDrinks')}</button>
         <button
@@ -1604,6 +1632,23 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         </button>
         <button className="tv-txt tv-exit" onClick={onClose}>{deviceIsTv ? t('tv.exitTv') : t('tv.exit')}</button>
       </div>
+
+      {/* pairing QR on demand */}
+      {showQr && pairQr && (
+        <div className="tv-overlay" onClick={() => setShowQr(false)}>
+          <div className="tv-overlay-label">{t('tv.controlFromPhone')}</div>
+          <img className="tv-qr-big" src={pairQr} alt="" />
+          {liveSessionCode && (
+            <div className="tv-pair-code">
+              {liveSessionCode.split('').map((c, i) => (
+                <span className="tv-pair-digit" key={i}>{c}</span>
+              ))}
+            </div>
+          )}
+          <div className="tv-qr-url">{pairUrl}</div>
+          <div className="tv-overlay-hint">{t('tv.tapToDismiss')}</div>
+        </div>
+      )}
 
       {/* shot clock overlay */}
       {shot !== null && (

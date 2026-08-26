@@ -240,6 +240,21 @@ export default function TvBroadcast() {
               />
             </div>
             <div className="divider" />
+            {/* The trend line lives on the roster on both screens, but it is the TV
+                the question gets asked about — twelve rows across a room. */}
+            <div className="row">
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{t('roster.trendLine')}</div>
+                <div className="faint" style={{ fontSize: 12 }}>{t('settings.trendDesc')}</div>
+              </div>
+              <div className="spacer" />
+              <Toggle
+                on={settings.showTrend !== false}
+                label={t('roster.trendLine')}
+                onChange={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { showTrend: settings.showTrend === false } })}
+              />
+            </div>
+            <div className="divider" />
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{t('table.rosterSort')}</div>
             <div className="faint" style={{ fontSize: 12, marginBottom: 8 }}>{t('table.rosterSortDesc')}</div>
             <div className="segmented">

@@ -1594,6 +1594,12 @@ input[type='color'] { cursor: pointer; }
 .tv-roster .tv-players-amt { font-size: clamp(10px, calc(var(--tv-row-fs) * 0.92), calc(34px * var(--tv-fs-players, 1))); }
 .tv-roster .tv-players-emoji { font-size: clamp(14px, calc(var(--tv-row-fs) * 1.2), 48px); }
 .tv-roster .tv-bounty { font-size: clamp(10px, calc(var(--tv-row-fs) * 0.85), 30px); }
+/* The trail takes the width the row isn't using: between the name and the money
+   there is usually a lot of dead space on a TV, and a longer line is a readable
+   line. `flex-basis: 0` hands it all the slack without ever squeezing the name —
+   growing only ever eats free space — and the drawing stretches horizontally to
+   match (see `stretch` in Sparkline). The height is deliberately untouched. */
+.tv-roster .tv-spark { flex: 1 1 0; min-width: clamp(26px, 5vmin, 110px); }
 /* the stack trail is decoration — it is the first thing dropped once the rows
    get tight, so the names and the money keep their size */
 .tv-roster[data-dense] .tv-spark { display: none; }
@@ -1610,7 +1616,14 @@ input[type='color'] { cursor: pointer; }
 .tv-level { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.18em; color: var(--tv-dim); font-size: calc(clamp(14px, 2.3vmin, 46px) * var(--tv-fs-level, 1)); }
 .tv-blinds { font-family: var(--font-display); font-weight: 700; color: var(--acc); font-size: calc(clamp(30px, 6vmin, 150px) * var(--tv-fs-blinds, 1)); letter-spacing: -0.01em; margin-top: clamp(2px, 0.6vmin, 8px); font-variant-numeric: tabular-nums; }
 .tv-ante { color: var(--tv-dim); font-size: 0.48em; }
-.tv-time { font-family: var(--tv-digits); font-weight: 700; font-size: calc(clamp(72px, 19vmin, 480px) * var(--tv-fs-clock, 1)); line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; margin: clamp(2px, 0.5vmin, 8px) 0; }
+/* line-height 1 packs the line box tighter than the faces' own ascent+descent, so
+   the glyphs paint OUTSIDE the box and the countdown sat on top of the progress
+   bar underneath it — worse the bigger the clock is scaled. The padding is in em
+   on purpose: the overflow scales with the font, so the cure has to as well. And
+   neither the clock nor the bar may be shrunk by the flex column when the panel is
+   short — a shrunken box with full-size digits is the same overlap by another
+   route. */
+.tv-time { font-family: var(--tv-digits); font-weight: 700; font-size: calc(clamp(72px, 19vmin, 480px) * var(--tv-fs-clock, 1)); line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; margin: clamp(2px, 0.5vmin, 8px) 0; padding-bottom: 0.07em; flex-shrink: 0; }
 /* Fixed-advance digit cell for the numbers that repaint every second (the level
    countdown, the shot clock). `font-variant-numeric: tabular-nums` only helps when
    the face actually ships tabular figures — the casino serif does not — so each
@@ -1621,7 +1634,7 @@ input[type='color'] { cursor: pointer; }
 .tv-d { display: inline-block; width: 1ch; text-align: center; font-style: normal; }
 .tv-d-sep { font-style: normal; }
 .tv-time.urgent { color: var(--bad); }
-.tv-progress { width: min(84%, 64vmin); height: clamp(6px, 1vmin, 12px); background: var(--tv-line); border-radius: 999px; overflow: hidden; }
+.tv-progress { width: min(84%, 64vmin); height: clamp(6px, 1vmin, 12px); background: var(--tv-line); border-radius: 999px; overflow: hidden; flex-shrink: 0; }
 .tv-progress i { display: block; width: 100%; height: 100%; background: var(--acc); border-radius: 999px; transform-origin: left; transition: transform 1s linear; }
 .tv-next { font-family: var(--tv-body); color: var(--tv-faint); font-size: calc(clamp(13px, 1.8vmin, 40px) * var(--tv-fs-level, 1)); margin-top: clamp(6px, 1.2vmin, 16px); }
 /* Cash game, timer off: no countdown — make the fixed blinds the hero instead. */
@@ -1749,6 +1762,14 @@ input[type='color'] { cursor: pointer; }
   background: #fff; padding: 6px; border-radius: 8px;
 }
 .tv-pair-qr span { color: var(--tv-dim); font-size: clamp(10px, 1.2vmin, 16px); text-align: center; }
+
+/* TV: the pairing QR on demand — the pairing banner disappears once a phone is
+   connected, and a second phone (or a phone that lost the app) still needs it. */
+.tv-qr-big {
+  width: clamp(160px, 34vmin, 520px); height: auto; display: block;
+  background: #fff; padding: clamp(8px, 1.4vmin, 20px); border-radius: 14px;
+}
+.tv-qr-url { color: var(--tv-faint); font-size: clamp(11px, 1.4vmin, 26px); word-break: break-all; text-align: center; max-width: 80vw; }
 
 /* TV: brief "phone connected" cue */
 .tv-toast {
