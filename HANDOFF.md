@@ -18,11 +18,13 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-08-23 from `main` @ `13c1b70`**, 4.50 MB (4,498,713 B),
-  run `32660438449`: the session-gone signal + the clock-adjuster rework (see "Recent
-  work 2026-08-23 (2)"). Pages run `32660374730` green from the same commit, so
-  **APK / `main` / Pages are IN SYNC**.
-  Download verified: `200`, `application/vnd.android.package-archive`, 4,498,713 B.
+  (**CURRENT — rebuilt 2026-08-26 from `main` @ `c275092`**, 4.57 MB (4,790,559 B),
+  run `32956874967`: the big-screen pass — arrangeable panels, per-role text size, the
+  chip-spread glide, the render placeholder, TV auto-resync (see "Recent work 2026-08-26").
+  Pages run `32956871468` green from the same commit, so **APK / `main` / Pages are IN SYNC**.
+  Download verified: `200`, `application/vnd.android.package-archive`, 4,790,559 B.
+  Previous build: 2026-08-23 from `main` @ `13c1b70`, 4.50 MB (4,498,713 B),
+  run `32660438449`: the session-gone signal + the clock-adjuster rework.
   `npx cap sync` again reported **2 Capacitor plugins for android** including
   `@capacitor/local-notifications@6.1.3`, and the `:capacitor-local-notifications:*`
   Gradle tasks ran — the plugin IS compiled in. Still unproven at RUNTIME: whether
@@ -194,6 +196,14 @@ src/
     settle.ts        THE definition of a player net; settleLedger() answers
       "who pays whom" at any point in the night, carried balances included
     sidePots.ts, chipRace.ts, payouts.ts, lateReg.ts, awards.ts, leagueStats.ts
+    countGlide.ts    NEW (2026-08-26) — the big screen's chip spread, walked toward each
+      received one a few chips at a time (10 steps x 55ms, just under MIN_GAP_MS) so a
+      dragged chip-mix slider reads as motion rather than lumps. TV surface ONLY.
+    tvLayout.ts      NEW (2026-08-26) — the big screen's arrangement as data: a 12x10 grid,
+      DEFAULT_TV_LAYOUT, clampSlot/normalizeTvLayout (nothing may end up off a screen nobody
+      can scroll), gridAreaOf, plus the per-role text-size scale (TV_TEXT_ROLES/tvTextVars).
+      Types live in types.ts; this file is the behaviour.
+    pushPacing.ts    MIN_GAP_MS (700) — the floor between two writes of the game document
     tvBackgrounds.ts 21 generated big-screen backgrounds, grouped by skin
     photoStore.ts    the user's own TV photos, in IndexedDB (NOT localStorage)
     backup.ts        the whole device as one JSON file
@@ -235,8 +245,11 @@ src/
                        no tab stop, which breaks a laptop being used as the big screen.
     Confirm.tsx        useConfirm() + the in-app dialog. window.confirm blocked the JS thread, so
                        the live-sync queue and the clock stopped while it was open.
-    TvBroadcast.tsx    TV design/accent/quips/background/penalties+house-rules editors/show-on-TV
-                       (link fixed, QR removed) — collapsible on the Table tab, syncs while hosting
+    TvBroadcast.tsx    TV design/accent/quips/roster order/PER-ROLE TEXT SIZE/panel-arrangement
+                       note+reset/background/penalties+house-rules/show-on-TV — its own collapsible
+                       at the TOP LEVEL of the Table tab (2026-08-26: it used to be inside the
+                       "Tisch-Setup" fold, which is two taps for the one thing you reach for
+                       DURING a night). Syncs while hosting.
   screens/
     PlanScreen.tsx   result-first: stack hero (count/BB/viz/value-bar/blind-check) + small-chip
                      slider up top; config (players/buy-in/blinds/options) below a "Session setup"
@@ -250,7 +263,10 @@ src/
                      (replaced LiveSessionControl.tsx). Firebase-configured only.
     GuestView.tsx    a guest's own phone: read-only table, put your name in, vote
     TvMode.tsx       fullscreen landscape big-screen dashboard (clock/standings/legend/colour-up/
-                     quips/shot-clock/who-drinks). If deviceIsTv: advertises a pairing code
+                     quips/shot-clock/who-drinks). Panels live in <TvCell> wrappers with TWO
+                     layouts: `auto` (the tuned three columns, still the default) and `grid`
+                     (12x10, once tvLayout is set or Arrange is on) — see lib/tvLayout.
+                     If deviceIsTv: advertises a pairing code
                      (tvEnsurePairing), shows .tv-pair card until a phone connects, then mirrors
                      the host's data + OWNS the countdown. NO on-screen keypad (phone types the
                      code). Standalone shows a "Use this device as the TV" pill. clamp()→4K.
@@ -344,6 +360,81 @@ RemoteControl (host, Table tab) still covers: clock, level length (±1/±10 + Tu
 break length + auto-break every N, blinds (edit/add/remove), players & pool (rename, buy-in, Rebuy,
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
+
+### Recent work (2026-08-26 — the big-screen pass, commit `c275092`, SHIPPED)
+The seven things the user asked for after a real night, plus one bug found on the way (5).
+`main` + Pages + APK all at `c275092`.
+
+1. **The chip spread stuttered on the TV while the slider was dragged.** The cause is not the
+   delay — a screen four metres away is forgiven a beat — it is the LUMPS: every push is a write
+   of the whole game document, paced at `MIN_GAP_MS` (700ms, `lib/pushPacing`), so the TV learned
+   about a drag seven chips at a time. Fixed on the RECEIVING side, where it costs nothing:
+   `lib/countGlide.ts` holds a displayed count per denomination and walks it toward whatever the
+   phone last said. Constant speed, budget of `GLIDE_STEPS` (10) x `GLIDE_STEP_MS` (55) = 550ms,
+   deliberately just under the push gap so the pile is moving almost the whole time. The stride is
+   `remainder / stepsLeft`, NOT `remainder / N` — the second eases out, and the tail then trickles
+   one chip per tick so a 40-chip change takes two and a half push-gaps and a hard drag falls
+   further behind the longer it goes on. Past `GLIDE_MAX_LAG` (90 chips) it gives up and jumps: a
+   whole new spread is not a slider. Wired in `ChipStackViz` for `surface === 'tv'` ONLY — the
+   phone's own slider is local and instant, and gliding it would add lag where there was none.
+   Verified live in the browser: `x2 -> x5 -> x8 -> x10 -> x12`, landing exactly on target.
+2. **The app came up in one chip design and swapped to another.** `Chip3D` was drawing the VECTOR
+   chip while the render was in flight, which is not a loading state — it is a different chip.
+   Now a pending single chip is a dim disc in its own colour (`.chip-ph`) and a pending pile is a
+   faceless dimmed silhouette (`.stack-layers.is-ghost`) that the real one fades over
+   (`.is-render`). `warmChip3d()` starts three.js + the model at boot on idle, so there is usually
+   nothing to wait for. **A device that cannot render still gets the drawn chip immediately and
+   for good** — `chip3dSupported()` (now memoised) is checked up front, and `useChipLayers`
+   reports `failed` separately from "not there yet", because a placeholder that never resolves is
+   worse than the other chip design. Measured on a cold load: 9 placeholders, **0** full vector
+   chips, all resolved.
+3. **The panels are arrangeable.** `lib/tvLayout.ts` makes the placement data — a coarse 12x10
+   grid — and TvMode grows a grab bar + resize corner under **Arrange** (pointer events, snaps to
+   cells, grid lines drawn while editing, Reset). The tuned three-column layout is STILL the
+   default: `.tv-grid[data-mode='auto']` until `tvLayout` is set or Arrange is on, then
+   `data-mode='grid'`. That is deliberate — the auto layout is tuned around what each panel needs
+   and what a short window does to it, and the grid should only win when the placement is the
+   user's answer rather than a guess. Offered only where it sticks (`canArrange = !isTv ||
+   !paired`): a screen a phone is driving mirrors the phone's arrangement, so an edit made on the
+   TV would be overwritten by the host's next push.
+4. **Text size is per role** (clock / blinds / level / players / chip values / stats / sayings),
+   0.6–2.2x, in TvBroadcast. `tvScale` answers "this laptop is not a TV" and could never answer
+   "the clock is fine and the names are too small". Implemented as `--tv-fs-*` custom properties
+   multiplying the existing `clamp()`s, so the responsive sizing keeps working.
+5. **A real bug found while measuring that:** the roster fitter compared
+   `first.getBoundingClientRect().height` (SCREEN pixels) against `el.clientHeight` (the layout's
+   own). The whole TV is laid out small and scaled back up, so on any zoomed display every roster
+   sat about a third smaller than it was allowed to be — the names near the legibility floor with
+   room to spare above them. Both sides are in the same pixels now (the zoom is read off the
+   element itself, so a transform anywhere up the tree is accounted for). 11.5px -> 15.3px at
+   identical settings. **This was probably most of "the font on the TV is a little small".**
+6. **TvBroadcast moved out of the "Tisch-Setup" fold** to the top level of the Table tab.
+7. **Opening the link on the TV showed a very old session** until the user hit Push by hand. The
+   host pushes on CHANGE, and a screen turning up is not a change — nothing about the phone moved,
+   so nothing went out and the TV sat on whatever the 24h-TTL session document had been carrying.
+   `useLiveHostSync` now also pushes when the document holds **no data** (a screen that just
+   claimed the code) and when a **TV heartbeat arrives after >60s of silence**
+   (`TV_RESTART_GAP_MS`; the TV beats every 25s, so a longer gap means it was just opened), plus
+   on the phone returning to the foreground. Chosen over adding a `tvBootAt` field ON PURPOSE:
+   `fieldsOk()` in `firestore.rules` is a `hasOnly([...])` whitelist, so a new top-level field
+   would be rejected the day those rules are ever deployed. **Not verifiable locally** — needs a
+   real Firebase session and two devices.
+8. **The pale strip along the top of the TV.** `.tv` is fixed at 100% of the viewport, but a TV
+   browser's viewport and what you can SEE are not always the same rectangle (a collapsing
+   toolbar, a rounding error on a panel scaling 4K to 1080p) — and what showed through was the
+   PHONE app's background, near-white in the light skins. `html[data-tv-full]` paints the page in
+   the big screen's own ground while it is up, so any sliver is invisible instead of a bar; plus a
+   **Fullscreen** button, which is the only real fix if that strip is browser chrome. Could not be
+   reproduced locally (the big screen filled the viewport exactly), so both were done.
+
+New synced settings `tvLayout` + `tvTextScale` — the screen has no pointer or keyboard to set them
+with, so they travel with the SETUP, which means all four spots: `types.ts`, `store.tsx` (default,
+migration, `LIVE_APPLY_REMOTE`), `liveData.ts`, and the TV's own apply in `TvMode`. `tvLayout` is
+stored as `null` while it is the stock arrangement, so a device that never touched it does not
+carry (or push) a copy of the default.
+
+New tests: `countGlide.test.ts`, `tvLayout.test.ts`. 21 test files green, `tsc -b` + `oxlint` +
+`vite build` clean.
 
 ### Recent work (2026-08-23 (2) — session-gone signal, clock adjuster, time-shaped tests)
 
@@ -1087,11 +1178,26 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 
 ## ⚠️ Open items / next steps
 
-### STATE RIGHT NOW (2026-08-23)
-Everything in the repo is shipped and green. Local branch **`feat/chip-photo-count` == `main` ==
-`326d2dc`** (docs); the last CODE commit is `4ef5919` and Pages + the APK are both built from it. Nothing is half-finished in the working tree; the
-only untracked things are the user's own `koffer.png` and `Chips source pics and links/`, deliberately
-not committed.
+### STATE RIGHT NOW (2026-08-26)
+Everything in the repo is shipped and green. Local branch **`feat/chip-3d-render` == `main` ==
+`c275092`**; Pages (`32956871468`) and the APK (`32956874967`) are both built from it. Nothing is
+half-finished in the working tree; the only untracked things are the user's own `koffer.png` and
+`Chips source pics and links/`, deliberately not committed.
+
+**Two things are shipped but UNPROVEN on real hardware — a person with the APK has to check:**
+1. **The TV auto-resync** (2026-08-26, item 7). Open the web app on the TV with the phone hosting:
+   it should pick up the current table within a second or two, with no manual "Push to TV". Cannot
+   be tested locally — it needs a real Firebase session and two devices.
+2. **The level-end notification** (still, from 2026-08-23). Switch on "Melden, wenn die Stufe
+   endet" on the Table tab, start the clock, lock the phone, wait for the level to run out. The
+   plugin IS compiled in (`npx cap sync` reports it, the Gradle tasks run); what is unknown is
+   whether Android grants `POST_NOTIFICATIONS` and whether the alert actually fires.
+
+Also worth a look on the real TV: **the grey bar** (2026-08-26, item 8) was fixed blind — it could
+not be reproduced locally, so BOTH plausible causes were addressed (the page ground, and a
+Fullscreen button for the case where the strip is browser chrome). If a bar is still there, the
+Fullscreen button is the thing to try first, and then it is worth measuring
+`document.querySelector('.tv').getBoundingClientRect()` against `innerHeight` on the actual TV.
 
 **The Firestore rules are written but NOT deployed — and that is now a DECISION, not a to-do.** On
 2026-08-23 the user was walked through what anonymous auth buys (a per-device id so the rules can say
