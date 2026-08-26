@@ -66,6 +66,51 @@ export function computeStack(
   denominations: Denomination[],
   opts: DistOptions,
 ): StackResult {
+  const key = stackKey(targetUnits, denominations, opts);
+  const hit = stackCache.get(key);
+  if (hit) {
+    // Refresh recency, and hand back a private copy of the one part callers edit —
+    // the fine-tune editor works on `counts` in place.
+    stackCache.delete(key);
+    stackCache.set(key, hit);
+    return { ...hit, counts: { ...hit.counts } };
+  }
+  const built = computeStackUncached(targetUnits, denominations, opts);
+  stackCache.set(key, built);
+  if (stackCache.size > MAX_STACK_CACHE) stackCache.delete(stackCache.keys().next().value as string);
+  return { ...built, counts: { ...built.counts } };
+}
+
+/**
+ * Same stack, same answer — so it is worth remembering.
+ *
+ * Building one stack is a colour-up descent of hundreds of steps, and the app asks
+ * for the SAME stack from several places at once (the Plan hero, the Table card, the
+ * TV) on every single move of the chip-mix slider. Without this, one slider step cost
+ * a dozen full descents and the drag visibly lagged the thumb; with it, the first
+ * caller pays and the rest are a map lookup — and dragging back over a value you
+ * already passed costs nothing at all.
+ */
+const stackCache = new Map<string, StackResult>();
+const MAX_STACK_CACHE = 96;
+
+/** Everything a stack depends on, in one string. Cheap next to a rebuild. */
+function stackKey(targetUnits: number, denominations: Denomination[], opts: DistOptions): string {
+  const inv = denominations
+    .map((d) => `${d.id},${d.value},${d.enabled ? 1 : 0},${d.count},${d.maxPerPlayer ?? ''},${d.minPerPlayer ?? ''}`)
+    .join(';');
+  const ex = opts.excluded && opts.excluded.size ? [...opts.excluded].sort().join(',') : '';
+  const blind = opts.blind ? `${opts.blind.smallBlind}/${opts.blind.bigBlind}` : '';
+  return `${targetUnits}|${opts.smallBias}|${ex}|${blind}|${opts.stacksNeeded}|${opts.maxDenoms ?? ''}|${
+    opts.minDenomValue ?? ''
+  }|${opts.useAllChips ? 1 : 0}|${inv}`;
+}
+
+function computeStackUncached(
+  targetUnits: number,
+  denominations: Denomination[],
+  opts: DistOptions,
+): StackResult {
   const warnings: string[] = [];
   const notes: string[] = [];
   const excluded = opts.excluded ?? new Set<string>();
@@ -169,12 +214,19 @@ export function computeStack(
   // Slider → target chip count (bias 1 = max chips, bias 0 = fewest).
   const targetCount = Math.round(lerp(minCount, maxCount, opts.smallBias));
 
+  // Every colour-up move that exists for this pool, worked out once: which pair, how
+  // many chips each way, and the caps it has to respect. The descent below runs
+  // hundreds of steps, and without this each step re-derived the same table.
+  const moves = colorUpMoves(pool, capOf, (d) => floorMin[d.id] ?? 0);
+
+  let live = pool.reduce((s, d) => s + counts[d.id], 0);
   let guard = 0;
-  while (pool.reduce((s, d) => s + counts[d.id], 0) > targetCount && guard++ < 100000) {
-    const move = gentlestColorUp(counts, pool, capOf, (d) => floorMin[d.id] ?? 0);
+  while (live > targetCount && guard++ < 100000) {
+    const move = gentlestColorUp(counts, moves);
     if (!move) break;
     counts[move.i] -= move.x;
     counts[move.j] += move.z;
+    live -= move.x - move.z;
   }
 
   // Value is preserved by every move, but guard exactness against edge rounding.
@@ -260,6 +312,18 @@ function clampCount(raw: number, cap: number) {
  * Nudge counts until their value equals target, staying within per-player caps.
  * Adds/removes from the largest affordable denomination first so the bulk of any
  * correction lands in big chips (keeps stacks compact), finishing on small chips.
+ *
+ * Chips of one denomination go in (or come out) as a batch rather than one per pass:
+ * a chip that fits now fits until the gap is smaller than it or its cap is reached,
+ * so a run of identical single steps has exactly the same end state as the batch —
+ * and a stack that starts a few thousand points from its target no longer costs a
+ * few thousand passes, which is what made the chip-mix slider lag the finger.
+ *
+ * When the target simply cannot be hit — 682 points out of 25s and 50s — the walk
+ * ends up adding a chip and taking it straight back off again. That is a cycle, and
+ * it is spotted by the value coming round a second time: the walk stops there and
+ * keeps the closest stack it saw. (It used to spin until a 100 000-pass guard ran
+ * out, which cost ~20 ms and landed wherever the last pass happened to leave it.)
  */
 function reconcile(
   counts: Record<string, number>,
@@ -268,38 +332,75 @@ function reconcile(
   capOf: (d: Denomination) => number,
   minOf: (d: Denomination) => number = () => 0,
 ) {
-  const valueOf = () => pool.reduce((s, d) => s + counts[d.id] * d.value, 0);
   const desc = [...pool].sort((a, b) => b.value - a.value);
   const asc = pool;
+  // Caps and minimums don't move while we nudge, and the running value is cheaper to
+  // carry than to re-add on every pass.
+  const cap = desc.map((d) => capOf(d));
+  const min = desc.map((d) => minOf(d));
+  const capAsc = asc.map((d) => capOf(d));
+  const minAsc = asc.map((d) => minOf(d));
+  let value = pool.reduce((s, d) => s + counts[d.id] * d.value, 0);
+  const seen = new Set<number>();
+  let best: Record<string, number> | null = null;
+  let bestGap = Infinity;
 
   let guard = 0;
   while (guard++ < 100000) {
-    const diff = target - valueOf();
+    const diff = target - value;
     if (diff === 0) break;
+
+    const gap = Math.abs(diff);
+    if (gap < bestGap) {
+      bestGap = gap;
+      best = { ...counts };
+    }
+    if (seen.has(value)) {
+      // Going round in circles: take the closest stack the walk found and stop.
+      if (best) Object.assign(counts, best);
+      break;
+    }
+    seen.add(value);
 
     if (diff > 0) {
       // add the largest chip that fits without overshooting and has inventory
-      const d = desc.find((x) => x.value <= diff && counts[x.id] < capOf(x));
-      if (d) {
-        counts[d.id]++;
-        continue;
+      let placed = false;
+      for (let k = 0; k < desc.length; k++) {
+        const d = desc[k];
+        if (d.value > diff || counts[d.id] >= cap[k]) continue;
+        const add = Math.min(Math.floor(diff / d.value), cap[k] - counts[d.id]);
+        counts[d.id] += add;
+        value += add * d.value;
+        placed = true;
+        break;
       }
+      if (placed) continue;
       // nothing fits exactly — add the smallest available chip and let removals fix overshoot
-      const s = asc.find((x) => counts[x.id] < capOf(x));
-      if (!s) break; // out of inventory entirely
-      counts[s.id]++;
+      let s = -1;
+      for (let k = 0; k < asc.length; k++) if (counts[asc[k].id] < capAsc[k]) { s = k; break; }
+      if (s < 0) break; // out of inventory entirely
+      counts[asc[s].id]++;
+      value += asc[s].value;
     } else {
       // overshoot — remove the largest chip we can that doesn't undershoot the target,
       // never going below a chip's minimum
       const over = -diff;
-      const d = desc.find((x) => counts[x.id] > minOf(x) && x.value <= over);
-      if (d) {
-        counts[d.id]--;
-        continue;
+      let pulled = false;
+      for (let k = 0; k < desc.length; k++) {
+        const d = desc[k];
+        if (d.value > over || counts[d.id] <= min[k]) continue;
+        const take = Math.min(Math.floor(over / d.value), counts[d.id] - min[k]);
+        counts[d.id] -= take;
+        value -= take * d.value;
+        pulled = true;
+        break;
       }
-      const s = asc.find((x) => counts[x.id] > minOf(x));
-      if (!s) break;
-      counts[s.id]--;
+      if (pulled) continue;
+      let s = -1;
+      for (let k = 0; k < asc.length; k++) if (counts[asc[k].id] > minAsc[k]) { s = k; break; }
+      if (s < 0) break;
+      counts[asc[s].id]--;
+      value -= asc[s].value;
     }
   }
 }
@@ -355,20 +456,30 @@ function gcd(a: number, b: number): number {
 }
 
 /**
- * Find the single gentlest colour-up move on the stack: over every pair of
- * denominations (small i, big j), removing `x` of i and adding `z` of j keeps the
- * value identical when `x·vi = z·vj` (minimal such x,z via their gcd). The move's
- * chip-count reduction is `x − z`; we pick the SMALLEST reduction that's still valid
- * (stays within caps + minimums), tie-breaking toward the smallest chips so little
- * chips are consumed before big ones ever appear. Returns null when no move remains.
+ * One colour-up move: over every pair of denominations (small i, big j), removing
+ * `x` of i and adding `z` of j keeps the value identical when `x·vi = z·vj` (minimal
+ * such x,z via their gcd). The move's chip-count reduction is `x − z`.
  */
-function gentlestColorUp(
-  counts: Record<string, number>,
+interface ColorUpMove {
+  i: string;
+  j: string;
+  x: number;
+  z: number;
+  red: number;
+  iv: number;
+  jv: number;
+  /** The small chip may not go below this, the big chip may not go above it. */
+  minI: number;
+  capJ: number;
+}
+
+/** The fixed move table for a pool: pairs, quantities and limits, in tie-break order. */
+function colorUpMoves(
   pool: Denomination[],
   capOf: (d: Denomination) => number,
   minOf: (d: Denomination) => number,
-): { i: string; j: string; x: number; z: number } | null {
-  let best: { i: string; j: string; x: number; z: number; red: number; iv: number; jv: number } | null = null;
+): ColorUpMove[] {
+  const moves: ColorUpMove[] = [];
   for (let a = 0; a < pool.length; a++) {
     for (let b = a + 1; b < pool.length; b++) {
       const di = pool[a]; // smaller value (pool is ascending)
@@ -379,19 +490,32 @@ function gentlestColorUp(
       const z = di.value / g; // add z of the big chip (x·vi === z·vj)
       const red = x - z; // net chip-count reduction
       if (red <= 0) continue;
-      if (counts[di.id] - x < minOf(di)) continue;
-      if (counts[dj.id] + z > capOf(dj)) continue;
-      if (
-        !best ||
-        red < best.red ||
-        (red === best.red && di.value < best.iv) ||
-        (red === best.red && di.value === best.iv && dj.value < best.jv)
-      ) {
-        best = { i: di.id, j: dj.id, x, z, red, iv: di.value, jv: dj.value };
-      }
+      moves.push({ i: di.id, j: dj.id, x, z, red, iv: di.value, jv: dj.value, minI: minOf(di), capJ: capOf(dj) });
     }
   }
-  return best ? { i: best.i, j: best.j, x: best.x, z: best.z } : null;
+  return moves;
+}
+
+/**
+ * The single gentlest move available right now: the SMALLEST reduction that is still
+ * valid (stays within caps + minimums), tie-breaking toward the smallest chips so
+ * little chips are consumed before big ones ever appear. Null when none remains.
+ */
+function gentlestColorUp(counts: Record<string, number>, moves: ColorUpMove[]): ColorUpMove | null {
+  let best: ColorUpMove | null = null;
+  for (const m of moves) {
+    if (counts[m.i] - m.x < m.minI) continue;
+    if (counts[m.j] + m.z > m.capJ) continue;
+    if (
+      !best ||
+      m.red < best.red ||
+      (m.red === best.red && m.iv < best.iv) ||
+      (m.red === best.red && m.iv === best.iv && m.jv < best.jv)
+    ) {
+      best = m;
+    }
+  }
+  return best;
 }
 
 /**

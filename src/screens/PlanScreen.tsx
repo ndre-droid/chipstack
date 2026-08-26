@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useStore } from '../store';
 import { computeStack, moneyToUnits, rebalance } from '../lib/distribution';
 import type { StackResult } from '../lib/distribution';
@@ -26,6 +26,24 @@ export default function PlanScreen() {
   const excluded = useMemo(() => excludedSetOf(session), [session]);
   const startIdx = Math.min(session.startLevelIdx, Math.max(0, session.blindLevels.length - 1));
   const setStartIdx = (i: number) => dispatch({ type: 'UPDATE_SESSION', patch: { startLevelIdx: i } });
+  /* The chip-mix slider drives the whole screen — the stacks, the table, the later
+     stages — so putting it straight into the store made the thumb wait for all of
+     that on every step. The thumb now moves on its own copy (instant, whatever else
+     is going on) and the store catches up in a transition, which React is free to
+     interrupt: a fast drag renders the mixes it can keep up with instead of queueing
+     every one of them. The draft is dropped once nothing is pending, so anything else
+     that sets the mix — a preset, the TV — takes the slider back. */
+  const [draftBias, setDraftBias] = useState<number | null>(null);
+  const [biasPending, startBias] = useTransition();
+  const bias = draftBias ?? smallBias;
+  const moveBias = (v: number) => {
+    setDraftBias(v);
+    startBias(() => dispatch({ type: 'UPDATE_SESSION', patch: { smallBias: v } }));
+  };
+  useEffect(() => {
+    if (!biasPending) setDraftBias(null);
+  }, [biasPending]);
+
   const [showMins, setShowMins] = useState(false);
   const [showChips, setShowChips] = useState(false);
   const [showLater, setShowLater] = useState(false);
@@ -223,7 +241,7 @@ export default function PlanScreen() {
         <div className="hero-slider">
           <div className="hero-slider-head">
             <span>{t('plan.chipMix')}</span>
-            <span className="badge-soft">{t('plan.pctSmall', { n: Math.round(smallBias * 100) })}</span>
+            <span className="badge-soft">{t('plan.pctSmall', { n: Math.round(bias * 100) })}</span>
           </div>
           <input
             type="range"
@@ -231,9 +249,9 @@ export default function PlanScreen() {
             min={0}
             max={1}
             step={0.05}
-            value={smallBias}
-            style={{ ['--pct' as string]: `${smallBias * 100}%` }}
-            onChange={(e) => dispatch({ type: 'UPDATE_SESSION', patch: { smallBias: +e.target.value } })}
+            value={bias}
+            style={{ ['--pct' as string]: `${bias * 100}%` }}
+            onChange={(e) => moveBias(+e.target.value)}
             aria-label={t('plan.smallEmphasis')}
           />
           <div className="slider-ends">

@@ -76,6 +76,22 @@ const keyOf = (r: ChipRenderRequest, dpr: number) =>
     r.view === 'stack' ? r.layer ?? 'all' : 'all'
   }|${dpr}`;
 
+/** The device pixel ratio a request renders at — capped, so a 4x phone doesn't melt. */
+const dprOf = (req: ChipRenderRequest) =>
+  Math.min(req.dpr ?? (typeof window !== 'undefined' ? window.devicePixelRatio : 1) ?? 1, 2.5);
+
+/**
+ * The finished render for this request if it has already been drawn, without touching
+ * the GPU or waiting a tick.
+ *
+ * `renderChip` is async even on a cache hit, and a promise resolving is a frame later:
+ * a component that already has its chips would still flicker through a fallback on
+ * every re-render. This lets it start with what is there.
+ */
+export function peekChip(req: ChipRenderRequest): ChipRender | null {
+  return cache.get(keyOf(req, dprOf(req))) ?? null;
+}
+
 /** Is a 3D chip possible at all on this device? Cheap enough to call per component. */
 export function chip3dSupported(): boolean {
   if (rendererFailed) return false;
@@ -293,7 +309,7 @@ export interface ChipRender {
  * the GPU.
  */
 export async function renderChip(req: ChipRenderRequest): Promise<ChipRender> {
-  const dpr = Math.min(req.dpr ?? (typeof window !== 'undefined' ? window.devicePixelRatio : 1) ?? 1, 2.5);
+  const dpr = dprOf(req);
   const key = keyOf(req, dpr);
   const hit = cache.get(key);
   if (hit) {

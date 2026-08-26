@@ -124,25 +124,46 @@ export const idleDiscs = (count: number): Disc[] => Array.from({ length: count }
 
 const idleList = idleDiscs;
 
+/** A chip that is currently moving, and the moment its animation is over. */
+interface Flight {
+  motion: DiscMotion;
+  endsAt: number;
+}
+
+/** How long this chip is in the air, counting the wait before it starts. */
+const flightMs = (m: DiscMotion) => m.delay + (m.state === 'in' ? DROP_IN_MS : DROP_OUT_MS);
+
 /**
  * Track a stack whose height changes, and say which of its chips are landing, sitting
  * still, or leaving right now.
  *
  * Chips are only ever added or removed at the top, so the moving ones are the range
  * between the old height and the new one: growing from 4 to 7 lands chips 4, 5, 6 one
- * after the other and leaves 0-3 alone; shrinking does the same in reverse. Every
- * change re-arms one settle timer that puts the list back to plain 'idle' — dragging a
- * slider therefore can't pile timers up or strand a chip mid-air.
+ * after the other and leaves 0-3 alone; shrinking does the same in reverse.
+ *
+ * A chip that is already in the air keeps the timing it was given: dragging the mix
+ * slider changes the height again while the last change is still playing, and a chip
+ * halfway through its fall must go on falling rather than being snapped onto the pile
+ * and thrown again. Only chips that are genuinely new to the move are given fresh
+ * timing, so a hard drag reads as a stack being fed chips instead of a stack
+ * flickering. One settle timer, always re-aimed at the last chip still moving, puts
+ * the pile back to plain 'idle' — so a drag can neither pile timers up nor strand a
+ * chip mid-air.
  */
-export function useStackDiscs(count: number, animate: boolean, visit = 0): Disc[] {
+export function useStackDiscs(count: number, animate: boolean, visit = 0): DiscMotion[] {
   // A stack that may move is built rather than found: it starts empty, so opening the
   // screen drops the whole spread in instead of revealing it already stacked.
-  const [discs, setDiscs] = useState<Disc[]>(() =>
-    animate ? Array.from({ length: count }, (_, i) => ({ i, state: 'in' as const })) : idleList(count),
+  const [motions, setMotions] = useState<DiscMotion[]>(() =>
+    discMotions(
+      animate ? Array.from({ length: count }, (_, i) => ({ i, state: 'in' as const })) : idleList(count),
+    ),
   );
   const prev = useRef(animate ? 0 : count);
   const seenVisit = useRef(visit);
+  const flying = useRef(new Map<number, Flight>());
   const timer = useRef<number | null>(null);
+  const height = useRef(count);
+  height.current = count;
 
   useEffect(() => {
     // Opening the tab again builds the pile from nothing, whatever it held before.
@@ -151,31 +172,56 @@ export function useStackDiscs(count: number, animate: boolean, visit = 0): Disc[
     const from = reopened ? 0 : prev.current;
     prev.current = count;
     if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = null;
 
-    if (!animate || from === count) {
-      setDiscs(idleList(count));
-      timer.current = null;
+    if (!animate) {
+      flying.current.clear();
+      setMotions(discMotions(idleList(count)));
       return;
     }
 
-    if (count > from) {
-      setDiscs(
-        Array.from({ length: count }, (_, i) => ({ i, state: i >= from ? ('in' as const) : ('idle' as const) })),
-      );
-    } else {
-      setDiscs((cur) => {
-        const kept = idleList(count);
-        const leaving: Disc[] = [];
-        for (let i = count; i < from; i++) if (cur.some((d) => d.i === i)) leaving.push({ i, state: 'out' });
-        return [...kept, ...leaving];
-      });
-    }
+    const now = Date.now();
+    if (reopened) flying.current.clear();
+    for (const [i, f] of flying.current) if (f.endsAt <= now) flying.current.delete(i);
 
-    const settleIn = (count > from ? DROP_IN_MS : DROP_OUT_MS) + MAX_SEQUENCE_MS;
-    timer.current = window.setTimeout(() => {
-      timer.current = null;
-      setDiscs(idleList(count));
-    }, settleIn);
+    // Who is moving because of THIS change, on top of whoever is still in the air.
+    const landing = new Set<number>();
+    const leaving = new Set<number>();
+    if (count > from) for (let i = from; i < count; i++) landing.add(i);
+    else for (let i = count; i < from; i++) leaving.add(i);
+    for (const [i, f] of flying.current) if (f.motion.state === 'out' && i >= count) leaving.add(i);
+
+    const list: Disc[] = [];
+    for (let i = 0; i < count; i++) list.push({ i, state: landing.has(i) ? 'in' : 'idle' });
+    for (const i of [...leaving].sort((a, b) => a - b)) list.push({ i, state: 'out' });
+
+    // Fresh timing for this move, then hand the still-flying chips back exactly the
+    // timing they already had — an unchanged motion keeps its element, and an element
+    // that is not replaced does not restart its animation.
+    const next = discMotions(list).map((m) => {
+      const f = flying.current.get(m.i);
+      if (!f || f.endsAt <= now) return m;
+      if (m.state === 'out' && f.motion.state === 'in') return m; // taken away mid-fall
+      return f.motion;
+    });
+
+    let lastEnd = 0;
+    for (const m of next) {
+      if (m.state === 'idle') continue;
+      const existing = flying.current.get(m.i);
+      const endsAt = existing && existing.motion === m ? existing.endsAt : now + flightMs(m);
+      flying.current.set(m.i, { motion: m, endsAt });
+      lastEnd = Math.max(lastEnd, endsAt);
+    }
+    setMotions(next);
+
+    if (lastEnd > now) {
+      timer.current = window.setTimeout(() => {
+        timer.current = null;
+        flying.current.clear();
+        setMotions(discMotions(idleList(height.current)));
+      }, lastEnd - now + 30);
+    }
   }, [count, animate, visit]);
 
   useEffect(
@@ -185,5 +231,5 @@ export function useStackDiscs(count: number, animate: boolean, visit = 0): Disc[
     [],
   );
 
-  return discs;
+  return motions;
 }

@@ -1,8 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Denomination } from '../types';
 import { useT } from '../lib/i18n';
 import { useStore } from '../store';
-import { renderChip, type ChipRender } from '../lib/chip3d';
+import { peekChip, renderChip, type ChipRender } from '../lib/chip3d';
 import { animatedHere, type ChipAnimSurface } from '../lib/chipAnim';
 import { useColumnFlow } from '../lib/columnFlow';
 import {
@@ -140,18 +140,19 @@ interface ColumnProps {
 }
 
 /** One denomination's pile: a layer per chip, each able to move on its own. */
-function StackColumn({ d, count, frameDiscs, size, animate, use3d, total, visit }: ColumnProps) {
+const StackColumn = memo(function StackColumn({ d, count, frameDiscs, size, animate, use3d, total, visit }: ColumnProps) {
   const tracked = useStackDiscs(count, animate, visit);
   const needed = tracked.reduce((m, x) => Math.max(m, x.i + 1), count);
-  const layers = useChipLayers(d.color, d.accent, size, frameDiscs, use3d ? needed : 0);
-  // Three.js and the model load on first use. Until the bitmaps are there the vector
-  // stack stands in — it holds still, so the pile can't play its build twice.
-  const discs = use3d && !layers ? idleDiscs(count) : tracked;
+  const layers = useChipLayers(d.color, d.accent, size, frameDiscs, use3d);
+  // Three.js and the model load on first use. Until the bitmaps this pile needs are
+  // there the vector stack stands in — it holds still, so the pile can't play its
+  // build twice.
+  const ready = use3d && layers !== null && layers.length >= needed;
+  const motions = use3d && !ready ? discMotions(idleDiscs(count)) : tracked;
   const drop = Math.round(Math.max(22, Math.min(56, size * 0.85)));
-  const motions = discMotions(discs);
   const label = `${total} chips of ${d.value}`;
 
-  if (use3d && layers && layers.length > 0 && needed > 0) {
+  if (ready && layers && needed > 0) {
     const frameW = layers[0].width;
     // Each layer is a band cut out of the pile's frame; the frame is what the discs
     // are positioned in.
@@ -192,42 +193,70 @@ function StackColumn({ d, count, frameDiscs, size, animate, use3d, total, visit 
   }
 
   return <VectorColumn d={d} motions={motions} count={count} size={size} drop={drop} label={label} />;
-}
+});
 
 /* ---------------- 3D layers ---------------- */
 
 /**
  * The bitmaps for one pile — one per chip, all framed for a `frameDiscs`-high stack
- * so they line up when laid over each other and stay valid when the pile grows or
- * shrinks (the renderer caches per layer, so a slider drag re-renders nothing).
+ * so they line up when laid over each other.
  *
- * Returns null until the first set is ready, or for good if the device can't render,
- * which is what puts the vector stack on screen instead.
+ * The WHOLE frame is rendered, not just the chips the pile currently holds, and the
+ * render is keyed only on how a chip looks. That is what makes the chip-mix slider
+ * feel immediate: the height changing is no longer a reason to build anything, so
+ * dragging never restarts a half-finished run of renders and never waits on one.
+ * Layers are handed over as they arrive, and a pile already in the cache is returned
+ * on the spot — a re-render of a stack that has been drawn before costs nothing.
+ *
+ * Returns null until the first layer is ready, or for good if the device can't
+ * render, which is what puts the vector stack on screen instead.
  */
-function useChipLayers(color: string, accent: string, size: number, frameDiscs: number, needed: number) {
-  const [layers, setLayers] = useState<ChipRender[] | null>(null);
+function useChipLayers(color: string, accent: string, size: number, frameDiscs: number, enabled: boolean) {
+  const [layers, setLayers] = useState<ChipRender[] | null>(() =>
+    enabled ? cachedLayers(color, accent, size, frameDiscs) : null,
+  );
 
   useEffect(() => {
-    if (needed <= 0) return;
+    if (!enabled || frameDiscs <= 0) return;
+    const ready = cachedLayers(color, accent, size, frameDiscs);
+    if (ready) {
+      setLayers(ready);
+      return;
+    }
     let alive = true;
     (async () => {
       const out: ChipRender[] = [];
-      for (let i = 0; i < needed && alive; i++) {
+      for (let i = 0; i < frameDiscs && alive; i++) {
         out.push(await renderChip({ color, accent, size, view: 'stack', discs: frameDiscs, layer: i }));
         // Eleven discs times a spread of denominations is a lot of PNG encoding for one
-        // go; hand the thread back every few so the first open of the tab still scrolls.
+        // go; hand the thread back every few so the first open of the tab still scrolls,
+        // and show what is finished so the pile builds instead of appearing at the end.
         // A timer, not requestAnimationFrame: a hidden tab paints no frames, and the
         // stack must still be finished and waiting when it is opened again.
-        if (i % 4 === 3) await new Promise((r) => setTimeout(r, 0));
+        if (i % 4 === 3) {
+          setLayers([...out]);
+          await new Promise((r) => setTimeout(r, 0));
+        }
       }
       if (alive) setLayers(out);
     })().catch(() => alive && setLayers(null));
     return () => {
       alive = false;
     };
-  }, [color, accent, size, frameDiscs, needed]);
+  }, [color, accent, size, frameDiscs, enabled]);
 
   return layers;
+}
+
+/** Every layer of this pile that has already been rendered — null if any is missing. */
+function cachedLayers(color: string, accent: string, size: number, frameDiscs: number): ChipRender[] | null {
+  const out: ChipRender[] = [];
+  for (let i = 0; i < frameDiscs; i++) {
+    const hit = peekChip({ color, accent, size, view: 'stack', discs: frameDiscs, layer: i });
+    if (!hit) return null;
+    out.push(hit);
+  }
+  return out;
 }
 
 /**
