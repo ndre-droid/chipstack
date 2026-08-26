@@ -83,6 +83,7 @@ const defaultSettings: Settings = {
   tvHouseRules: [],
   tvLayout: null,
   tvTextScale: { ...DEFAULT_TV_TEXT_SCALE },
+  tvLayoutOwn: false,
   deviceIsTv: false,
   tvScale: null,
   liveSessionCode: null,
@@ -451,10 +452,14 @@ function baseReducer(state: AppState, action: Action): AppState {
           ...(action.customAccent !== undefined ? { customAccent: action.customAccent } : {}),
           ...(action.tvPenalties !== undefined ? { tvPenalties: action.tvPenalties } : {}),
           ...(action.tvHouseRules !== undefined ? { tvHouseRules: action.tvHouseRules } : {}),
-          // The screen has no pointer to drag with: the arrangement and the text
-          // sizes are set on the phone and mirrored here like the rest of the look.
-          ...(action.tvLayout !== undefined ? { tvLayout: action.tvLayout } : {}),
-          ...(action.tvTextScale !== undefined ? { tvTextScale: action.tvTextScale } : {}),
+          /* The arrangement and the text sizes are set on the phone and mirrored
+             here like the rest of the look — UNLESS this screen was arranged on
+             itself, in which case its own layout wins and the phone's is ignored
+             (`tvLayoutOwn`, cleared by "Reset arrangement"). Without that, an edit
+             made on the TV lived until the host's next push, which is why arranging
+             used to be hidden on a paired screen entirely. */
+          ...(action.tvLayout !== undefined && !state.settings.tvLayoutOwn ? { tvLayout: action.tvLayout } : {}),
+          ...(action.tvTextScale !== undefined && !state.settings.tvLayoutOwn ? { tvTextScale: action.tvTextScale } : {}),
         },
       };
     /* Chip sets. `denominations` stays THE active box of chips that the rest of the
@@ -917,6 +922,9 @@ function migrate(raw: string | null): AppState {
     settings.tvLayout = settings.tvLayout && !isDefaultTvLayout(laid) ? laid : null;
   }
   settings.tvTextScale = normalizeTvTextScale(settings.tvTextScale);
+  if (typeof settings.tvLayoutOwn !== 'boolean') settings.tvLayoutOwn = false;
+  // A screen with nothing of its own to keep has nothing to protect from the phone.
+  if (!settings.tvLayout) settings.tvLayoutOwn = false;
   if (typeof settings.deviceIsTv !== 'boolean') settings.deviceIsTv = false;
   settings.tvScale =
     typeof settings.tvScale === 'number' && settings.tvScale > 0

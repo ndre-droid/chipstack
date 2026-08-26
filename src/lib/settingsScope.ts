@@ -28,6 +28,8 @@ export const DEVICE_LOCAL_SETTINGS = [
   // per-device display / input preferences (the big screen's zoom, list order,
   // how a stack is typed, whether this device may raise a notification)
   'tvScale',
+  // a big screen that was arranged on itself keeps its own arrangement
+  'tvLayoutOwn',
   'rosterSort',
   'countMode',
   'levelAlerts',
@@ -76,6 +78,7 @@ function pinned(s: Settings): Pick<Settings, DeviceLocalKey> {
     guestEmoji: s.guestEmoji,
     onboardedAt: s.onboardedAt,
     tvScale: s.tvScale,
+    tvLayoutOwn: s.tvLayoutOwn,
     rosterSort: s.rosterSort,
     countMode: s.countMode,
     levelAlerts: s.levelAlerts,

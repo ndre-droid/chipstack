@@ -49,6 +49,15 @@
   --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', 'Segoe UI Mono', 'Menlo', monospace;
   --font-display: var(--font);
+  /* Emoji get their own stack, and everything that shows one asks for it by name.
+     Without it a glyph is resolved through whatever font the element inherited —
+     on the big screen that is the skin's display font (Orbitron, Playfair, Fredoka),
+     none of which has emoji in it, so the browser falls back on its own and can land
+     on a flat monochrome outline instead of the full-colour one the device ships.
+     Naming the colour fonts first, plus `font-variant-emoji: emoji`, asks for the
+     detailed version explicitly. */
+  --font-emoji: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla',
+    'Android Emoji', 'EmojiOne Color', 'Segoe UI Symbol', sans-serif;
   --app-bg: var(--bg);
 
   color-scheme: light;
@@ -1583,7 +1592,7 @@ input[type='color'] { cursor: pointer; }
 }
 .tv-roster .tv-players-name { font-size: clamp(11px, var(--tv-row-fs), calc(40px * var(--tv-fs-players, 1))); }
 .tv-roster .tv-players-amt { font-size: clamp(10px, calc(var(--tv-row-fs) * 0.92), calc(34px * var(--tv-fs-players, 1))); }
-.tv-roster .tv-players-emoji { font-size: clamp(12px, calc(var(--tv-row-fs) * 1.05), 40px); }
+.tv-roster .tv-players-emoji { font-size: clamp(14px, calc(var(--tv-row-fs) * 1.2), 48px); }
 .tv-roster .tv-bounty { font-size: clamp(10px, calc(var(--tv-row-fs) * 0.85), 30px); }
 /* the stack trail is decoration — it is the first thing dropped once the rows
    get tight, so the names and the money keep their size */
@@ -1925,14 +1934,23 @@ input[type='color'] { cursor: pointer; }
   width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; font-size: 22px;
   background: var(--surface-2); border: 1px solid var(--line); display: grid; place-items: center;
 }
-/* many emojis now — auto-fill grid that scrolls instead of pushing the card open */
-.emoji-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 6px;
-  margin: 8px 0 4px; max-height: 208px; overflow-y: auto; padding-right: 2px;
+/* A few hundred emojis in labelled groups: the SCROLLER is the whole picker now, so
+   a group heading scrolls with its own grid instead of every grid scrolling alone. */
+.emoji-picker {
+  margin: 8px 0 4px; max-height: 240px; overflow-y: auto; padding-right: 2px;
   overscroll-behavior: contain;
 }
+.emoji-group-label {
+  position: sticky; top: 0; z-index: 1; padding: 4px 0 3px; background: var(--surface);
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--text-faint);
+}
+.emoji-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 6px;
+  margin-bottom: 8px;
+}
 .emoji-opt {
-  width: 100%; aspect-ratio: 1; border-radius: 9px; font-size: 20px; background: var(--surface-2);
+  width: 100%; aspect-ratio: 1; border-radius: 9px; font-size: 22px; background: var(--surface-2);
   border: 1px solid var(--line); display: grid; place-items: center;
 }
 .emoji-opt.active { border-color: var(--acc); background: var(--acc-wash); }
@@ -1998,7 +2016,19 @@ input[type='color'] { cursor: pointer; }
 .tv-houserule-v { font-size: clamp(15px, 2.2vmin, 46px); font-weight: 600; line-height: 1.3; }
 
 /* --- TV: roster crown / emoji / bounty --- */
-.tv-players-emoji { flex-shrink: 0; font-size: clamp(14px, 1.9vmin, 40px); }
+/* Every emoji in the app, drawn from the colour-emoji stack at a size that survives
+   the far side of the room — see --font-emoji. */
+.emoji-opt, .emoji-btn, .pr-emoji, .pp-emoji, .tt-emoji, .guest-me-emoji, .guest-row-emoji,
+.join-emoji, .tv-players-emoji, .tv-emoji, .tv-champ-cup {
+  font-family: var(--font-emoji);
+  font-variant-emoji: emoji;
+  -webkit-font-smoothing: auto;
+  text-rendering: optimizeQuality;
+}
+.tv-players-emoji { flex-shrink: 0; font-size: clamp(16px, 2.3vmin, 48px); }
+/* The one-off emojis on the big screen (the busted player, the champion) sit inside
+   a display-font headline and came out smaller than the name beside them. */
+.tv-emoji { font-size: 1.15em; line-height: 1; margin-right: 0.12em; }
 /* same idea on the big screen — see .pr-name-btn.leader */
 .tv-players-name.leader {
   font-weight: 800; color: var(--acc);

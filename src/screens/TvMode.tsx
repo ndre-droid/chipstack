@@ -36,41 +36,7 @@ import type { MomentVotes } from '../lib/liveSession';
 import { customAccentVars } from '../lib/color';
 import Sparkline from '../components/Sparkline';
 import { useWakeLock } from '../lib/useWakeLock';
-
-const PENALTIES = [
-  'downs a shot', 'buys the next round', 'shuffles for a whole level',
-  'tells a bad-beat story — the SHORT version', 'deals the next orbit',
-  'refills everyone’s snacks', 'no phone until the next break',
-];
-const HOUSE_RULES = [
-  'Splashing the pot = you deal the next round.',
-  'Verbal is binding. Say it, you did it.',
-  'Angle-shooting? Straight to the penalty spinner.',
-  'Whoever’s shortest stack picks the next music.',
-  'String bet = fold. No mercy.',
-  'Winner of the biggest pot so far cuts the deck.',
-];
-
-const QUIPS = [
-  'Blinds are going up — finish your beer, it’s the house rule now.',
-  'The cards don’t know it’s your birthday.',
-  'Scared money don’t make money. Broke money doesn’t either.',
-  'If you can’t spot the fish in the first hour… it’s you.',
-  'A chip and a chair. Also snacks. Bring snacks.',
-  'Trust everyone, but always cut the cards.',
-  'Tight is right — until someone shoves and proves it wrong.',
-  'The river gives, the river takes, the river doesn’t care about your feelings.',
-  'Slow-rolling is a personality disorder. Please seek help.',
-  'Big stack energy: act like you’ve got it even when you don’t.',
-  'Bad beat stories get shorter every time you retell them. Funny, that.',
-  'Check-raising your best friend builds character. Yours, not theirs.',
-  'The dealer button has seen things tonight it can never unsee.',
-  'Somewhere, a guy is going all-in on ace-high. Respect the chaos.',
-  'Your poker face needs work. Your actual face gave it away three hands ago.',
-  '“I was pot-committed” has ended more friendships than it’s saved.',
-  'Math says fold. Your gut says call. Your gut has been wrong all night.',
-  'Nobody remembers the hands you won. Everyone remembers the ones you didn’t.',
-];
+import { quipsFor, penaltiesFor, houseRulesFor } from '../lib/quips';
 
 // The app is intentionally SILENT: on the TV, any sound the browser makes hijacks
 // the user's Sonos (the TV grabs the speaker group from their phone). So all cues
@@ -184,7 +150,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const t = useT();
   const { money, num } = useFmt();
   const { blindLevels } = state.session;
-  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvRosterSort, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack, bountyMode, bountyAmount, customAccent, tvPenalties, tvHouseRules, showTrend } = state.settings;
+  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvRosterSort, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack, bountyMode, bountyAmount, customAccent, tvPenalties, tvHouseRules, showTrend, language } = state.settings;
 
   /* Display size. Per-device and deliberately NOT part of LiveData: the laptop
      acting as the big screen needs its own zoom, and a phone must not shrink it.
@@ -510,23 +476,35 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   }, [liveSessionCode]);
 
   /* ---------------------------------------------------------------- arranging --
-     Dragging the panels around the grid. Only offered where the result will stick:
-     a big screen that a phone is driving mirrors the phone's arrangement, so an edit
-     made on the TV itself would be overwritten by the host's next push. Everywhere
-     else — a standalone big screen, a laptop, the host phone previewing its own TV —
-     the change is this device's to make and travels from here. */
+     Dragging the panels around the grid. Offered on EVERY big screen, always: it
+     used to disappear the moment a phone connected, because the host's next push
+     overwrote whatever the TV had just been arranged into — so the button was there
+     on a standalone screen and gone on a paired one, with nothing on screen to say
+     why. A paired screen that arranges itself now claims its layout instead
+     (`tvLayoutOwn`, see store.tsx): its own arrangement stands and the phone's is
+     ignored, until "Reset arrangement" hands it back. */
   const [arranging, setArranging] = useState(false);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const grab = useRef<Grab | null>(null);
   const [draft, setDraft] = useState<{ id: TvPanelId; slot: TvSlot } | null>(null);
-  const canArrange = !isTv || !paired;
+  /** A screen the phone is driving keeps its own arrangement rather than pushing one. */
+  const arrangesForItself = isTv && paired;
 
   const commitLayout = (id: TvPanelId, slot: TvSlot) => {
     const nextLayout = { ...layout, [id]: slot };
     // Back at the stock arrangement = nothing to remember, so nothing is stored (or
     // pushed to the TV) — see the migration in store.tsx.
-    dispatch({ type: 'UPDATE_SETTINGS', patch: { tvLayout: isDefaultTvLayout(nextLayout) ? null : nextLayout } });
+    const tvLayout = isDefaultTvLayout(nextLayout) ? null : nextLayout;
+    dispatch({
+      type: 'UPDATE_SETTINGS',
+      patch: { tvLayout, tvLayoutOwn: arrangesForItself && tvLayout !== null },
+    });
   };
+
+  /** Back to the stock three columns — and, on a paired screen, back to following
+   *  the phone. */
+  const resetLayout = () =>
+    dispatch({ type: 'UPDATE_SETTINGS', patch: { tvLayout: null, tvLayoutOwn: false } });
 
   const onGrab = (id: TvPanelId, mode: GrabMode, e: React.PointerEvent) => {
     const grid = gridRef.current;
@@ -598,11 +576,6 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft?.id]);
 
-  // A screen that stopped being arrangeable (a phone just connected) must not leave
-  // the grab bars on the wall.
-  useEffect(() => {
-    if (!canArrange) setArranging(false);
-  }, [canArrange]);
 
   /** The arrangement to draw: the stored one, with the panel under the finger where
    *  the finger currently is. */
@@ -645,19 +618,55 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   }, []);
 
   /* …and the honest fix for the other half of it: if that strip IS the browser's own
-     chrome, only fullscreen removes it, and only a real tap may ask for it. */
-  const fsSupported = typeof document !== 'undefined' && !!document.documentElement.requestFullscreen;
-  const [isFullscreen, setIsFullscreen] = useState(false);
+     chrome, only fullscreen removes it.
+
+     The big screen is ALWAYS meant to be fullscreen — there is no reading a URL bar
+     from four metres away — so there is no button for it any more. The catch is that
+     browsers only grant fullscreen from inside a real user gesture, so this asks
+     immediately (which works where the screen was opened by a tap, and on kiosk/TV
+     browsers that allow it) and otherwise arms a one-shot listener: the very next
+     touch or click anywhere on the screen takes it fullscreen. Leaving fullscreen —
+     Esc, or the TV's back key — re-arms it, so the next touch puts it back. */
   useEffect(() => {
-    const sync = () => setIsFullscreen(!!document.fullscreenElement);
-    sync();
-    document.addEventListener('fullscreenchange', sync);
-    return () => document.removeEventListener('fullscreenchange', sync);
+    const root = document.documentElement;
+    if (!root.requestFullscreen) return;
+    let armed = true;
+    const enter = () => {
+      if (document.fullscreenElement) return;
+      void root.requestFullscreen().catch(() => {});
+    };
+    const onGesture = (e: Event) => {
+      // …except the way out: asking for fullscreen as the screen closes is both
+      // pointless and, on some browsers, a rejected promise mid-unmount.
+      if (e.target instanceof Element && e.target.closest('.tv-exit')) return;
+      enter();
+    };
+    const arm = () => {
+      if (armed) return;
+      armed = true;
+      document.addEventListener('pointerdown', onGesture, true);
+      document.addEventListener('keydown', onGesture, true);
+    };
+    const onChange = () => {
+      if (document.fullscreenElement) {
+        armed = false;
+        document.removeEventListener('pointerdown', onGesture, true);
+        document.removeEventListener('keydown', onGesture, true);
+      } else {
+        arm();
+      }
+    };
+    document.addEventListener('pointerdown', onGesture, true);
+    document.addEventListener('keydown', onGesture, true);
+    document.addEventListener('fullscreenchange', onChange);
+    enter(); // free where the browser allows it; harmless where it doesn't
+    return () => {
+      document.removeEventListener('pointerdown', onGesture, true);
+      document.removeEventListener('keydown', onGesture, true);
+      document.removeEventListener('fullscreenchange', onChange);
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    };
   }, []);
-  const toggleFullscreen = () => {
-    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
-    else void document.documentElement.requestFullscreen?.().catch(() => {});
-  };
 
 
   // main clock — read off the deadline every tick, so a slow or skipped timer can
@@ -823,8 +832,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const quips = useMemo(() => {
     const moments = (state.moments ?? []).map((m) => `📸 ${m.text}`);
     const custom = (tvCustomQuips ?? []).map((q) => q.trim()).filter(Boolean);
-    return [...moments, ...custom, ...QUIPS];
-  }, [tvCustomQuips, state.moments]);
+    return [...moments, ...custom, ...quipsFor(language)];
+  }, [tvCustomQuips, state.moments, language]);
 
   // rotate quips
   useEffect(() => {
@@ -888,8 +897,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   );
   const penalties = useMemo(() => {
     const custom = (tvPenalties ?? []).map((p) => p.trim()).filter(Boolean);
-    return [...custom, ...PENALTIES];
-  }, [tvPenalties]);
+    return [...custom, ...penaltiesFor(language)];
+  }, [tvPenalties, language]);
   const spinRound = () => {
     if (!players.length) return;
     let n = 0;
@@ -1187,8 +1196,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   // --- House rule shown on the break (stable for the whole break) ---
   const houseRules = useMemo(() => {
     const custom = (tvHouseRules ?? []).map((r) => r.trim()).filter(Boolean);
-    return [...custom, ...HOUSE_RULES];
-  }, [tvHouseRules]);
+    return [...custom, ...houseRulesFor(language)];
+  }, [tvHouseRules, language]);
   const [houseRuleIdx, setHouseRuleIdx] = useState(0);
   useEffect(() => {
     if (onBreak) setHouseRuleIdx(Math.floor(Math.random() * Math.max(1, houseRules.length)));
@@ -1283,7 +1292,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       {counting && (
         <div className="tv-counting">
           🧮 {t('tv.counting')}
-          <b>{counting.emoji ? `${counting.emoji} ` : ''}{counting.name}</b>
+          <b>{counting.emoji && <span className="tv-emoji">{counting.emoji}</span>}{counting.name}</b>
           <span className="tv-counting-step">{counting.index}/{counting.total}</span>
         </div>
       )}
@@ -1570,29 +1579,19 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             A<sup>+</sup>
           </button>
         </span>
-        {/* Arranging the panels. Only where the change will stick — a big screen a
-            phone is driving mirrors the phone's arrangement. */}
-        {canArrange &&
-          (arranging ? (
-            <>
-              <button
-                className="tv-txt"
-                onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvLayout: null } })}
-                disabled={isDefaultTvLayout(layout)}
-              >
-                {t('tv.resetLayout')}
-              </button>
-              <button className="tv-txt tv-arrange-done" onClick={() => setArranging(false)}>
-                ✓ {t('tv.arrangeDone')}
-              </button>
-            </>
-          ) : (
-            <button className="tv-txt" onClick={() => setArranging(true)}>⠿ {t('tv.arrange')}</button>
-          ))}
-        {fsSupported && (
-          <button className="tv-txt" onClick={toggleFullscreen} aria-pressed={isFullscreen}>
-            {isFullscreen ? `⤡ ${t('tv.exitFullscreen')}` : `⤢ ${t('tv.fullscreen')}`}
-          </button>
+        {/* Arranging the panels — on every big screen, whether or not a phone is
+            driving it (see `arrangesForItself`). */}
+        {arranging ? (
+          <>
+            <button className="tv-txt" onClick={resetLayout} disabled={isDefaultTvLayout(layout)}>
+              {t('tv.resetLayout')}
+            </button>
+            <button className="tv-txt tv-arrange-done" onClick={() => setArranging(false)}>
+              ✓ {t('tv.arrangeDone')}
+            </button>
+          </>
+        ) : (
+          <button className="tv-txt" onClick={() => setArranging(true)}>⠿ {t('tv.arrange')}</button>
         )}
         <button className="tv-txt" onClick={() => setShot(30)}>{t('tv.shotClock')}</button>
         <button className="tv-txt" onClick={spinRound}>{t('tv.whoDrinks')}</button>
@@ -1651,7 +1650,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       {elim && (
         <div className="tv-elim">
           <div className="tv-elim-lead">{t('tv.eliminated')}</div>
-          <div className="tv-elim-name">{elim.emoji && <span>{elim.emoji} </span>}{elim.name}</div>
+          <div className="tv-elim-name">{elim.emoji && <span className="tv-emoji">{elim.emoji}</span>}{elim.name}</div>
           <div className="tv-elim-place">{t('tv.finishPlace', { n: elim.place })}</div>
         </div>
       )}
@@ -1665,7 +1664,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             ))}
           </div>
           <div className="tv-champ-cup">🏆</div>
-          <div className="tv-champ-name">{winner.emoji ? `${winner.emoji} ` : ''}{winner.name || 'Player'}</div>
+          <div className="tv-champ-name">{winner.emoji && <span className="tv-emoji">{winner.emoji}</span>}{winner.name || 'Player'}</div>
           <div className="tv-champ-sub">{t('tv.champion')}</div>
           <div className="tv-overlay-hint">{t('tv.tapToDismiss')}</div>
         </div>

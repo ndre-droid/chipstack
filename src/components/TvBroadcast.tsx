@@ -308,7 +308,7 @@ export default function TvBroadcast() {
               {settings.tvLayout && (
                 <button
                   className="btn btn-ghost btn-sm"
-                  onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvLayout: null } })}
+                  onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvLayout: null, tvLayoutOwn: false } })}
                 >
                   {t('settings.tvLayoutReset')}
                 </button>

@@ -61,6 +61,7 @@ const phone: Settings = {
   customAccent: null,
   tvPenalties: [],
   tvHouseRules: [],
+  tvLayoutOwn: false,
   deviceIsTv: false,
   tvScale: 1.4,
   liveSessionCode: '4711',
@@ -84,6 +85,8 @@ const tv: Settings = {
   tvBackgroundTone: null,
   deviceIsTv: true,
   tvScale: 1,
+  // this big screen was arranged on itself, so it keeps its own arrangement
+  tvLayoutOwn: true,
   liveSessionCode: '2200',
   liveSessionRole: 'tv',
   guestName: null,

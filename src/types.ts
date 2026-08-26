@@ -134,6 +134,14 @@ export interface Settings {
    *  already worked out. `tvScale` zooms everything at once; this is for "the clock
    *  is fine, the names are too small". Synced, for the same reason as `tvLayout`. */
   tvTextScale: TvTextScale;
+  /** This screen was arranged ON this screen, so what the phone pushes is ignored.
+   *  Arranging used to be hidden the moment a phone connected — the button was there
+   *  on a standalone TV and gone on a paired one, which is exactly as confusing as it
+   *  sounds — because the host's next push would have overwritten the edit. It can
+   *  always be arranged now: a TV that arranges itself sets this and keeps its own
+   *  layout, and "Reset arrangement" clears it and hands the screen back to the
+   *  phone. Per-device (never synced or shared). */
+  tvLayoutOwn: boolean;
   /** This device is designated the big screen: it boots straight into TV mode,
    *  advertises a pairing code, and a phone connects to it. Per-device (never
    *  synced or shared), so only the actual TV carries it. */
