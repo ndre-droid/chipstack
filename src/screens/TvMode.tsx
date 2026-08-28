@@ -448,7 +448,6 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const [flash, setFlash] = useState(false);
   const [onBreak, setOnBreak] = useState(false);
   const [quipIdx, setQuipIdx] = useState(0);
-  const [shot, setShot] = useState<number | null>(null);
   const [spin, setSpin] = useState<{ name: string; done: boolean; penalty?: string } | null>(null);
   const [paired, setPaired] = useState(false); // a phone has connected (doc has data)
   const [liveLost, setLiveLost] = useState(false); // the session listener dropped and is re-opening
@@ -950,8 +949,34 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
      keyboard for: when the session has gone strange — a stale render, a link the
      stick dropped, a build the screen is a week behind on — the fix has always been
      to walk over and find the browser's own refresh. The pairing code is persisted,
-     so the screen comes back up on the same session. */
-  const reloadTv = () => window.location.reload();
+     so the screen comes back up on the same session.
+
+     A plain reload could not actually deliver the last of those. The app is a PWA and
+     the service worker answers from its own precache, so a refresh re-serves the very
+     build the viewer is trying to get rid of — the screen stays a week behind however
+     often the button is pressed, and there is no address bar on a TV to work around
+     it with. So the button now empties the caches and drops the worker first, and only
+     then reloads: the next request goes to the network and the screen comes back on
+     whatever is actually deployed. It is best-effort by design — an old browser
+     without `caches`, or a refused unregister, still gets the ordinary reload it had
+     before rather than a button that does nothing. */
+  const reloadTv = () => {
+    const wipe = async () => {
+      try {
+        const regs = (await navigator.serviceWorker?.getRegistrations?.()) ?? [];
+        await Promise.all(regs.map((r) => r.unregister()));
+      } catch {
+        /* no worker, or the browser will not let it go — fall through to the reload */
+      }
+      try {
+        const keys = (await window.caches?.keys?.()) ?? [];
+        await Promise.all(keys.map((k) => window.caches.delete(k)));
+      } catch {
+        /* same */
+      }
+    };
+    void wipe().finally(() => window.location.reload());
+  };
 
 
   // main clock — read off the deadline every tick, so a slow or skipped timer can
@@ -1126,22 +1151,6 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     const id = window.setInterval(() => setQuipIdx((i) => (i + 1) % quips.length), 11000);
     return () => window.clearInterval(id);
   }, [tvQuips, quips.length]);
-
-  // shot clock
-  useEffect(() => {
-    if (shot === null) return;
-    if (shot <= 0) {
-      try {
-        navigator.vibrate?.([200, 80, 200]);
-      } catch {
-        /* ignore */
-      }
-      const t = setTimeout(() => setShot(null), 1500);
-      return () => clearTimeout(t);
-    }
-    const id = window.setTimeout(() => setShot((s) => (s ?? 0) - 1), 1000);
-    return () => window.clearTimeout(id);
-  }, [shot]);
 
   const goLevel = (i: number) => {
     const c = Math.max(0, Math.min(blindLevels.length - 1, i));
@@ -1637,13 +1646,11 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     ? { close: () => setHandout(null), anyKey: false }
     : showQr
       ? { close: () => setShowQr(false), anyKey: true }
-      : shot !== null
-        ? { close: () => setShot(null), anyKey: true }
-        : celebrate
-          ? { close: () => setCelebrate(false), anyKey: true }
-          : showStartStack
-            ? { close: hideStartStack, anyKey: true }
-            : null;
+      : celebrate
+        ? { close: () => setCelebrate(false), anyKey: true }
+        : showStartStack
+          ? { close: hideStartStack, anyKey: true }
+          : null;
   const overlayCloseRef = useRef(overlayClose);
   overlayCloseRef.current = overlayClose;
   useBackHandler(!!overlayClose, () => overlayCloseRef.current?.close());
@@ -2025,7 +2032,6 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         <button className="tv-txt" onClick={() => setHandout({ raw: '', mode: 'money' })}>
           💶 {t('tv.handout')}
         </button>
-        <button className="tv-txt" onClick={() => setShot(30)}>{t('tv.shotClock')}</button>
         <button className="tv-txt" onClick={spinRound}>{t('tv.whoDrinks')}</button>
         <button
           className="tv-txt"
@@ -2043,6 +2049,10 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         <button className="tv-txt" onClick={reloadTv} aria-label={t('tv.refresh')}>
           ⟳ {t('tv.refresh')}
         </button>
+        {/* The commit on the screen, next to the button that changes it. Four
+            characters of noise in the controls row, and the difference between
+            "the fix is not working" and "the fix is not on this screen yet". */}
+        <span className="tv-build" title={t('tv.build')}>{__BUILD_ID__}</span>
         <button className="tv-txt tv-exit" onClick={onClose}>{deviceIsTv ? t('tv.exitTv') : t('tv.exit')}</button>
       </div>
 
@@ -2059,15 +2069,6 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             </div>
           )}
           <div className="tv-qr-url">{pairUrl}</div>
-          <div className="tv-overlay-hint">{t('tv.tapToDismiss')}</div>
-        </div>
-      )}
-
-      {/* shot clock overlay */}
-      {shot !== null && (
-        <div className="tv-overlay" onClick={() => setShot(null)}>
-          <div className="tv-overlay-label">{t('tv.shotClock')}</div>
-          <div className={`tv-overlay-num ${shot <= 5 ? 'urgent' : ''}`}>{digitCells(String(Math.max(0, shot)))}</div>
           <div className="tv-overlay-hint">{t('tv.tapToDismiss')}</div>
         </div>
       )}

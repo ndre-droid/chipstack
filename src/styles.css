@@ -1654,6 +1654,14 @@ input[type='color'] { cursor: pointer; }
 .tv-controls button:hover { background: var(--tv-line); }
 .tv-controls .tv-play { background: var(--acc); color: var(--on-acc); width: clamp(46px, 5.6vmin, 82px); height: clamp(46px, 5.6vmin, 82px); border-radius: 50%; padding: 0; }
 .tv-controls .tv-txt { font-weight: 600; font-size: clamp(12px, 1.4vmin, 24px); }
+/* The build stamp: readable if you look for it, invisible if you don't. */
+.tv-controls .tv-build {
+  align-self: center;
+  font-size: clamp(10px, 1.1vmin, 18px);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  opacity: 0.45;
+}
 
 /* ---- what this screen can afford to paint ---------------------------------
    `data-tv-gpu="lite"` (see lib/tvScale.tvGpuBudget) is set on a TV browser or any

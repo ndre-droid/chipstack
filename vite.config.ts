@@ -1,7 +1,21 @@
+import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 import { VitePWA } from 'vite-plugin-pwa';
+
+/* Which build is on the screen?
+   A TV has no address bar and no devtools, so "is the big screen even running the
+   deploy I just pushed?" was unanswerable from the sofa — and with a service worker
+   in front of it, the honest answer was sometimes no. The commit is stamped into the
+   bundle here and printed under the TV's reload button. */
+const buildId = (() => {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim();
+  } catch {
+    return 'dev'; // a source tarball, or no git — the stamp is a nicety, not a build input
+  }
+})();
 
 // SINGLE_FILE=1 bundles the whole app into one self-contained index.html
 // (used to publish the interactive preview — no service worker there).
@@ -64,5 +78,6 @@ export default defineConfig({
           }),
         ]),
   ],
+  define: { __BUILD_ID__: JSON.stringify(buildId) },
   build: single ? { outDir: 'dist-single' } : {},
 });

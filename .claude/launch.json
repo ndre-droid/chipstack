@@ -60,6 +60,19 @@
         "--strictPort"
       ],
       "port": 5217
+    },
+    {
+      "name": "chipstack-verify-d",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5223",
+        "--strictPort"
+      ],
+      "port": 5223
     }
   ]
 }
