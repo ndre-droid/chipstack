@@ -61,20 +61,22 @@ export function tvGpuBudget(): 'full' | 'lite' {
 /**
  * A sensible default for this device, used until the user touches the A−/A+ control.
  *
- * Everything here is one notch larger than it was: across a living room, the first
- * thing anyone says about the big screen is that the writing is small, and the
- * A−/A+ buttons are still there for anyone who wants it back. Even a real TV
- * browser — which gets the layout the sizing was tuned for — now starts slightly
- * over 1; a laptop or monitor standing in for the TV sits much closer and much
- * smaller, so it gets more, and more still as the window gets shorter (a short
- * window is where the vmin sizing collapses hardest).
+ * This went up a notch for 4K and came back down again, because the two complaints
+ * are not the same complaint: "the player names are too small" is about ONE panel
+ * that the fitter now solves properly, and answering it by zooming the whole screen
+ * made everything else — stat tiles, legend chips, the button row — big enough to
+ * crowd the picture. A real TV browser gets the layout as it was tuned, plus a
+ * little for a 4K set (which sits further from the sofa and reports the same CSS
+ * viewport, see `isUhd`); a laptop or monitor standing in for the TV sits much
+ * closer and much smaller, so it still gets a real boost, and more as the window
+ * gets shorter — a short window is where the vmin sizing collapses hardest.
  */
 export function autoTvScale(): number {
   if (typeof window === 'undefined') return 1;
   // A TV browser gets the layout the sizing was tuned for. A 4K set is further from
   // the sofa than the 1080p one it replaced and reports the same CSS viewport, so it
   // gets a notch more — see `isUhd`.
-  if (isTvBrowser()) return isUhd() ? 1.3 : 1.15;
+  if (isTvBrowser()) return isUhd() ? 1.1 : 1;
   const w = window.innerWidth;
   const h = window.innerHeight;
   const short = Math.min(w, h);
@@ -82,8 +84,8 @@ export function autoTvScale(): number {
   // A phone or tablet previewing TV mode is held at arm's length and gets the
   // layout close to as designed — only a laptop/monitor standing in for the TV is
   // boosted properly.
-  if (long < 1100 || short < 600) return 1.1;
-  return clampTvScale(short >= 950 ? 1.35 : 1.45);
+  if (long < 1100 || short < 600) return 1.05;
+  return clampTvScale(short >= 950 ? 1.2 : 1.3);
 }
 
 export function clampTvScale(n: number) {

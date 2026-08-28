@@ -36,6 +36,7 @@ import { sinceLastBuyIn } from '../lib/settle';
 import type { MomentVotes } from '../lib/liveSession';
 import { customAccentVars } from '../lib/color';
 import Sparkline from '../components/Sparkline';
+import { useBackHandler } from '../lib/backHandler';
 import { useWakeLock } from '../lib/useWakeLock';
 import { useTvAwake } from '../lib/useTvAwake';
 import { quipsFor, penaltiesFor, houseRulesFor } from '../lib/quips';
@@ -66,12 +67,28 @@ const digitCells = (text: string) =>
    which is why a half-empty screen still showed small names. A 55" panel reporting a
    1080-class CSS viewport now allows ~35px, which is about 2.2cm of letter on the
    glass: readable from four metres, where 1.2cm was not. */
-/** Smallest roster row still worth reading across a room; matches the CSS clamp. */
-const ROW_MIN_FS = 13;
+/**
+ * How long the big screen waits before it says the phone is gone.
+ *
+ * The host beats every 20 seconds, so this is six missed beats. It used to be 90s
+ * against a 45s beat — two beats — and that is why a phone the user was holding
+ * kept being declared offline: Android throttles a backgrounded tab's timers to
+ * about one a minute and freezes them outright once the screen locks, so one
+ * lock-screen glance was enough to trip it. Six beats, plus a beat the moment the
+ * phone is looked at again (see useLiveHostSync), makes a false accusation cost a
+ * genuinely absent phone rather than a pocketed one.
+ */
+const HOST_STALE_MS = 150_000;
+
+/* Smallest roster row still worth reading across a room; matches the CSS clamp.
+   The list is ALWAYS one column now (see `rosterCols`), so a twelve-handed table
+   asks this floor for the first time — a second column was what used to absorb
+   them, at the cost of two half-width names side by side, each one truncated. */
+const ROW_MIN_FS = 11;
 /** Hard ceiling in px, for a viewport large enough that the fraction stops binding. */
-const ROW_MAX_FS = 72;
+const ROW_MAX_FS = 52;
 /** Ceiling as a fraction of the viewport's short edge — the one that usually binds. */
-const ROW_MAX_VMIN = 0.032;
+const ROW_MAX_VMIN = 0.028;
 
 /** One row of the big screen's player list, as the panel needs it. */
 export interface TvRosterRow {
@@ -376,7 +393,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
      and it follows the legend's own text setting so "make the legend bigger" moves
      the chip with the number. */
   const legendChipSize = Math.round(
-    Math.max(24, Math.min(96, (viewportH / tvScale) * 0.05 * (state.settings.tvTextScale?.legend ?? 1))),
+    Math.max(22, Math.min(72, (viewportH / tvScale) * 0.042 * (state.settings.tvTextScale?.legend ?? 1))),
   );
   const isCash = gameMode === 'cash';
   // Cash game with the timer off = no countdown. There's still a ladder, though:
@@ -829,7 +846,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
      been heard from at least once, so an older build that never sends a heartbeat is
      never accused of being offline. `staleTick` is what re-evaluates this. */
   void staleTick;
-  const hostStale = isTv && paired && hostSeenLocal !== null && Date.now() - hostSeenLocal > 90_000;
+  const hostStale = isTv && paired && hostSeenLocal !== null && Date.now() - hostSeenLocal > HOST_STALE_MS;
 
   // Keep the big screen awake for the whole session (see lib/useWakeLock.ts —
   // the browser hands the lock back only if you ask again after every hide).
@@ -1290,7 +1307,12 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
      on which other panels are switched on. Two columns start at seven players —
      one column of eight had to drop to the smallest readable size and still lost
      a row, while two columns of four sit at full size. */
-  const rosterCols = sortedRoster.length > 6 ? 2 : 1;
+  /* ONE column, always. Two columns fitted more players per screen and got the
+     names wrong doing it: half the width each, so anything past about eight
+     characters was cut off, and the eye has to read the list in boustrophedon.
+     A single column down the left is what the user asked for, and the fitter below
+     is what pays for it — twelve players simply arrive smaller. */
+  const rosterCols = 1;
   const rosterRows = Math.ceil(sortedRoster.length / rosterCols) || 1;
   /* The stat tiles are the roster's one real competitor for this column, and they
      win by default: three stacked tiles measured 263 of the column's 511px, which
@@ -1600,6 +1622,48 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           { tvStartStackHidden: false, tvShowStartStack: true }
         : { tvStartStackHidden: true, tvShowStartStack: false },
     });
+
+  /* Getting an overlay off the screen with a REMOTE.
+     Every overlay closes on a click on itself, which is the whole story on a laptop
+     and no story at all on a television: a D-pad remote sends key events, never a
+     click on the page ground, and the one button that feels like "away" — Back —
+     was leaving the page or dropping out of fullscreen instead. So the topmost
+     overlay is named here once, and three things close it: a click (as before), the
+     back press (through the app's own back stack, which is also the Android
+     hardware button), and any key a remote can produce. The quick buy-in is the one
+     exception to that last rule — it is a keypad, and digits typed into it must
+     reach it — so it closes on Back and on the keys that mean "away". */
+  const overlayClose = handout
+    ? { close: () => setHandout(null), anyKey: false }
+    : showQr
+      ? { close: () => setShowQr(false), anyKey: true }
+      : shot !== null
+        ? { close: () => setShot(null), anyKey: true }
+        : celebrate
+          ? { close: () => setCelebrate(false), anyKey: true }
+          : showStartStack
+            ? { close: hideStartStack, anyKey: true }
+            : null;
+  const overlayCloseRef = useRef(overlayClose);
+  overlayCloseRef.current = overlayClose;
+  useBackHandler(!!overlayClose, () => overlayCloseRef.current?.close());
+  const overlayOpen = !!overlayClose;
+  useEffect(() => {
+    if (!overlayOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      const away = e.key === 'Escape' || e.key === 'Backspace' || e.key === 'GoBack' || e.key === 'BrowserBack';
+      if (!away && !overlayCloseRef.current?.anyKey) return;
+      /* Never steal a key from something the viewer is actually operating — the
+         controls row is focusable and a remote walks through it with the D-pad. */
+      const target = e.target as HTMLElement | null;
+      if (!away && target?.closest?.('button, input, select, textarea, [contenteditable]')) return;
+      e.preventDefault();
+      overlayCloseRef.current?.close();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [overlayOpen]);
 
   // "Can I still buy in?" — the same answer the phone shows, on the wall.
   const lateReg = lateRegState(isCash ? 0 : state.settings.lateRegLevels ?? 0, levelIdx, seconds, minutesPerLevel);

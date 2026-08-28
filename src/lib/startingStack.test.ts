@@ -3,6 +3,7 @@ import {
   activeOverride,
   handoutAmountOf,
   handoutBlindOf,
+  handoutLevelOf,
   handoutStack,
   liveBaseValue,
   stacksNeededOf,
@@ -177,6 +178,29 @@ check(
   'so does changing the chip inventory',
   activeOverride([set(10, 80), set(25, 80), set(50, 80), set(100, 80)], tuned, unit) === null,
 );
+
+console.log('\nthe level the stack card is built for');
+{
+  // No pin: the starting level on the Plan tab, the clock's level on the Table tab.
+  check('unpinned, no clock = the starting level', handoutLevelOf(session, null) === 0);
+  check('unpinned, mid-game = the level being played', handoutLevelOf(session, 2) === 2);
+  const pinned = { ...session, handoutLevelIdx: 2 } as SessionConfig;
+  check('a pin looks further ahead', handoutLevelOf(pinned, null) === 2);
+  check('and still wins while the clock is behind it', handoutLevelOf(pinned, 1) === 2);
+  /* The one thing a pin may NOT do: hand out chips finer than the table needs. Past
+     the pinned level, the level being played wins again. */
+  const early = { ...session, handoutLevelIdx: 0 } as SessionConfig;
+  check('but never drags the stack below the level being played', handoutLevelOf(early, 2) === 2);
+  check(
+    'the pinned blind is the one the chips are built for',
+    handoutBlindOf(pinned, null) === session.blindLevels[2],
+  );
+  check(
+    'and a pinned level colours the stack up',
+    handoutStack(denoms, pinned, unit, session.buyIn, null).baseValue === 50,
+    String(handoutStack(denoms, pinned, unit, session.buyIn, null).baseValue),
+  );
+}
 
 console.log(`\n${failures === 0 ? 'ALL PASS' : `${failures} FAILED`}`);
 assert.equal(failures, 0, `${failures} starting-stack check(s) failed`);

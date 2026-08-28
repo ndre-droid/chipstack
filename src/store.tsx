@@ -110,6 +110,7 @@ const defaultSession: SessionConfig = {
   startLevelIdx: 0,
   stackOverride: null,
   handoutAmount: null,
+  handoutLevelIdx: null,
 };
 
 /** how many counting rounds a player's stack trail keeps (sparkline length) */
@@ -978,6 +979,7 @@ function migrate(raw: string | null): AppState {
   // A saved night from before the handout switcher shows the starting stack, which
   // is exactly what null means.
   if (typeof session.handoutAmount !== 'number' || !(session.handoutAmount > 0)) session.handoutAmount = null;
+  if (typeof session.handoutLevelIdx !== 'number' || !(session.handoutLevelIdx >= 0)) session.handoutLevelIdx = null;
   if (!Array.isArray(session.blindLevels) || session.blindLevels.length === 0)
     session.blindLevels = defaultBlinds(settings.defaultSmallBlind, settings.defaultBigBlind);
 

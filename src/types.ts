@@ -200,6 +200,14 @@ export interface SessionConfig {
    */
   handoutAmount?: number | null;
   /**
+   * Which blind level that stack is built for (index into `blindLevels`), or null
+   * for "the one being played" — the starting level on the Plan tab, the clock's
+   * level on the Table tab. Only ever pins the card FURTHER ahead: see
+   * `handoutLevelOf`. Lives in the session so the card, the Table tab and the big
+   * screen all show one stack instead of three.
+   */
+  handoutLevelIdx?: number | null;
+  /**
    * Hand-tuned per-chip counts from the Plan tab's fine-tune editor, with a
    * signature of the inputs they were tuned against (see lib/startingStack.ts).
    * Lives in the session — and therefore in LiveData — so the TV shows the stack

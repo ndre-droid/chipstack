@@ -61,9 +61,25 @@ export function autoStartingStack(
 export function handoutBlindOf(session: SessionConfig, levelIdx: number | null | undefined) {
   const levels = session.blindLevels;
   if (!levels.length) return null;
+  return levels[Math.min(levels.length - 1, handoutLevelOf(session, levelIdx))] ?? null;
+}
+
+/**
+ * WHICH level the stack card is built for, as an index.
+ *
+ * Three answers, in order of who gets to speak: never below the level the plan
+ * itself starts at, never below the level actually being played (chips finer than
+ * the table needs are exactly the thing this all exists to stop), and above both of
+ * those, whatever the user pinned with the level stepper on the card. The pin is
+ * how "what does a €45 stack look like at level 7?" gets asked from the Plan tab,
+ * where there is no clock to answer it — and because it lives in the session, the
+ * Table tab and the big screen show the same stack rather than a second one.
+ */
+export function handoutLevelOf(session: SessionConfig, levelIdx?: number | null): number {
   const start = Math.max(0, session.startLevelIdx ?? 0);
-  const wanted = typeof levelIdx === 'number' ? Math.max(levelIdx, start) : start;
-  return levels[Math.min(levels.length - 1, wanted)] ?? null;
+  const playing = typeof levelIdx === 'number' ? Math.max(levelIdx, start) : start;
+  const pinned = session.handoutLevelIdx;
+  return typeof pinned === 'number' && pinned > playing ? pinned : playing;
 }
 
 /**

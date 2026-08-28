@@ -1,8 +1,8 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useMemo } from 'react';
 import { useStore } from '../store';
 import { handoutAmountOf, handoutBlindOf, handoutStack } from '../lib/startingStack';
 import ChipStackViz from './ChipStackViz';
-import MoneyInput from './MoneyInput';
+import StackTuner from './StackTuner';
 import { useT, useFmt } from '../lib/i18n';
 
 interface Props {
@@ -24,6 +24,9 @@ interface Props {
  * being played NOW — which is what quietly drops the 5s and 10s once they have
  * stopped meaning anything (see `handoutBlindOf`). The chosen amount lives in the
  * session, so the big screen mirrors exactly this card.
+ *
+ * The switch itself is `StackTuner`, shared with the Plan tab's stack hero: the two
+ * stacks in the app are now one card shown in two places, with one state behind it.
  */
 function StartingStack({ levelIdx }: Props) {
   const { state, dispatch } = useStore();
@@ -32,7 +35,6 @@ function StartingStack({ levelIdx }: Props) {
   const { denominations, session, settings } = state;
   const { buyIn } = session;
   const { unitValue, currency, tvShowStartStack } = settings;
-  const [custom, setCustom] = useState(false);
 
   const amount = handoutAmountOf(session);
   const isStart = Math.abs(amount - buyIn) < 0.005;
@@ -44,25 +46,6 @@ function StartingStack({ levelIdx }: Props) {
   );
   const blind = handoutBlindOf(session, levelIdx);
   const shownLevelIdx = blind ? session.blindLevels.indexOf(blind) : -1;
-
-  /* The amounts worth one tap: the buy-in itself, the rebuy the Plan tab already
-     knows about, and double the buy-in — deduplicated, because a night where the
-     rebuy IS twice the buy-in should not get the same button twice. */
-  const quick = useMemo(() => {
-    const out: number[] = [buyIn];
-    for (const v of [session.lateRebuyAmount, buyIn * 2]) {
-      if (v > 0 && !out.some((x) => Math.abs(x - v) < 0.005)) out.push(v);
-    }
-    return out;
-  }, [buyIn, session.lateRebuyAmount]);
-
-  const pick = (v: number) => {
-    setCustom(false);
-    dispatch({
-      type: 'UPDATE_SESSION',
-      patch: { handoutAmount: Math.abs(v - buyIn) < 0.005 ? null : v },
-    });
-  };
 
   if (stack.denomsUsed.length === 0 && isStart) return null;
 
@@ -82,40 +65,7 @@ function StartingStack({ levelIdx }: Props) {
           <span className="faint">{stack.chipCount} {t('plan.chips').toLowerCase()}</span>
         </div>
 
-        {/* What to hand over, and for how much. The buy-in is the left-hand button,
-            so the way back to the starting stack is always one tap. */}
-        <div className="handout-picks">
-          {quick.map((v, i) => (
-            <button
-              key={v}
-              className={`handout-pick ${!custom && Math.abs(amount - v) < 0.005 ? 'active' : ''}`}
-              onClick={() => pick(v)}
-            >
-              {i === 0 && <small>{t('table.handoutStart')}</small>}
-              {money(v, currency)}
-            </button>
-          ))}
-          <button
-            className={`handout-pick ${custom ? 'active' : ''}`}
-            onClick={() => setCustom((v) => !v)}
-            aria-label={t('table.handoutAmount')}
-          >
-            ✎ {t('table.handoutCustom')}
-          </button>
-        </div>
-        {custom && (
-          <MoneyInput
-            className="input handout-amount"
-            value={amount}
-            ariaLabel={t('table.handoutAmount')}
-            onCommit={(v) =>
-              dispatch({
-                type: 'UPDATE_SESSION',
-                patch: { handoutAmount: v > 0 && Math.abs(v - buyIn) >= 0.005 ? v : null },
-              })
-            }
-          />
-        )}
+        <StackTuner levelIdx={levelIdx} />
 
         {/* Which blinds these chips are for. Only worth saying once it is no longer
             the obvious answer — at the starting level it is just noise. */}
@@ -135,11 +85,6 @@ function StartingStack({ levelIdx }: Props) {
         >
           {tvShowStartStack ? t('table.hideFromTv') : t('table.castToTv')}
         </button>
-        {!isStart && (
-          <button className="btn btn-ghost btn-block btn-sm mt8" onClick={() => pick(buyIn)}>
-            ↺ {t('table.handoutBack')}
-          </button>
-        )}
       </div>
     </>
   );

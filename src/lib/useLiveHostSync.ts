@@ -25,6 +25,13 @@ import {
 const TV_RESTART_GAP_MS = 60_000;
 
 /**
+ * How often the host says "still here" — see the heartbeat effect at the bottom.
+ * The big screen calls a phone gone after `HOST_STALE_MS` (150s in TvMode), so this
+ * is six beats of slack for a phone in a pocket on a flaky café Wi-Fi.
+ */
+const HEARTBEAT_MS = 20_000;
+
+/**
  * Mounted once at the app root. While this phone is the host of a Live Session
  * (Table → Connect to TV), it pushes the shared game data to the cloud a moment
  * after ANY change — regardless of which screen is open — so the TV stays current
@@ -164,25 +171,49 @@ export function useLiveHostSync() {
     };
   }, [liveSessionCode, liveSessionRole]);
 
-  /* Say "still here" on a slow interval. A table where nothing happens for ten
-     minutes (no rebuy, no count, clock running on the TV) sends no data at all, and
-     without this the big screen could not tell that from a phone Android had quietly
-     discarded. A dropped beat is not worth retrying — the next one is 45s away. */
+  /* Say "still here". A table where nothing happens for ten minutes (no rebuy, no
+     count, clock running on the TV) sends no data at all, and without this the big
+     screen could not tell that from a phone Android had quietly discarded. A dropped
+     beat is not worth retrying — the next one is along shortly.
+
+     Three things changed after the big screen kept accusing a phone that was in the
+     user's hand. The beat is faster (20s against the TV's 150s patience, so six may
+     go missing before anything is claimed). It fires IMMEDIATELY on mount, because
+     the old version said nothing for the first 45 seconds of a session — long enough
+     for a TV that had been watching an earlier session to still be showing the
+     warning. And it fires again the moment the phone is looked at: Android throttles
+     a backgrounded tab's timers to roughly one a minute and freezes them outright
+     while the screen is locked, so the beat that matters most is the one sent on the
+     way back, not the one the timer owed. */
   useEffect(() => {
     if (!firebaseConfigured || liveSessionRole !== 'host' || !liveSessionCode) return;
     let stopped = false;
-    const beat = () =>
-      import('./liveSession')
+    const beat = () => {
+      if (stopped) return;
+      void import('./liveSession')
         .then(({ hostHeartbeat }) => {
           if (!stopped) return hostHeartbeat(liveSessionCode);
         })
         .catch(() => {
-          /* offline — the next beat, or the next real push, covers it */
+          /* offline, or the session is gone — the next beat covers it */
         });
-    const id = window.setInterval(beat, 45000);
+    };
+    const wake = () => {
+      if (!document.hidden) beat();
+    };
+    beat();
+    const id = window.setInterval(beat, HEARTBEAT_MS);
+    document.addEventListener('visibilitychange', wake);
+    window.addEventListener('focus', wake);
+    /* Android's Page Lifecycle: a discarded-then-restored tab gets `resume` and may
+       never see a visibility change. Harmless where it isn't implemented. */
+    window.addEventListener('resume', wake);
     return () => {
       stopped = true;
       window.clearInterval(id);
+      document.removeEventListener('visibilitychange', wake);
+      window.removeEventListener('focus', wake);
+      window.removeEventListener('resume', wake);
     };
   }, [liveSessionCode, liveSessionRole]);
 

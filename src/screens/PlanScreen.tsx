@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useStore } from '../store';
 import { computeStack, moneyToUnits, rebalance } from '../lib/distribution';
 import type { StackResult } from '../lib/distribution';
-import { autoStartingStack, activeOverride, excludedSetOf, stackBasisKey, stacksNeededOf } from '../lib/startingStack';
+import { autoStartingStack, activeOverride, excludedSetOf, handoutAmountOf, handoutLevelOf, handoutStack, stackBasisKey, stacksNeededOf } from '../lib/startingStack';
 import { suggestBlindLadder, colorUpEvents, ladderForDuration } from '../lib/planning';
 import type { ColorUpEvent } from '../lib/planning';
 import type { Denomination, BlindLevel } from '../types';
@@ -13,6 +13,7 @@ import ShareSheet from '../components/ShareSheet';
 import { useT, useFmt } from '../lib/i18n';
 import { Toggle } from '../components/Toggle';
 import MoneyInput from '../components/MoneyInput';
+import StackTuner from '../components/StackTuner';
 
 export default function PlanScreen() {
   const { state, dispatch } = useStore();
@@ -176,9 +177,36 @@ export default function PlanScreen() {
     dispatch({ type: 'UPDATE_SESSION', patch: { excludedDenoms: [...n] } });
   };
 
-  const bb = startBlind?.bigBlind ?? 1;
-  const bbCount = bb > 0 ? (effTotal / bb).toFixed(0) : '—';
-  const baseDenom = denominations.find((d) => d.value === starting.baseValue);
+  /* ---- The one stack card, tuned ----
+     The Plan tab used to show exactly one thing: the buy-in stack at the starting
+     blinds. The Table tab showed a second, differently-built one for mid-game
+     handouts, and the two drifted apart in the user's head as "two chip stacks".
+     They are one card now (see `StackTuner`, shared with components/StartingStack),
+     and this is the Plan tab's half of it: dial the amount up to €45 and the level
+     up to 7 and the hero shows THAT stack, built for those blinds.
+
+     The plan itself does not move. Everything below the hero — the fine-tune editor,
+     the feasibility check, the colour-up guide — is about the night as planned, so
+     while the card is tuned to something else it is folded away behind one line
+     rather than left on screen answering a question nobody asked. */
+  const tunedAmount = handoutAmountOf(session);
+  const tunedLevelIdx = handoutLevelOf(session, null);
+  const tuned = Math.abs(tunedAmount - buyIn) >= 0.005 || tunedLevelIdx !== startIdx;
+  const tunedStack = useMemo(
+    () => (tuned ? handoutStack(denominations, session, unit, tunedAmount, null) : null),
+    [tuned, denominations, session, unit, tunedAmount],
+  );
+  const heroUsed = tunedStack ? tunedStack.denomsUsed : effUsed;
+  const heroCounts = tunedStack ? tunedStack.counts : displayCounts;
+  const heroTotal = tunedStack ? tunedStack.totalValue : effTotal;
+  const heroChips = tunedStack ? tunedStack.chipCount : effChips;
+  const heroBlind = blindLevels[Math.min(tunedLevelIdx, Math.max(0, blindLevels.length - 1))] ?? startBlind;
+  const heroBaseValue = tunedStack ? tunedStack.baseValue : starting.baseValue;
+  const heroBlindOk = tunedStack ? tunedStack.blindOk : starting.blindOk;
+
+  const bb = heroBlind?.bigBlind ?? 1;
+  const bbCount = bb > 0 ? (heroTotal / bb).toFixed(0) : '—';
+  const baseDenom = denominations.find((d) => d.value === heroBaseValue);
   const edited = override !== null;
 
   return (
@@ -204,10 +232,12 @@ export default function PlanScreen() {
 
       {/* ================ RESULT HERO — the answer ================ */}
       <div className="result-hero">
-        <div className="hero-eyebrow">{t('plan.eachPlayer')}</div>
+        <div className="hero-eyebrow">
+          {tuned ? t('table.handoutTitle') : t('plan.eachPlayer')}
+        </div>
         <div className="flex-between" style={{ alignItems: 'flex-end' }}>
           <div className="big-num">
-            {effChips} <small>{t('plan.chips')}</small>
+            {heroChips} <small>{t('plan.chips')}</small>
           </div>
           <div className="hero-depth">
             <div className="n">
@@ -218,45 +248,63 @@ export default function PlanScreen() {
           </div>
         </div>
         <div className="hero-sub">
-          {fmtMoney(effTotal * unit, cur)} · {num(effTotal)} pts · {effUsed.length}{' '}
-          {t(effUsed.length === 1 ? 'plan.denomOne' : 'plan.denomMany')}
-          {edited && <span className="badge-soft" style={{ marginLeft: 8 }}>{t('plan.edited')}</span>}
+          {fmtMoney(heroTotal * unit, cur)} · {num(heroTotal)} pts · {heroUsed.length}{' '}
+          {t(heroUsed.length === 1 ? 'plan.denomOne' : 'plan.denomMany')}
+          {edited && !tuned && <span className="badge-soft" style={{ marginLeft: 8 }}>{t('plan.edited')}</span>}
         </div>
 
-        <ChipStackViz denoms={effUsed} counts={displayCounts} surface="plan" />
+        <ChipStackViz denoms={heroUsed} counts={heroCounts} surface="plan" />
 
-        {/* small-chip slider — lives with the visual it controls */}
-        <ChipMixSlider value={smallBias} onChange={moveBias} />
+        {/* small-chip slider — lives with the visual it controls. It shapes the PLAN,
+            so it steps aside while the card is showing some other amount: a mid-game
+            handout is deliberately built with the fewest chips, not with this. */}
+        {!tuned && <ChipMixSlider value={smallBias} onChange={moveBias} />}
 
-        {effUsed.length > 0 && effTotal > 0 && (
+        {heroUsed.length > 0 && heroTotal > 0 && (
           <div className="valbar" aria-hidden>
-            {effUsed.map((d) => (
+            {heroUsed.map((d) => (
               <i
                 key={d.id}
-                style={{ flexGrow: (displayCounts[d.id] * d.value) / effTotal, background: d.color }}
-                title={`${d.value}: ${fmtMoney(displayCounts[d.id] * d.value * unit, cur)}`}
+                style={{ flexGrow: ((heroCounts[d.id] ?? 0) * d.value) / heroTotal, background: d.color }}
+                title={`${d.value}: ${fmtMoney((heroCounts[d.id] ?? 0) * d.value * unit, cur)}`}
               />
             ))}
           </div>
         )}
 
-        {startBlind && (
-          <div className={`blind-check ${starting.blindOk ? 'ok' : 'bad'}`}>
+        {/* How much, and for which blinds — the same control the Table tab carries. */}
+        <StackTuner />
+
+        {heroBlind && (
+          <div className={`blind-check ${heroBlindOk ? 'ok' : 'bad'}`}>
             {baseDenom && <Chip value={baseDenom.value} color={baseDenom.color} accent={baseDenom.accent} size={30} shape={baseDenom.shape} />}
             <div>
-              <b>{t('plan.smallestChip', { v: starting.baseValue })}</b>
+              <b>{t('plan.smallestChip', { v: heroBaseValue })}</b>
               <span>
-                {t(starting.blindOk ? 'plan.blindOk' : 'plan.blindBad', {
-                  sb: startBlind.smallBlind,
-                  bb: startBlind.bigBlind,
+                {t(heroBlindOk ? 'plan.blindOk' : 'plan.blindBad', {
+                  sb: heroBlind.smallBlind,
+                  bb: heroBlind.bigBlind,
                 })}
               </span>
             </div>
-            {starting.blindOk ? <IconCheck size={18} /> : <IconAlert size={18} />}
+            {heroBlindOk ? <IconCheck size={18} /> : <IconAlert size={18} />}
           </div>
         )}
       </div>
 
+      {/* The card is showing something other than the plan's own stack: say so once,
+          and keep the plan's analysis out of the way until it comes back. */}
+      {tuned && (
+        <div className="tuned-note">
+          {t('plan.tunedNote', { amount: fmtMoney(tunedAmount, cur), n: tunedLevelIdx + 1 })}
+        </div>
+      )}
+
+      {/* Plan-only from here down: it all describes the buy-in stack at the starting
+          blinds, so a card tuned to a €45 top-up folds it away rather than pairing a
+          €45 picture with a €20 analysis. */}
+      {!tuned && (
+        <>
       {/* feasibility */}
       {/* Not "you can't do this" but "here is the shopping list" — the number of
           chips to buy is a question the app can answer and the user cannot. */}
@@ -428,6 +476,8 @@ export default function PlanScreen() {
               )}
             </>
           )}
+        </>
+      )}
         </>
       )}
 

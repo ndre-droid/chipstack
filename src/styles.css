@@ -1471,7 +1471,7 @@ input[type='color'] { cursor: pointer; }
    cell simply do not fit. They shrink here and stay their designed size in the
    automatic layout, where the column hands them the room they ask for. */
 .tv-grid[data-mode='grid'] .tv-stat { min-height: 0; padding: clamp(6px, 1.1vmin, 16px) clamp(9px, 1.5vmin, 20px); }
-.tv-grid[data-mode='grid'] .tv-stat-v { font-size: calc(clamp(16px, 2.5vmin, 52px) * var(--tv-fs-stats, 1)); }
+.tv-grid[data-mode='grid'] .tv-stat-v { font-size: calc(clamp(15px, 2.1vmin, 38px) * var(--tv-fs-stats, 1)); }
 .tv-grid[data-mode='grid'] > .tv-cell > .tv-legend::-webkit-scrollbar,
 .tv-grid[data-mode='grid'] > .tv-cell > .tv-stats::-webkit-scrollbar { width: 0; height: 0; }
 /* Automatic: panels keep their natural height — without this, a column that is one
@@ -1531,7 +1531,7 @@ input[type='color'] { cursor: pointer; }
    screen — see statsTwoUp in TvMode. */
 .tv[data-tv-compact] .tv-stats, .tv-stats[data-2up] { display: grid; grid-template-columns: 1fr 1fr; }
 .tv[data-tv-compact] .tv-stat, .tv-stats[data-2up] .tv-stat { padding: clamp(8px, 1.2vmin, 18px) clamp(10px, 1.6vmin, 22px); }
-.tv[data-tv-compact] .tv-stat-v, .tv-stats[data-2up] .tv-stat-v { font-size: calc(clamp(18px, 3vmin, 60px) * var(--tv-fs-stats, 1)); }
+.tv[data-tv-compact] .tv-stat-v, .tv-stats[data-2up] .tv-stat-v { font-size: calc(clamp(17px, 2.5vmin, 42px) * var(--tv-fs-stats, 1)); }
 .tv[data-tv-compact] .tv-legend-row { padding: clamp(2px, 0.4vmin, 8px) 0; }
 /* last resort on a very short screen: the chip legend gives way, not the payouts.
    The panel sits in a cell now, so the cell is what has to be allowed to shrink —
@@ -1546,8 +1546,8 @@ input[type='color'] { cursor: pointer; }
   padding: clamp(10px, 1.8vmin, 22px);
   display: flex; flex-direction: column; gap: 3px;
 }
-.tv-stat-k { font-family: var(--tv-head); font-size: calc(clamp(10px, 1.4vmin, 24px) * var(--tv-fs-stats, 1)); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tv-dim); }
-.tv-stat-v { font-family: var(--tv-num); font-weight: 700; font-size: calc(clamp(22px, 4vmin, 82px) * var(--tv-fs-stats, 1)); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.tv-stat-k { font-family: var(--tv-head); font-size: calc(clamp(10px, 1.2vmin, 17px) * var(--tv-fs-stats, 1)); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tv-dim); }
+.tv-stat-v { font-family: var(--tv-num); font-weight: 700; font-size: calc(clamp(20px, 3.2vmin, 54px) * var(--tv-fs-stats, 1)); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .tv-stat-v small { font-size: 0.48em; color: var(--tv-dim); font-weight: 600; }
 
 /* live players roster on the TV (names + amounts, mirrored from the host) */
@@ -1559,7 +1559,7 @@ input[type='color'] { cursor: pointer; }
   display: flex; flex-direction: column; gap: clamp(4px, 0.8vmin, 10px);
   min-height: 0;
 }
-.tv-players-h { display: flex; align-items: baseline; justify-content: space-between; font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.08em; color: var(--tv-dim); font-size: calc(clamp(11px, 1.6vmin, 32px) * var(--tv-fs-players, 1)); }
+.tv-players-h { display: flex; align-items: baseline; justify-content: space-between; font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.08em; color: var(--tv-dim); font-size: calc(clamp(11px, 1.35vmin, 22px) * var(--tv-fs-players, 1)); }
 .tv-players-h-sub { color: var(--tv-faint); letter-spacing: 0.06em; }
 
 .resync-row { display: flex; align-items: center; gap: 10px; }
@@ -1572,8 +1572,8 @@ input[type='color'] { cursor: pointer; }
 .tv-players-list { display: flex; flex-direction: column; gap: clamp(2px, 0.5vmin, 8px); overflow-y: auto; min-height: 0; }
 .tv-players-row { display: flex; align-items: baseline; gap: clamp(6px, 1.2vmin, 18px); min-width: 0; }
 .tv-players-row.out { opacity: 0.42; text-decoration: line-through; }
-.tv-players-name { font-weight: 600; font-size: calc(clamp(15px, 2vmin, 48px) * var(--tv-fs-players, 1)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tv-players-amt { margin-left: auto; font-family: var(--tv-num); color: var(--tv-dim); font-size: calc(clamp(13px, 1.8vmin, 42px) * var(--tv-fs-players, 1)); }
+.tv-players-name { font-weight: 600; font-size: calc(clamp(14px, 1.7vmin, 34px) * var(--tv-fs-players, 1)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-players-amt { margin-left: auto; font-family: var(--tv-num); color: var(--tv-dim); font-size: calc(clamp(12px, 1.5vmin, 30px) * var(--tv-fs-players, 1)); }
 
 /* ---- Roster density -------------------------------------------------------
    The players list is the one panel that MUST show all of its rows: nobody can
@@ -1581,19 +1581,14 @@ input[type='color'] { cursor: pointer; }
    drops players off the bottom (an eight-handed table showed three names).
    Row size therefore follows how many rows one column carries — set from JSX as
    --tv-roster-rows — and past eight players the list goes two-up. */
-.tv-roster { --tv-roster-rows: 6; --tv-row-fs: calc(min(2.9vmin, calc(19vmin / var(--tv-roster-rows))) * var(--tv-fs-players, 1)); }
+.tv-roster { --tv-roster-rows: 6; --tv-row-fs: calc(min(2.5vmin, calc(17vmin / var(--tv-roster-rows))) * var(--tv-fs-players, 1)); }
 /* flex-basis 0 on purpose: the list takes the height the panel gives it and never
    the other way round, so measuring it can't feed back into the size it measures. */
 .tv-roster .tv-players-list { flex: 1 1 0; gap: min(0.5vmin, calc(3vmin / var(--tv-roster-rows))); }
-.tv-roster .tv-players-list[data-cols='2'] {
-  display: grid; grid-template-columns: 1fr 1fr;
-  column-gap: clamp(10px, 2vmin, 30px);
-  align-content: start;
-}
-.tv-roster .tv-players-name { font-size: clamp(13px, var(--tv-row-fs), calc(72px * var(--tv-fs-players, 1))); }
-.tv-roster .tv-players-amt { font-size: clamp(12px, calc(var(--tv-row-fs) * 0.92), calc(58px * var(--tv-fs-players, 1))); }
-.tv-roster .tv-players-emoji { font-size: clamp(16px, calc(var(--tv-row-fs) * 1.2), 76px); }
-.tv-roster .tv-bounty { font-size: clamp(12px, calc(var(--tv-row-fs) * 0.85), 46px); }
+.tv-roster .tv-players-name { font-size: clamp(11px, var(--tv-row-fs), calc(52px * var(--tv-fs-players, 1))); }
+.tv-roster .tv-players-amt { font-size: clamp(11px, calc(var(--tv-row-fs) * 0.9), calc(42px * var(--tv-fs-players, 1))); }
+.tv-roster .tv-players-emoji { font-size: clamp(14px, calc(var(--tv-row-fs) * 1.1), 54px); }
+.tv-roster .tv-bounty { font-size: clamp(11px, calc(var(--tv-row-fs) * 0.8), 34px); }
 /* The trail takes the width the row isn't using: between the name and the money
    there is usually a lot of dead space on a TV, and a longer line is a readable
    line. `flex-basis: 0` hands it all the slack without ever squeezing the name —
@@ -1613,8 +1608,8 @@ input[type='color'] { cursor: pointer; }
   color: var(--acc); font-size: clamp(13px, 1.8vmin, 42px); font-weight: 700;
 }
 .tv-clock { text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.tv-level { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.18em; color: var(--tv-dim); font-size: calc(clamp(16px, 2.5vmin, 58px) * var(--tv-fs-level, 1)); }
-.tv-blinds { font-family: var(--font-display); font-weight: 700; color: var(--acc); font-size: calc(clamp(30px, 6vmin, 150px) * var(--tv-fs-blinds, 1)); letter-spacing: -0.01em; margin-top: clamp(2px, 0.6vmin, 8px); font-variant-numeric: tabular-nums; }
+.tv-level { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.18em; color: var(--tv-dim); font-size: calc(clamp(15px, 2vmin, 38px) * var(--tv-fs-level, 1)); }
+.tv-blinds { font-family: var(--font-display); font-weight: 700; color: var(--acc); font-size: calc(clamp(28px, 5.2vmin, 116px) * var(--tv-fs-blinds, 1)); letter-spacing: -0.01em; margin-top: clamp(2px, 0.6vmin, 8px); font-variant-numeric: tabular-nums; }
 .tv-ante { color: var(--tv-dim); font-size: 0.48em; }
 /* line-height 1 packs the line box tighter than the faces' own ascent+descent, so
    the glyphs paint OUTSIDE the box and the countdown sat on top of the progress
@@ -1623,7 +1618,7 @@ input[type='color'] { cursor: pointer; }
    neither the clock nor the bar may be shrunk by the flex column when the panel is
    short — a shrunken box with full-size digits is the same overlap by another
    route. */
-.tv-time { font-family: var(--tv-digits); font-weight: 700; font-size: calc(clamp(72px, 19vmin, 480px) * var(--tv-fs-clock, 1)); line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; margin: clamp(2px, 0.5vmin, 8px) 0; padding-bottom: 0.07em; flex-shrink: 0; }
+.tv-time { font-family: var(--tv-digits); font-weight: 700; font-size: calc(clamp(68px, 17vmin, 380px) * var(--tv-fs-clock, 1)); line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; margin: clamp(2px, 0.5vmin, 8px) 0; padding-bottom: 0.07em; flex-shrink: 0; }
 /* Fixed-advance digit cell for the numbers that repaint every second (the level
    countdown, the shot clock). `font-variant-numeric: tabular-nums` only helps when
    the face actually ships tabular figures — the casino serif does not — so each
@@ -1636,29 +1631,29 @@ input[type='color'] { cursor: pointer; }
 .tv-time.urgent { color: var(--bad); }
 .tv-progress { width: min(84%, 64vmin); height: clamp(6px, 1vmin, 12px); background: var(--tv-line); border-radius: 999px; overflow: hidden; flex-shrink: 0; }
 .tv-progress i { display: block; width: 100%; height: 100%; background: var(--acc); border-radius: 999px; transform-origin: left; transition: transform 1s linear; }
-.tv-next { font-family: var(--tv-body); color: var(--tv-faint); font-size: calc(clamp(15px, 2vmin, 50px) * var(--tv-fs-level, 1)); margin-top: clamp(6px, 1.2vmin, 16px); }
+.tv-next { font-family: var(--tv-body); color: var(--tv-faint); font-size: calc(clamp(14px, 1.7vmin, 34px) * var(--tv-fs-level, 1)); margin-top: clamp(6px, 1.2vmin, 16px); }
 /* Cash game, timer off: no countdown — make the fixed blinds the hero instead. */
-.tv-clock-static .tv-blinds { font-size: calc(clamp(56px, 15vmin, 360px) * var(--tv-fs-blinds, 1)); margin-top: clamp(6px, 1.4vmin, 20px); }
+.tv-clock-static .tv-blinds { font-size: calc(clamp(52px, 13vmin, 280px) * var(--tv-fs-blinds, 1)); margin-top: clamp(6px, 1.4vmin, 20px); }
 
-.tv-legend-h { font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.08em; color: var(--tv-dim); font-size: calc(clamp(11px, 1.6vmin, 32px) * var(--tv-fs-legend, 1)); margin-bottom: 6px; }
+.tv-legend-h { font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.08em; color: var(--tv-dim); font-size: calc(clamp(11px, 1.35vmin, 22px) * var(--tv-fs-legend, 1)); margin-bottom: 6px; }
 .tv-legend-row { display: flex; align-items: center; gap: clamp(7px, 1.3vmin, 22px); padding: clamp(3px, 0.7vmin, 12px) 0; }
-.tv-legend-row .chip-svg { width: calc(clamp(30px, 4.2vmin, 112px) * var(--tv-fs-legend, 1)); height: calc(clamp(30px, 4.2vmin, 112px) * var(--tv-fs-legend, 1)); flex-shrink: 0; }
-.tv-legend-v { font-family: var(--tv-num); font-weight: 700; font-size: calc(clamp(16px, 2.4vmin, 58px) * var(--tv-fs-legend, 1)); min-width: 2.6em; }
+.tv-legend-row .chip-svg { width: calc(clamp(26px, 3.2vmin, 72px) * var(--tv-fs-legend, 1)); height: calc(clamp(26px, 3.2vmin, 72px) * var(--tv-fs-legend, 1)); flex-shrink: 0; }
+.tv-legend-v { font-family: var(--tv-num); font-weight: 700; font-size: calc(clamp(15px, 1.9vmin, 40px) * var(--tv-fs-legend, 1)); min-width: 2.6em; }
 /* Chips the blinds have left behind: still in the box, no longer worth handing out.
    Dimmed rather than removed — they are physically on the felt until the colour-up. */
 .tv-legend-row.is-out { opacity: 0.38; }
 .tv-legend-row.is-out .tv-legend-v { text-decoration: line-through; }
-.tv-legend-out { font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.08em; color: var(--tv-dim); font-size: calc(clamp(9px, 1.2vmin, 26px) * var(--tv-fs-legend, 1)); }
-.tv-legend-m { margin-left: auto; font-family: var(--tv-num); color: var(--tv-dim); font-size: calc(clamp(14px, 2vmin, 48px) * var(--tv-fs-legend, 1)); }
+.tv-legend-out { font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.08em; color: var(--tv-dim); font-size: calc(clamp(9px, 1vmin, 18px) * var(--tv-fs-legend, 1)); }
+.tv-legend-m { margin-left: auto; font-family: var(--tv-num); color: var(--tv-dim); font-size: calc(clamp(13px, 1.6vmin, 32px) * var(--tv-fs-legend, 1)); }
 
-.tv-quip { flex-shrink: 0; text-align: center; font-style: italic; color: var(--tv-faint); font-size: calc(clamp(15px, 2.1vmin, 52px) * var(--tv-fs-quips, 1)); padding: clamp(4px, 0.9vmin, 18px) 0; animation: quip-in 0.5s ease; }
+.tv-quip { flex-shrink: 0; text-align: center; font-style: italic; color: var(--tv-faint); font-size: calc(clamp(14px, 1.7vmin, 34px) * var(--tv-fs-quips, 1)); padding: clamp(4px, 0.9vmin, 18px) 0; animation: quip-in 0.5s ease; }
 @keyframes quip-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 .tv-controls { flex-shrink: 0; display: flex; justify-content: center; align-items: center; gap: clamp(8px, 1.4vmin, 18px); flex-wrap: wrap; }
-.tv-controls button { background: var(--tv-panel); border: 1px solid var(--tv-line); color: var(--tv-fg); border-radius: 999px; padding: clamp(9px, 1.4vmin, 20px) clamp(13px, 2vmin, 30px); display: grid; place-items: center; transition: background 0.15s; }
+.tv-controls button { background: var(--tv-panel); border: 1px solid var(--tv-line); color: var(--tv-fg); border-radius: 999px; padding: clamp(8px, 1.1vmin, 14px) clamp(11px, 1.5vmin, 20px); display: grid; place-items: center; transition: background 0.15s; }
 .tv-controls button:hover { background: var(--tv-line); }
-.tv-controls .tv-play { background: var(--acc); color: var(--on-acc); width: clamp(50px, 7vmin, 110px); height: clamp(50px, 7vmin, 110px); border-radius: 50%; padding: 0; }
-.tv-controls .tv-txt { font-weight: 600; font-size: clamp(13px, 1.8vmin, 38px); }
+.tv-controls .tv-play { background: var(--acc); color: var(--on-acc); width: clamp(46px, 5.6vmin, 82px); height: clamp(46px, 5.6vmin, 82px); border-radius: 50%; padding: 0; }
+.tv-controls .tv-txt { font-weight: 600; font-size: clamp(12px, 1.4vmin, 24px); }
 
 /* ---- what this screen can afford to paint ---------------------------------
    `data-tv-gpu="lite"` (see lib/tvScale.tvGpuBudget) is set on a TV browser or any
@@ -1801,13 +1796,13 @@ input[type='color'] { cursor: pointer; }
 @keyframes tv-flash { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: none; } }
 
 .tv-overlay { position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(8px, 2vmin, 24px); background: rgba(0, 0, 0, 0.86); backdrop-filter: blur(4px); }
-.tv-overlay-label { font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.14em; color: var(--tv-dim); font-size: clamp(16px, 3vmin, 60px); }
+.tv-overlay-label { font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.14em; color: var(--tv-dim); font-size: clamp(15px, 2.2vmin, 40px); }
 .tv-overlay-num { font-family: var(--tv-num); font-weight: 800; font-size: clamp(110px, 30vmin, 640px); line-height: 1; color: var(--acc); font-variant-numeric: tabular-nums; }
 .tv-overlay-num.urgent { color: #f0604d; }
 .tv-overlay-name { font-weight: 800; font-size: clamp(40px, 10vmin, 260px); letter-spacing: -0.03em; text-align: center; }
 .tv-overlay-name.won { color: var(--acc); animation: tv-pop 0.4s ease; }
 @keyframes tv-pop { 0% { transform: scale(0.7); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
-.tv-overlay-hint { color: var(--tv-faint); font-size: clamp(14px, 2vmin, 44px); }
+.tv-overlay-hint { color: var(--tv-faint); font-size: clamp(13px, 1.6vmin, 28px); }
 
 /* ---- live-session connect pill + join keypad ---- */
 .tv-connect-pill {
@@ -2023,6 +2018,28 @@ input[type='color'] { cursor: pointer; }
   font-variant-numeric: tabular-nums;
 }
 
+/* …and WHICH blinds it is built for. One card, two tabs: the Plan tab has no clock
+   to answer this, so the level is a stepper there; the Table tab starts it at the
+   level being played and can only go up from there (see `handoutLevelOf`). */
+.stack-tuner { display: block; }
+.handout-level-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 10px;
+}
+.handout-level-k {
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-dim); font-weight: 600;
+}
+.handout-level-row .stepper .val { min-width: 8.5em; font-size: 12.5px; }
+.handout-level-row .stepper .val small { color: var(--text-dim); font-weight: 600; }
+/* The Plan tab, while the card is tuned to something other than the plan itself. */
+.tuned-note {
+  margin: 10px 2px 0; padding: 9px 12px;
+  border: 1px solid var(--acc-line); border-radius: 12px;
+  background: var(--acc-wash); color: var(--acc);
+  font-size: 12.5px; line-height: 1.45;
+}
+
 /* Departed-player profit/loss in the TV roster */
 .tv-players-row .tv-net.pos { color: var(--good); }
 .tv-players-row .tv-net.neg { color: var(--bad); }
@@ -2038,6 +2055,17 @@ input[type='color'] { cursor: pointer; }
 .tv-players-row .tv-stack-since { font-size: 0.55em; opacity: 0.75; font-variant-numeric: tabular-nums; }
 .tv-players-row .tv-stack-since.pos { color: var(--good); }
 .tv-players-row .tv-stack-since.neg { color: var(--bad); }
+
+/* A long table in ONE column: the roster is no longer allowed to spill into a
+   second one, so the rows themselves have to give. The money cell is three stacked
+   lines (stack, net, since) and therefore the tallest thing in a row by some margin
+   — dense, it goes to one line and drops the "since last buy-in" detail, which is
+   the least of the three and the only one already implied by the other two. That is
+   what buys a twelve-handed table its last two names. */
+.tv-roster[data-dense] .tv-players-row .tv-stackcell {
+  flex-direction: row; align-items: baseline; gap: 0.45em;
+}
+.tv-roster[data-dense] .tv-players-row .tv-stack-since { display: none; }
 
 /* Starting-stack overlay cast to the TV */
 .tv-startstack-grid {
@@ -2062,7 +2090,7 @@ input[type='color'] { cursor: pointer; }
   color: var(--tv-fg);
   margin-top: clamp(6px, 1.1vmin, 18px);
 }
-.tv-startstack-total { font-family: var(--tv-num); font-weight: 700; font-size: clamp(15px, 2.1vmin, 40px); color: var(--acc); }
+.tv-startstack-total { font-family: var(--tv-num); font-weight: 700; font-size: clamp(14px, 1.8vmin, 30px); color: var(--acc); }
 
 /* TV background preset swatches (Table → TV broadcast) */
 .bg-preset-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
@@ -2185,7 +2213,7 @@ input[type='color'] { cursor: pointer; }
   padding: clamp(10px, 1.8vmin, 24px) clamp(14px, 2.4vmin, 34px);
 }
 .tv-houserule-k { display: block; font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.1em; color: var(--acc); font-size: clamp(11px, 1.4vmin, 24px); margin-bottom: 4px; }
-.tv-houserule-v { font-size: clamp(15px, 2.2vmin, 46px); font-weight: 600; line-height: 1.3; }
+.tv-houserule-v { font-size: clamp(14px, 1.8vmin, 32px); font-weight: 600; line-height: 1.3; }
 
 /* --- TV: roster crown / emoji / bounty --- */
 /* Every emoji in the app, drawn from the colour-emoji stack at a size that survives
@@ -2197,7 +2225,7 @@ input[type='color'] { cursor: pointer; }
   -webkit-font-smoothing: auto;
   text-rendering: optimizeQuality;
 }
-.tv-players-emoji { flex-shrink: 0; font-size: clamp(16px, 2.3vmin, 48px); }
+.tv-players-emoji { flex-shrink: 0; font-size: clamp(15px, 1.9vmin, 34px); }
 /* The one-off emojis on the big screen (the busted player, the champion) sit inside
    a display-font headline and came out smaller than the name beside them. */
 .tv-emoji { font-size: 1.15em; line-height: 1; margin-right: 0.12em; }
@@ -2207,7 +2235,7 @@ input[type='color'] { cursor: pointer; }
   text-decoration: underline; text-decoration-thickness: 0.1em; text-underline-offset: 0.18em;
   text-decoration-color: color-mix(in srgb, var(--acc) 40%, transparent);
 }
-.tv-bounty { flex-shrink: 0; font-family: var(--tv-num); color: var(--acc); font-size: clamp(11px, 1.5vmin, 30px); margin-left: 6px; }
+.tv-bounty { flex-shrink: 0; font-family: var(--tv-num); color: var(--acc); font-size: clamp(11px, 1.3vmin, 22px); margin-left: 6px; }
 
 /* --- TV: elimination flash --- */
 .tv-elim {

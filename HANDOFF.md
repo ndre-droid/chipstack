@@ -1182,6 +1182,69 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 
 ## ⚠️ Open items / next steps
 
+### Recent work 2026-08-28 (later) — the step back, and one chip stack
+
+The TV pass before this one was measured, not looked at. On the real 55" panel it
+read as too big and too busy, and the roster had quietly gone two-up. Five things:
+
+1. **The roster is ONE column, always** (`rosterCols` in `TvMode`). Two columns fitted
+   more players and got the names wrong doing it — half the width each, so anything
+   past ~8 characters was truncated, and the eye had to read the list boustrophedon.
+   The fitter pays for the single column instead: twelve players simply arrive
+   smaller. Measured at 1920×1080 with the panel's 437px: **12 players → 17px CSS
+   (~20px on screen, all twelve shown, no "+N"), 6 players → 25px (~30px)**. The
+   ceilings came down with it (`ROW_MAX_FS` 72 → 52, `ROW_MAX_VMIN` .032 → .028,
+   floor 13 → 11) and a dense roster now collapses the money cell to one line and
+   drops the "since last buy-in" detail — that is what buys a twelve-handed table
+   its last two names.
+2. **A step back from the 4K sizing.** `autoTvScale()` came down (TV browser
+   1.15 → 1.0, 4K 1.3 → 1.1, laptop 1.35/1.45 → 1.2/1.3) and ~25 `.tv-*` clamp
+   ceilings were trimmed — stat tiles, legend chips, panel headers, the button row,
+   quips, the overlays. The two complaints were never the same complaint: "the names
+   are too small" is about ONE panel, and answering it by zooming the whole screen
+   made everything else crowd the picture. A−/A+ and the per-role text sizes are
+   untouched, so anyone who wants it back has it in two taps.
+3. **Overlays close with a remote.** Every overlay closed on a click on itself, which
+   is the whole story on a laptop and no story at all on a television: a D-pad sends
+   key events, never a click on the page ground, and Back was leaving the page or
+   dropping out of fullscreen. The topmost overlay is now named once (`overlayClose`
+   in `TvMode`) and three things close it — a click, the back press (through
+   `useBackHandler`, so the Android hardware button too), and any key a remote can
+   send. The quick buy-in is the exception to that last one: it is a keypad, so
+   digits reach it and only Escape/Back/GoBack close it. Verified in the pane: shot
+   clock closes on Enter, the cast overlay closes on Enter and leaves its `🃏` button
+   on the control bar, the keypad survives a `5` and closes on Escape, and
+   `history.back()` closes an overlay without leaving TV mode.
+4. **"Phone offline" while the phone was in the user's hand.** The host beat every
+   45s and the big screen gave up after 90s — two beats — while Android throttles a
+   backgrounded tab's timers to about one a minute and freezes them outright once the
+   screen locks. One lock-screen glance was enough. The beat is now 20s
+   (`HEARTBEAT_MS`), fires **immediately on mount** (it used to say nothing for the
+   first 45 seconds of a session) and again on `visibilitychange` / `focus` /
+   `resume`, and the screen's patience went to 150s (`HOST_STALE_MS`) — six beats.
+5. **The two chip stacks are one card.** The Plan tab's stack and the Table tab's
+   handout card were the same question with different inputs. `components/StackTuner`
+   is now THE control — amount (buy-in / rebuy / 2× / free) plus a **blind-level
+   stepper** — and both places render it, over one piece of state
+   (`session.handoutAmount` + the new `session.handoutLevelIdx`, both synced). So
+   "what does a €45 stack look like at level 7?" is answerable from the Plan tab,
+   where there is no clock to answer it. `handoutLevelOf()` is the rule: never below
+   the plan's starting level, never below the level being played (a pin may only look
+   FURTHER ahead — chips finer than the table needs are the thing the engine exists
+   to avoid), and above both, whatever was pinned. While the card is tuned to
+   something other than the plan, the Plan tab folds its plan-only sections (fine-tune
+   editor, feasibility, breakdown, colour-up, later levels) behind one line rather
+   than pairing a €45 picture with a €20 analysis; the chip-mix slider steps aside
+   too, since a handout is deliberately built with the fewest chips. Verified: €20 at
+   level 3 → 8 chips / smallest 50, €45 at level 3 → 10 chips / 3 denominations, ↺
+   returns to the 35-chip plan with the editor and slider back.
+
+Verified: `npx tsc -b`, `npm run lint` (9 warnings, all pre-existing), all 22 test
+files including seven new `handoutLevelOf` checks, `npm run build`, plus DOM
+measurements in the browser pane at 1920×1080. Screenshots were unavailable in this
+session again — every number above is a measurement, not a look. **Not verified on
+real TV hardware.**
+
 ### Recent work 2026-08-28 — the TV perfection pass (`6eb0b32`)
 
 Five things, all on the big screen. Shipped: `main`, Pages and the APK are all on
