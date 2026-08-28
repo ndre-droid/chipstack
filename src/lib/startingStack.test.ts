@@ -155,11 +155,42 @@ console.log('\nthe chip legend follows the blinds too');
     liveBaseValue(denoms, session, 2) === 50,
     String(liveBaseValue(denoms, session, 2)),
   );
+  // "Use all my chips" says which chips the PLAN may use; it cannot make a 10 postable
+  // at 50/100, so mid-game it does not drag the base back under the blind.
   check(
-    '"use all my chips" keeps every value in play',
-    liveBaseValue(denoms, { ...session, useAllChips: true } as SessionConfig, 2) === 10,
+    '"use all my chips" still stops below the blind mid-game',
+    liveBaseValue(denoms, { ...session, useAllChips: true } as SessionConfig, 2) === 50,
+    String(liveBaseValue(denoms, { ...session, useAllChips: true } as SessionConfig, 2)),
+  );
+  check(
+    'but at the opening blinds it keeps every value in play',
+    liveBaseValue(denoms, { ...session, useAllChips: true } as SessionConfig, 0) === 10,
   );
   check('an excluded chip is never the base', liveBaseValue(denoms, excluded, 0) !== 10, String(liveBaseValue(denoms, excluded, 0)));
+}
+
+console.log('\nno chip smaller than the small blind, once the blinds have moved');
+{
+  // The 25 is gone from the set, so `selectPool` used to fall back to the 10 (it
+  // divides a 50 small blind). A rebuy at 50/100 must not arrive as ten-point change.
+  const noTwentyFive = [set(10, 80), set(50, 80), set(100, 80), set(500, 40), set(1000, 20)];
+  const r = handoutStack(noTwentyFive, session, unit, 20, 2);
+  check(
+    'a €20 rebuy at 50/100 has nothing under the blind',
+    r.denomsUsed.every((d) => d.value >= 50),
+    r.denomsUsed.map((d) => `${d.value}x${r.counts[d.id]}`).join(' '),
+  );
+  check('and it still adds up exactly', r.exact && r.totalValue === moneyToUnits(20, unit));
+  check('the legend agrees with it', liveBaseValue(noTwentyFive, session, 2) === 50);
+
+  // …unless the floor is what makes the amount impossible: 30 points cannot be built
+  // from 50s, so the blind-compatible base comes back rather than shorting the player.
+  const odd = handoutStack(noTwentyFive, session, unit, 0.3, 2);
+  check(
+    'an amount the big chips cannot make falls back',
+    odd.exact && odd.totalValue === 30,
+    odd.denomsUsed.map((d) => `${d.value}x${odd.counts[d.id]}`).join(' '),
+  );
 }
 
 console.log('\nhand-tuned counts only survive while their inputs do');

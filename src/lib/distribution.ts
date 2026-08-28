@@ -314,11 +314,14 @@ function selectPool(
 export function baseChipValue(
   denominations: Denomination[],
   blind: BlindLevel | null,
-  opts: { excluded?: Set<string>; useAllChips?: boolean } = {},
+  opts: { excluded?: Set<string>; useAllChips?: boolean; minDenomValue?: number } = {},
 ): number {
   const excluded = opts.excluded ?? new Set<string>();
+  const min = opts.minDenomValue ?? 0;
   const owned = denominations
-    .filter((d) => d.enabled && !excluded.has(d.id) && d.value > 0 && d.maxPerPlayer !== 0)
+    .filter(
+      (d) => d.enabled && !excluded.has(d.id) && d.value > 0 && d.value >= min && d.maxPerPlayer !== 0,
+    )
     .sort((a, b) => a.value - b.value);
   if (!owned.length) return 0;
   return selectPool(owned, blind, opts.useAllChips ?? false).base.value;

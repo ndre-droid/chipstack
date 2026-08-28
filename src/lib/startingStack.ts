@@ -83,18 +83,46 @@ export function handoutLevelOf(session: SessionConfig, levelIdx?: number | null)
 }
 
 /**
+ * The hard floor on a mid-game handout's chips: nothing smaller than the small blind.
+ *
+ * `selectPool` picks the largest chip that DIVIDES the small blind, which is the right
+ * answer for a stack that has to post blinds — but it still lands on a 5 at 25/50 when
+ * there is no 25 in the set (or when "use all my chips" is on). Nobody wants five 5s
+ * for a 25 in a rebuy: the small change for posting is already on the felt, and a
+ * top-up should be the biggest chips that make the number.
+ *
+ * Zero while the handout is still built for the STARTING blind — there the plan's own
+ * base chip has the final word, so the Plan tab and a late arrival's full stack are
+ * untouched by this.
+ */
+export function handoutMinChipValue(session: SessionConfig, levelIdx?: number | null): number {
+  const blind = handoutBlindOf(session, levelIdx);
+  if (!blind || blind === startBlindOf(session)) return 0;
+  return Math.max(0, blind.smallBlind);
+}
+
+/**
  * The smallest chip still in play at `levelIdx` — anything below it is dead weight.
  *
- * The stack builder already drops those chips (see `handoutBlindOf`); this is the
- * same answer for screens that show the whole chip set rather than one stack, so the
- * TV legend can grey out the 5s at 25/50 instead of still offering them.
+ * The stack builder already drops those chips (see `handoutBlindOf` and
+ * `handoutMinChipValue`); this is the same answer for screens that show the whole chip
+ * set rather than one stack, so the TV legend can grey out the 5s at 25/50 instead of
+ * still offering them.
  */
 export function liveBaseValue(
   denominations: Denomination[],
   session: SessionConfig,
   levelIdx?: number | null,
 ): number {
-  return baseChipValue(denominations, handoutBlindOf(session, levelIdx), {
+  const floor = handoutMinChipValue(session, levelIdx);
+  const base = baseChipValue(denominations, handoutBlindOf(session, levelIdx), {
+    excluded: excludedSetOf(session),
+    useAllChips: session.useAllChips,
+    minDenomValue: floor,
+  });
+  // Nothing at or above the blind? Then the floor is unusable and the poker-correct
+  // base stands — the legend must not grey out every chip on the table.
+  return base || baseChipValue(denominations, handoutBlindOf(session, levelIdx), {
     excluded: excludedSetOf(session),
     useAllChips: session.useAllChips,
   });
@@ -130,7 +158,7 @@ export function handoutStack(
   if (atStart && Math.abs(amount - session.buyIn) < 0.005) {
     return startingStackOf(denominations, session, unitValue);
   }
-  return computeStack(moneyToUnits(amount, unitValue), denominations, {
+  const opts = {
     // A full buy-in handed out at higher blinds is still a top-up, not an opening
     // stack: few chips, big ones.
     smallBias: atStart && amount > session.buyIn ? session.smallBias : 0,
@@ -139,7 +167,17 @@ export function handoutStack(
     stacksNeeded: stacksNeededOf(session),
     maxDenoms: session.maxDenoms,
     useAllChips: session.useAllChips,
-  });
+  };
+  const units = moneyToUnits(amount, unitValue);
+  const floor = handoutMinChipValue(session, levelIdx);
+  if (!floor) return computeStack(units, denominations, opts);
+
+  // Chips below the blind are refused first; the floor is only lifted again when it is
+  // what stopped the amount coming out exactly (odd money, or no big chips left).
+  const floored = computeStack(units, denominations, { ...opts, minDenomValue: floor });
+  if (floored.exact) return floored;
+  const free = computeStack(units, denominations, opts);
+  return free.exact ? free : floored.denomsUsed.length ? floored : free;
 }
 
 /**
