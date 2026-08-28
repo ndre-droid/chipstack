@@ -18,11 +18,15 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-08-26 from `main` @ `c275092`**, 4.57 MB (4,790,559 B),
+  (**CURRENT — rebuilt 2026-08-28 from `main` @ `6eb0b32`**, 4.58 MB (4,801,139 B),
+  run `33155215226`: the TV perfection pass — 4K sizing, the sticky cast switch, the
+  render-loop fix, the quick buy-in and the background folders (see "Recent work
+  2026-08-28").
+  Pages run `33155212299` green from the same commit, so **APK / `main` / Pages are IN SYNC**.
+  Download verified: `200`, `application/vnd.android.package-archive`, 4,801,139 B.
+  Previous build: 2026-08-26 from `main` @ `c275092`, 4.57 MB (4,790,559 B),
   run `32956874967`: the big-screen pass — arrangeable panels, per-role text size, the
-  chip-spread glide, the render placeholder, TV auto-resync (see "Recent work 2026-08-26").
-  Pages run `32956871468` green from the same commit, so **APK / `main` / Pages are IN SYNC**.
-  Download verified: `200`, `application/vnd.android.package-archive`, 4,790,559 B.
+  chip-spread glide, the render placeholder, TV auto-resync.
   Previous build: 2026-08-23 from `main` @ `13c1b70`, 4.50 MB (4,498,713 B),
   run `32660438449`: the session-gone signal + the clock-adjuster rework.
   `npx cap sync` again reported **2 Capacitor plugins for android** including
@@ -1177,6 +1181,65 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 ---
 
 ## ⚠️ Open items / next steps
+
+### Recent work 2026-08-28 — the TV perfection pass (`6eb0b32`)
+
+Five things, all on the big screen. Shipped: `main`, Pages and the APK are all on
+`6eb0b32`.
+
+1. **Sized for a 4K panel.** Every big-screen size is a `clamp()` whose ceiling was
+   tuned for 1080p, and the roster's was the one that hurt: a name could never exceed
+   1.8% of the short edge (~19px), which is ~1.2cm of letter on a 55" screen. Ceilings
+   raised across the board (`ROW_MAX_FS` / `ROW_MAX_VMIN` in `TvMode`, plus the
+   `.tv-*` clamps in `styles.css`) — but the ceiling was only half of it, because the
+   fitter never makes a row bigger than the space it has. Three stacked stat tiles
+   were taking 263 of the left column's 511px, so **the tiles go two-up whenever the
+   roster is on screen at all** (`statsTwoUp`, the same designed state a short canvas
+   already used) and the roster's guaranteed share went 40% → 46%. Measured: names
+   19 → 33px on a 1080-class TV viewport, 69px on a real 4K one. The legend chip was
+   a flat 34px and now follows the display (`legendChipSize`); the pairing QR renders
+   at 10px a module so a 4K blow-up is still scannable.
+2. **The cast that would not stay away.** `tvShowStartStack` is the PHONE's request
+   and rides in `LiveData`, so a TV that dismissed the starting-stack overlay had it
+   pushed straight back on the host's next write — it looked like it reappeared on its
+   own, which is exactly what the user reported. New device-local
+   `Settings.tvStartStackHidden`: the screen keeps its own answer, the phone cannot
+   overwrite it, and there is a `🃏 Stack off / on` button in `.tv-controls`. Only a
+   FRESH request from the phone (off, then on again — tracked by the `castWanted` ref
+   in the session listener) clears it.
+3. **The render loop — the real cause of the "laggy" TV.** The roster fitter is a
+   measure-resize-remeasure loop driven by a `ResizeObserver`, and a row's height is
+   NOT linear in its font size (the trail is sized off the fitted font, the emoji has
+   its own clamp, the money cell can gain a line). It settled into A → B → A and threw
+   `Maximum update depth exceeded` forever. **This predates this branch** — reproduced
+   against `cf071ad` by stashing; the raised ceilings only made it easier to reach.
+   Fixed with a `fitBudget` ref: six changes per real input change, and only OUTSIDE
+   events (`document.fonts.ready`, the 400ms settle) may top it up — never a
+   `ResizeObserver` callback, which may be the fitter's own last move coming back.
+   On top of that: `data-tv-gpu="lite"` (from `tvGpuBudget()` in `lib/tvScale.ts` — a
+   TV browser, or few cores driving a 4K canvas) drops the `backdrop-filter` behind
+   every panel and the `drop-shadow` around moving chip piles, both per-frame GPU
+   work; `.tv-cell` gets `contain: layout paint`; `ChipStackViz` and the new
+   `TvLegend` are memoised so ~90 chip elements and 8 SVG chips stop being rebuilt
+   once a second for the countdown. See [[perf-invariants]] 5 and 6.
+4. **Quick buy-in on the wall** (`💶 Buy-in` in `.tv-controls`). Somebody rebuys at
+   level 7 and wants €20 in chips: type it on the screen everyone is already looking
+   at. Euro ↔ chip count, a keypad (a TV has no keyboard) and three preset amounts
+   (½ / 1× / 2× the buy-in), straight through the same `handoutStack` the phone's
+   roster uses. Says so when the inventory is short. Local to the screen, never
+   synced — it is a calculator, not a change to the night.
+5. **Backgrounds 21 → 37**, sixteen of them casino: rail, card backs, a royal fan,
+   chip scatter, midnight and burgundy baize, marble, chesterfield leather, mahogany,
+   noir, herringbone, the strip, a marquee, roulette, dice, high roller. All generated
+   SVG as before. Thirty-seven thumbnails in one grid is a wall, so `TvBackground`
+   grew a `group` and the picker folds them into seven collapsible folders (`table`,
+   `deco`, `vegas`, `scifi`, `playful`, `minimal`, `season`), one open at a time, with
+   the folder holding the current pick marked and opened first.
+
+Verified: `npx tsc -b`, `npm run lint`, all 22 test files, `npm run build`, plus DOM
+measurements in the browser pane at 1280×720, 1920×1080 and 3840×2160 (screenshots
+were unavailable in that session — every number above is a measurement, not a look).
+**Not verified on real TV hardware.**
 
 ### STATE RIGHT NOW (2026-08-26)
 Everything in the repo is shipped and green. Local branch **`feat/chip-3d-render` == `main` ==
