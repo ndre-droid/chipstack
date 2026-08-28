@@ -189,6 +189,17 @@ export interface SessionConfig {
   /** which blind level the starting stack is built for (index into blindLevels) */
   startLevelIdx: number;
   /**
+   * The amount the Table tab's stack card is currently showing chips for.
+   *
+   * Null (the default) means the buy-in — the starting stack, which is what the card
+   * is for before anybody has rebought. Set to anything else it becomes a HANDOUT:
+   * the chips to push across for a €40 top-up at the blinds being played now,
+   * without touching the buy-in the whole plan is built on. It lives in the session
+   * — and so in LiveData — because the big screen mirrors whatever the card is
+   * showing (see lib/startingStack.ts, `handoutStack`).
+   */
+  handoutAmount?: number | null;
+  /**
    * Hand-tuned per-chip counts from the Plan tab's fine-tune editor, with a
    * signature of the inputs they were tuned against (see lib/startingStack.ts).
    * Lives in the session — and therefore in LiveData — so the TV shows the stack

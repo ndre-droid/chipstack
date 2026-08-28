@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
-import { handoutStack, stacksNeededOf, startingStackOf, stackBasisKey, activeOverride } from './startingStack.ts';
+import {
+  activeOverride,
+  handoutAmountOf,
+  handoutBlindOf,
+  handoutStack,
+  stacksNeededOf,
+  stackBasisKey,
+  startingStackOf,
+} from './startingStack.ts';
 import { moneyToUnits } from './distribution.ts';
 import type { Denomination, SessionConfig } from '../types.ts';
 
@@ -88,6 +96,52 @@ console.log('\na bigger buy-in still gets small chips to post blinds');
 const big = handoutStack(denoms, session, unit, 50);
 check('worth exactly what was paid', valueOf(big.counts) === moneyToUnits(50, unit), String(valueOf(big.counts)));
 check('includes the blind-posting chip', (big.counts['10'] ?? 0) > 0, JSON.stringify(big.counts));
+
+console.log('\nmid-game the handout follows the blinds being played');
+{
+  // Level 3 is 50/100: the 10s and 25s cannot post anything any more, and a €40
+  // rebuy paid out in them is a pile nobody can bet with.
+  const late = handoutStack(denoms, session, unit, 40, 2);
+  check('worth exactly what was paid', valueOf(late.counts) === moneyToUnits(40, unit), String(valueOf(late.counts)));
+  check('the dead small chips are gone', !(late.counts['10'] > 0) && !(late.counts['25'] > 0), JSON.stringify(late.counts));
+  // …but the same amount at the opening blinds still needs the small ones.
+  const early = handoutStack(denoms, session, unit, 40, 0);
+  check('at the starting level the small chips stay', (early.counts['10'] ?? 0) > 0, JSON.stringify(early.counts));
+  check(
+    'and the same money is far fewer pieces once the blinds have moved',
+    chipsIn(late.counts) < chipsIn(early.counts) / 2,
+    `${chipsIn(late.counts)} at 50/100 vs ${chipsIn(early.counts)} at 10/20`,
+  );
+
+  /* The level in play is never allowed to take the stack BELOW the level it was
+     designed for — that would undo the plan rather than follow it. */
+  const fromLvl2: SessionConfig = { ...session, startLevelIdx: 1 } as SessionConfig;
+  check('never below the level the stack was built for', handoutBlindOf(fromLvl2, 0)?.smallBlind === 20);
+  check('and it follows the clock upward', handoutBlindOf(fromLvl2, 2)?.smallBlind === 50);
+  check('past the top level it stops at the top', handoutBlindOf(session, 99)?.smallBlind === 50);
+
+  // A full buy-in at the opening blinds is still exactly the starting stack…
+  const full = handoutStack(denoms, session, unit, session.buyIn, 0);
+  const start = startingStackOf(denoms, session, unit);
+  check('a full buy-in at the start is the starting stack', JSON.stringify(full.counts) === JSON.stringify(start.counts));
+  // …and the same money later is not: it is a top-up in big chips.
+  const fullLate = handoutStack(denoms, session, unit, session.buyIn, 2);
+  check(
+    'the same money later is a top-up, not a fresh stack',
+    chipsIn(fullLate.counts) < chipsIn(start.counts),
+    `${chipsIn(fullLate.counts)} vs ${chipsIn(start.counts)}`,
+  );
+}
+
+console.log('\nthe amount the card is showing chips for');
+{
+  check('nothing chosen means the buy-in', handoutAmountOf(session) === session.buyIn);
+  check('a chosen amount wins', handoutAmountOf({ ...session, handoutAmount: 40 } as SessionConfig) === 40);
+  check(
+    'a nonsense amount falls back to the buy-in',
+    handoutAmountOf({ ...session, handoutAmount: 0 } as SessionConfig) === session.buyIn,
+  );
+}
 
 console.log('\nhand-tuned counts only survive while their inputs do');
 const counts = { '10': 10, '25': 12, '50': 10, '100': 11 };

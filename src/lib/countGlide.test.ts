@@ -1,12 +1,23 @@
-import { glideStep, glideDistance, GLIDE_STEPS, GLIDE_STEP_MS, GLIDE_MAX_LAG } from './countGlide.ts';
+import {
+  advance,
+  glideDistance,
+  nextSpan,
+  roundCounts,
+  sameCounts,
+  GLIDE_LEAD,
+  GLIDE_MAX_LAG,
+  GLIDE_MAX_SPAN_MS,
+  GLIDE_MIN_SPAN_MS,
+  GLIDE_START_SPAN_MS,
+} from './countGlide.ts';
 
 /**
  * The big screen following the phone's chip-mix slider.
  *
- * The rules that make it read as smooth rather than laggy: never stand still while
- * there is a difference left, never move a pile past the number the phone sent,
- * settle inside the gap between two pushes, and leave departing denominations to the
- * column flow instead of grinding them down to zero.
+ * The rules that make it read as smooth rather than laggy: play the change back at
+ * the pace it arrives at, at a constant speed, never past the number the phone sent,
+ * still moving when the next spread lands, and leaving departing denominations to
+ * the column flow instead of grinding them down to zero.
  */
 
 let failures = 0;
@@ -27,81 +38,121 @@ const show = (m: Record<string, number>) =>
     .map((k) => `${k}=${m[k]}`)
     .join(',');
 
-/** Walk all the way there the way the hook does, and say how many steps it took. */
-function settle(from: Record<string, number>, to: Record<string, number>, cap = 200) {
-  let at = from;
-  let steps = 0;
-  let budget = GLIDE_STEPS;
-  while (steps < cap) {
-    const next = glideStep(at, to, budget);
-    budget = Math.max(1, budget - 1);
-    if (next === at) break;
-    at = next;
-    steps++;
+/**
+ * Play one change all the way through the way the hook does: frames of `dt` ms until
+ * the deadline, advancing the fractional spread and rounding it for the screen.
+ * Returns the drawn spread after every frame that changed it.
+ */
+function play(
+  from: Record<string, number>,
+  to: Record<string, number>,
+  span: number,
+  dt = 16.7,
+): { frames: { at: number; counts: Record<string, number> }[]; final: Record<string, number> } {
+  let pos = { ...from };
+  let drawn = roundCounts(pos);
+  const frames: { at: number; counts: Record<string, number> }[] = [];
+  let left = span;
+  let at = 0;
+  // one frame past the deadline, which is where the last chips land
+  for (let guard = 0; guard < 400 && left > -dt; guard++) {
+    pos = advance(pos, to, dt, left);
+    left -= dt;
+    at += dt;
+    const next = roundCounts(pos);
+    if (!sameCounts(next, drawn)) frames.push({ at, counts: next });
+    drawn = next;
   }
-  return { at, steps };
+  return { frames, final: drawn };
 }
 
 console.log('\nnothing to do');
 {
   const a = { x: 4, y: 2 };
-  eq('the same object back', glideStep(a, { x: 4, y: 2 }), a);
   eq('distance is zero', glideDistance(a, { x: 4, y: 2 }), 0);
+  eq('an unchanged spread does not move', show(advance(a, { x: 4, y: 2 }, 16, 500)), 'x=4,y=2');
+  check('the same spread is recognised', sameCounts(a, { y: 2, x: 4 }));
+  check('a taller pile is not', !sameCounts(a, { x: 5, y: 2 }));
+  check('a different set of piles is not', !sameCounts(a, { x: 4, y: 2, z: 0 }));
 }
 
-console.log('\none chip at a time for a small change');
+console.log('\nthe pace is measured, not assumed');
 {
-  eq('grows by one', show(glideStep({ x: 4 }, { x: 5 })), 'x=5');
-  eq('shrinks by one', show(glideStep({ x: 4 }, { x: 3 })), 'x=3');
-  eq('never overshoots', show(glideStep({ x: 4 }, { x: 6 })), 'x=5');
+  check('a slower link stretches the span', nextSpan(GLIDE_START_SPAN_MS, 1200) > GLIDE_START_SPAN_MS);
+  check('…but not all the way in one reading', nextSpan(GLIDE_START_SPAN_MS, 1200) < 1200);
+  eq('a freak gap cannot stall the pile', nextSpan(GLIDE_MAX_SPAN_MS, 60_000), GLIDE_MAX_SPAN_MS);
+  eq('and a burst cannot make it a blur', nextSpan(GLIDE_MIN_SPAN_MS, 0), GLIDE_MIN_SPAN_MS);
+  check('the average settles on a steady pace', Math.abs(nextSpan(nextSpan(nextSpan(700, 900), 900), 900) - 900) < 90);
 }
 
-console.log('\na big lump is spread out, not dumped');
+console.log('\none change, played back at a constant speed');
 {
-  const one = glideStep({ x: 0 }, { x: 24 });
-  check('a 24-chip jump moves a fraction of it', one.x > 0 && one.x < 24, `moved to ${one.x}`);
-  eq('and no faster than the spread allows', one.x, Math.ceil(24 / GLIDE_STEPS));
+  const span = 700;
+  const { frames, final } = play({ x: 0 }, { x: 24 }, span);
+  eq('it lands exactly', final.x, 24);
+  check('and arrives a chip at a time', frames.length >= 20, `${frames.length} steps`);
+  check('never overshooting', frames.every((f) => f.counts.x <= 24));
+  check('and never going backwards', frames.every((f, i) => i === 0 || f.counts.x >= frames[i - 1].counts.x));
+  /* The gaps between two chips LANDING are even — that is what constant speed means,
+     and it is the whole difference between a pile being fed and a pile lurching. A
+     chip can only land on a frame boundary, so one frame of slack is the floor. */
+  const gaps = frames.slice(1).map((f, i) => f.at - frames[i].at);
+  const ideal = span / 24;
+  check(
+    `at an even rate (~${ideal.toFixed(0)}ms a chip)`,
+    Math.max(...gaps) - Math.min(...gaps) <= 16.8 && Math.max(...gaps) <= ideal + 16.8,
+    `gaps ${gaps.map((g) => g.toFixed(0)).join(',')}`,
+  );
 }
 
-console.log('\nit always arrives, and inside the gap between two pushes');
+console.log('\nit is still moving when the next spread arrives');
 {
-  for (const [from, to] of [
-    [0, 1],
-    [3, 11],
-    [11, 3],
-    [0, 40],
-    [40, 0],
-    [7, GLIDE_MAX_LAG],
-  ] as const) {
-    const { at, steps } = settle({ x: from }, { x: to });
-    eq(`${from} → ${to} lands exactly`, at.x, to);
-    check(
-      `${from} → ${to} settles in ${steps * GLIDE_STEP_MS}ms`,
-      steps <= GLIDE_STEPS && steps * GLIDE_STEP_MS < 700,
-      `${steps} steps`,
-    );
+  // A change is given slightly longer than the measured gap on purpose, so the pile
+  // never stands still between two pushes.
+  const span = 700 * GLIDE_LEAD;
+  const { final } = play({ x: 0 }, { x: 20 }, span, 700 / 40);
+  check('the lead is real', GLIDE_LEAD > 1);
+  eq('and it still lands when the drag stops', final.x, 20);
+  // interrupted after one measured gap: it is part-way there, not finished
+  let pos: Record<string, number> = { x: 0 };
+  let left = span;
+  for (let t = 0; t < 700; t += 16.7) {
+    pos = advance(pos, { x: 20 }, 16.7, left);
+    left -= 16.7;
   }
+  check('mid-drag it is still on its way', pos.x > 14 && pos.x < 20, `at ${pos.x.toFixed(1)}`);
+}
+
+console.log('\na late frame moves the pile by exactly what it earned');
+{
+  // The old timer fired in a burst after a busy moment and dumped several chips into
+  // one frame. Elapsed time decides the stride, so a 100ms frame is one 100ms move.
+  const one = advance({ x: 0 }, { x: 30 }, 100, 700);
+  check('a 100ms frame is worth 100ms of movement', Math.abs(one.x - 30 * (100 / 700)) < 0.01, `moved ${one.x}`);
+  const stalled = advance({ x: 10 }, { x: 30 }, 800, 700);
+  eq('a frame past the deadline lands the lot', stalled.x, 30);
 }
 
 console.log('\nevery pile moves together');
 {
-  const next = glideStep({ a: 10, b: 2, c: 7 }, { a: 8, b: 5, c: 7 });
-  eq('the ones that changed moved, the one that did not held', show(next), 'a=9,b=3,c=7');
+  const { final } = play({ a: 10, b: 2, c: 7 }, { a: 8, b: 5, c: 7 }, 700);
+  eq('the ones that changed arrived, the one that did not held', show(final), 'a=8,b=5,c=7');
+  const mid = advance({ a: 10, b: 2, c: 7 }, { a: 8, b: 5, c: 7 }, 350, 700);
+  eq('and they are halfway together', show(roundCounts(mid)), 'a=9,b=4,c=7');
 }
 
 console.log('\na new denomination builds from nothing');
 {
-  const next = glideStep({ a: 4 }, { a: 4, b: 6 });
+  const next = advance({ a: 4 }, { a: 4, b: 6 }, 100, 700);
   check('it starts arriving rather than appearing whole', next.b > 0 && next.b < 6, `b=${next.b}`);
-  const { at } = settle({ a: 4 }, { a: 4, b: 6 });
-  eq('and gets there', show(at), 'a=4,b=6');
+  const { final } = play({ a: 4 }, { a: 4, b: 6 }, 700);
+  eq('and gets there', show(final), 'a=4,b=6');
 }
 
 console.log('\na departing denomination is left to the column flow');
 {
-  const next = glideStep({ a: 4, b: 6 }, { a: 4 });
+  const next = advance({ a: 4, b: 6 }, { a: 4 }, 100, 700);
   eq('it is dropped, not ground down to zero', show(next), 'a=4');
-  check('and that counts as a change', next !== ({ a: 4, b: 6 } as Record<string, number>));
 }
 
 console.log('\ndistance is what decides when to give up and jump');

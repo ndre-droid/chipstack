@@ -204,13 +204,13 @@ export default function TableScreen() {
       <ConnectToTv />
 
       {/* The stack everyone gets for the buy-in */}
-      <StartingStack />
+      <StartingStack levelIdx={levelIdx} />
 
       {/* Anybody who scanned the code on the TV and typed their own name. */}
       <JoinRequests />
 
       {/* Everyone at the table: joining, rebuys, stack counts, cash-outs — one card. */}
-      <PlayerRoster />
+      <PlayerRoster levelIdx={levelIdx} />
 
       {/* Side pots and colouring up — the two calculations the table argues about. */}
       <button className="btn btn-ghost btn-block btn-sm tools-btn" onClick={() => setTools(true)}>

@@ -47,25 +47,61 @@ export function autoStartingStack(
 }
 
 /**
+ * The blind level a mid-game handout should be built for.
+ *
+ * Not the starting level: an hour in, the blinds are 25/50 and the 5s and 10s that
+ * made the opening stack work are dead weight — nobody can post anything with them,
+ * they only make the pile taller. Feeding the level actually being played into
+ * `computeStack` drops them on its own (`selectPool` keeps the pool blind-compatible),
+ * which is the whole mechanism behind "stop giving me the small chips".
+ *
+ * Never BELOW the level the stack was designed for, though: handing out chips finer
+ * than the plan's own base chip would undo the plan rather than follow it.
+ */
+export function handoutBlindOf(session: SessionConfig, levelIdx: number | null | undefined) {
+  const levels = session.blindLevels;
+  if (!levels.length) return null;
+  const start = Math.max(0, session.startLevelIdx ?? 0);
+  const wanted = typeof levelIdx === 'number' ? Math.max(levelIdx, start) : start;
+  return levels[Math.min(levels.length - 1, wanted)] ?? null;
+}
+
+/** The amount the stack card is showing chips for — the buy-in unless overridden. */
+export function handoutAmountOf(session: SessionConfig): number {
+  const set = session.handoutAmount;
+  return typeof set === 'number' && set > 0 ? set : session.buyIn;
+}
+
+/**
  * The chips to hand over for ANY amount of money, built with the same rules as the
  * starting stack. A €5 late buy-in gets €5 worth of chips — not a full stack.
  *
- * A full buy-in returns exactly the starting stack (manual fine-tuning included), so
- * a new player is dealt what the Plan tab promises. A smaller top-up instead gets
- * the FEWEST chips (`smallBias` 0): mid-game nobody wants 25 pieces for €5, and the
- * small chips they need for blinds are already in front of them.
+ * `levelIdx` is the blind level being played right now (from the clock); leave it out
+ * and the stack is built for the starting level, which is what the Plan tab wants.
+ *
+ * A full buy-in at the starting blinds returns exactly the starting stack (manual
+ * fine-tuning included), so a new player is dealt what the Plan tab promises. Anything
+ * else gets the FEWEST chips (`smallBias` 0): mid-game nobody wants 25 pieces for €5,
+ * and the small chips they need for blinds are already in front of them.
  */
 export function handoutStack(
   denominations: Denomination[],
   session: SessionConfig,
   unitValue: number,
   amount: number,
+  levelIdx?: number | null,
 ): StackResult {
-  if (Math.abs(amount - session.buyIn) < 0.005) return startingStackOf(denominations, session, unitValue);
+  const blind = handoutBlindOf(session, levelIdx);
+  const atStart = blind === startBlindOf(session);
+  if (atStart && Math.abs(amount - session.buyIn) < 0.005) {
+    return startingStackOf(denominations, session, unitValue);
+  }
   return computeStack(moneyToUnits(amount, unitValue), denominations, {
-    smallBias: amount > session.buyIn ? session.smallBias : 0,
+    // A full buy-in handed out at higher blinds is still a top-up, not an opening
+    // stack: few chips, big ones.
+    smallBias: atStart && amount > session.buyIn ? session.smallBias : 0,
     excluded: excludedSetOf(session),
-    blind: startBlindOf(session),
+    blind,
     stacksNeeded: stacksNeededOf(session),
     maxDenoms: session.maxDenoms,
     useAllChips: session.useAllChips,

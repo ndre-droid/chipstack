@@ -109,6 +109,7 @@ const defaultSession: SessionConfig = {
   excludedDenoms: [],
   startLevelIdx: 0,
   stackOverride: null,
+  handoutAmount: null,
 };
 
 /** how many counting rounds a player's stack trail keeps (sparkline length) */
@@ -974,6 +975,9 @@ function migrate(raw: string | null): AppState {
   if (!Array.isArray(session.excludedDenoms)) session.excludedDenoms = [];
   if (typeof session.startLevelIdx !== 'number' || session.startLevelIdx < 0) session.startLevelIdx = 0;
   if (!session.stackOverride || typeof session.stackOverride.key !== 'string') session.stackOverride = null;
+  // A saved night from before the handout switcher shows the starting stack, which
+  // is exactly what null means.
+  if (typeof session.handoutAmount !== 'number' || !(session.handoutAmount > 0)) session.handoutAmount = null;
   if (!Array.isArray(session.blindLevels) || session.blindLevels.length === 0)
     session.blindLevels = defaultBlinds(settings.defaultSmallBlind, settings.defaultBigBlind);
 
@@ -1065,17 +1069,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       }
     };
-    const id = window.setTimeout(save, 250);
+    /* …and then handed to the browser's idle time rather than run on the spot.
+       Serialising the night and writing it to localStorage is synchronous work of a
+       few milliseconds — on the big screen it landed a quarter of a second after
+       every incoming push from the phone, which is exactly when the chip stacks are
+       mid-animation, and a dropped frame there is visible from across the room. An
+       idle callback puts it between two frames instead. The timeout is what keeps it
+       a debounce and not a maybe: the browser must run it within a second whether it
+       ever goes idle or not. */
+    let idle: number | null = null;
+    const id = window.setTimeout(() => {
+      const ric = window.requestIdleCallback;
+      if (ric) idle = ric(save, { timeout: 1000 });
+      else save();
+    }, 250);
+    const cancel = () => {
+      window.clearTimeout(id);
+      if (idle !== null) window.cancelIdleCallback?.(idle);
+      idle = null;
+    };
     // A phone closing the app never gets the timer; it does get this.
     const flush = () => {
       if (document.hidden) {
-        window.clearTimeout(id);
+        cancel();
         save();
       }
     };
     document.addEventListener('visibilitychange', flush);
     return () => {
-      window.clearTimeout(id);
+      cancel();
       document.removeEventListener('visibilitychange', flush);
     };
   }, [state]);

@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import qrcode from 'qrcode-generator';
 import { useStore } from '../store';
@@ -13,7 +13,7 @@ import { secondsLeft as clockSecondsLeft, initialClock } from '../lib/clockLogic
 import type { ClockState } from '../lib/clockLogic';
 import { queueClock } from '../lib/liveSyncQueue';
 import { getLocalClock, setLocalClock } from '../lib/localClock';
-import { handoutStack, startingStackOf } from '../lib/startingStack';
+import { handoutAmountOf, handoutStack, startingStackOf } from '../lib/startingStack';
 import { autoTvScale, clampTvScale, tvGpuBudget, TV_SCALE_MIN, TV_SCALE_MAX, TV_SCALE_STEP } from '../lib/tvScale';
 import {
   TV_COLS,
@@ -484,55 +484,66 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         liveSessionCode,
         (doc) => {
           if (isTv && doc.data) {
+            const data = doc.data;
             setPaired(true);
             /* A fresh cast request clears this screen's "put it away". The phone's
                `tvShowStartStack` stays true for as long as the card on the Table tab
                says "Hide from TV", so a TV that merely cleared the flag had it pushed
                back on the host's very next write — see `tvStartStackHidden`. Only the
                phone turning it OFF and ON again counts as asking twice. */
-            const wantsCast = !!doc.data.tvShowStartStack;
+            const wantsCast = !!data.tvShowStartStack;
             if (wantsCast && castWanted.current === false) {
               dispatch({ type: 'UPDATE_SETTINGS', patch: { tvStartStackHidden: false } });
             }
             castWanted.current = wantsCast;
-            dispatch({
-              type: 'LIVE_APPLY_REMOTE',
-              denominations: doc.data.denominations,
-              session: doc.data.session,
-              ledger: doc.data.ledger,
-              currency: doc.data.currency,
-              unitValue: doc.data.unitValue,
-              tvBackgroundFocus: doc.data.tvBackgroundFocus ?? null,
-              tvBackgroundTone: doc.data.tvBackgroundTone ?? null,
-              minutesPerLevel: doc.data.minutesPerLevel,
-              skin: doc.data.skin,
-              tvSkin: doc.data.tvSkin,
-              accents: doc.data.accents,
-              tvQuips: doc.data.tvQuips,
-              tvCustomQuips: doc.data.tvCustomQuips,
-              tvShowPlayers: doc.data.tvShowPlayers,
-              tvRosterSort: doc.data.tvRosterSort,
-              tvShowPayouts: doc.data.tvShowPayouts,
-              tvShowBustOrder: doc.data.tvShowBustOrder,
-              breakMinutes: doc.data.breakMinutes,
-              breakEvery: doc.data.breakEvery,
-              language: doc.data.language,
-              gameMode: doc.data.gameMode,
-              cashUseTimer: doc.data.cashUseTimer,
-              tvShowStartStack: doc.data.tvShowStartStack,
-              chipArt: doc.data.chipArt,
-              bountyMode: doc.data.bountyMode,
-              bountyAmount: doc.data.bountyAmount,
-              showTrend: doc.data.showTrend ?? true,
-              payoutSplit: doc.data.payoutSplit ?? null,
-              lateRegLevels: doc.data.lateRegLevels ?? 0,
-              customAccent: doc.data.customAccent,
-              tvPenalties: doc.data.tvPenalties,
-              tvHouseRules: doc.data.tvHouseRules,
-              tvLayout: doc.data.tvLayout ?? null,
-              tvTextScale: doc.data.tvTextScale ?? undefined,
-              moments: doc.data.moments,
-              counting: doc.data.counting ?? null,
+            /* The whole table in one go — roster, stats, payouts, the chip spread —
+               and on a set-top box that is the most expensive render this screen
+               ever does. It lands every time the phone pushes, which during a drag
+               of the chip-mix slider is once a second, right on top of the chips
+               that are mid-fall. As a transition React is free to interrupt it for
+               the animation frames and to coalesce two pushes that arrive close
+               together, so the stacks keep moving while the rest catches up. The
+               clock below stays urgent — a second is a second. */
+            startTransition(() => {
+              dispatch({
+                type: 'LIVE_APPLY_REMOTE',
+                denominations: data.denominations,
+                session: data.session,
+                ledger: data.ledger,
+                currency: data.currency,
+                unitValue: data.unitValue,
+                tvBackgroundFocus: data.tvBackgroundFocus ?? null,
+                tvBackgroundTone: data.tvBackgroundTone ?? null,
+                minutesPerLevel: data.minutesPerLevel,
+                skin: data.skin,
+                tvSkin: data.tvSkin,
+                accents: data.accents,
+                tvQuips: data.tvQuips,
+                tvCustomQuips: data.tvCustomQuips,
+                tvShowPlayers: data.tvShowPlayers,
+                tvRosterSort: data.tvRosterSort,
+                tvShowPayouts: data.tvShowPayouts,
+                tvShowBustOrder: data.tvShowBustOrder,
+                breakMinutes: data.breakMinutes,
+                breakEvery: data.breakEvery,
+                language: data.language,
+                gameMode: data.gameMode,
+                cashUseTimer: data.cashUseTimer,
+                tvShowStartStack: data.tvShowStartStack,
+                chipArt: data.chipArt,
+                bountyMode: data.bountyMode,
+                bountyAmount: data.bountyAmount,
+                showTrend: data.showTrend ?? true,
+                payoutSplit: data.payoutSplit ?? null,
+                lateRegLevels: data.lateRegLevels ?? 0,
+                customAccent: data.customAccent,
+                tvPenalties: data.tvPenalties,
+                tvHouseRules: data.tvHouseRules,
+                tvLayout: data.tvLayout ?? null,
+                tvTextScale: data.tvTextScale ?? undefined,
+                moments: data.moments,
+                counting: data.counting ?? null,
+              });
             });
           } else if (isTv) {
             setPaired(false);
@@ -832,25 +843,34 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   /* …and the honest fix for the other half of it: if that strip IS the browser's own
      chrome, only fullscreen removes it.
 
-     The big screen is ALWAYS meant to be fullscreen — there is no reading a URL bar
-     from four metres away — so there is no button for it any more. The catch is that
-     browsers only grant fullscreen from inside a real user gesture, so this asks
-     immediately (which works where the screen was opened by a tap, and on kiosk/TV
-     browsers that allow it) and otherwise arms a one-shot listener: the very next
-     touch or click anywhere on the screen takes it fullscreen. Leaving fullscreen —
-     Esc, or the TV's back key — re-arms it, so the next touch puts it back. */
+     The big screen is MEANT to be fullscreen — there is no reading a URL bar from
+     four metres away — but browsers only grant it from inside a real user gesture,
+     so this asks immediately (which works where the screen was opened by a tap, and
+     on kiosk/TV browsers that allow it) and otherwise arms a one-shot listener: the
+     very next touch or click anywhere on the screen takes it fullscreen. Leaving it
+     by accident — Esc, or the TV's back key — re-arms it, so the next touch puts it
+     back.
+
+     `wantsFull` is what keeps that from becoming a trap. Somebody who asks for the
+     window back with the button below means it, and re-grabbing the screen on their
+     very next click would be the app arguing with them; the flag disarms the
+     listener until they ask for fullscreen again. */
+  const [isFull, setIsFull] = useState(false);
+  const wantsFull = useRef(true);
+
   useEffect(() => {
     const root = document.documentElement;
     if (!root.requestFullscreen) return;
     let armed = true;
     const enter = () => {
-      if (document.fullscreenElement) return;
+      if (document.fullscreenElement || !wantsFull.current) return;
       void root.requestFullscreen().catch(() => {});
     };
     const onGesture = (e: Event) => {
       // …except the way out: asking for fullscreen as the screen closes is both
-      // pointless and, on some browsers, a rejected promise mid-unmount.
-      if (e.target instanceof Element && e.target.closest('.tv-exit')) return;
+      // pointless and, on some browsers, a rejected promise mid-unmount. The same
+      // goes for the button that deliberately leaves it.
+      if (e.target instanceof Element && e.target.closest('.tv-exit, .tv-full')) return;
       enter();
     };
     const arm = () => {
@@ -860,7 +880,9 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       document.addEventListener('keydown', onGesture, true);
     };
     const onChange = () => {
-      if (document.fullscreenElement) {
+      const on = !!document.fullscreenElement;
+      setIsFull(on);
+      if (on) {
         armed = false;
         document.removeEventListener('pointerdown', onGesture, true);
         document.removeEventListener('keydown', onGesture, true);
@@ -879,6 +901,30 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
     };
   }, []);
+
+  /* The button for it. A TV browser that refuses fullscreen from a timer usually
+     grants it from a real tap, which is the other half of why this exists: on a set
+     that never went fullscreen by itself, this is the way in. Not offered at all
+     where the browser has no fullscreen API — an iOS home-screen app is already
+     chromeless, and a button that cannot work is worse than no button. */
+  const canFullscreen = typeof document !== 'undefined' && !!document.documentElement.requestFullscreen;
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      wantsFull.current = false;
+      void document.exitFullscreen().catch(() => {});
+      return;
+    }
+    wantsFull.current = true;
+    void document.documentElement.requestFullscreen?.().catch(() => {});
+  };
+
+  /* Reload the big screen from the sofa. A TV browser is a machine nobody has a
+     keyboard for: when the session has gone strange — a stale render, a link the
+     stick dropped, a build the screen is a week behind on — the fix has always been
+     to walk over and find the browser's own refresh. The pairing code is persisted,
+     so the screen comes back up on the same session. */
+  const reloadTv = () => window.location.reload();
 
 
   // main clock — read off the deadline every tick, so a slow or skipped timer can
@@ -1379,6 +1425,18 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     [denominations, state.session, unitValue],
   );
 
+  /* …and the stack the phone is actually casting, which is not always that one. The
+     card on the Table tab doubles as a handout for any amount (see
+     `components/StartingStack`), so the big screen follows whatever it is showing:
+     the amount travels in the session, and the chips are built for the level THIS
+     screen is on — which is the same level the phone is on, because the clock is
+     shared. That is what stops the 5s turning up in a €40 rebuy at 25/50. */
+  const castAmount = handoutAmountOf(state.session);
+  const castStack = useMemo(
+    () => handoutStack(denominations, state.session, unitValue, castAmount, levelIdx),
+    [denominations, state.session, unitValue, castAmount, levelIdx],
+  );
+
   // color-up alarm: at the current level, which chips should be raced off?
   const colorUpNow = useMemo(() => {
     if (isCash || !showTimer) return null;
@@ -1494,8 +1552,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         ? handoutValue
         : handoutValue * unitValue;
   const handoutResult = useMemo(
-    () => (handoutMoney > 0 ? handoutStack(denominations, state.session, unitValue, handoutMoney) : null),
-    [denominations, state.session, unitValue, handoutMoney],
+    () => (handoutMoney > 0 ? handoutStack(denominations, state.session, unitValue, handoutMoney, levelIdx) : null),
+    [denominations, state.session, unitValue, handoutMoney, levelIdx],
   );
   /** Buy-in, half of it and double it — the three amounts a rebuy is actually for. */
   const handoutQuick = useMemo(() => {
@@ -1895,6 +1953,15 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         >
           {state.settings.language === 'en' ? 'DE' : 'EN'}
         </button>
+        {/* The two things a TV browser has no keyboard for. */}
+        {canFullscreen && (
+          <button className="tv-txt tv-full" onClick={toggleFullscreen}>
+            {isFull ? `⤡ ${t('tv.exitFullscreen')}` : `⛶ ${t('tv.fullscreen')}`}
+          </button>
+        )}
+        <button className="tv-txt" onClick={reloadTv} aria-label={t('tv.refresh')}>
+          ⟳ {t('tv.refresh')}
+        </button>
         <button className="tv-txt tv-exit" onClick={onClose}>{deviceIsTv ? t('tv.exitTv') : t('tv.exit')}</button>
       </div>
 
@@ -1925,22 +1992,24 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       )}
 
       {/* starting-stack overlay — cast from the phone (Table → Starting stack → Show on TV) */}
-      {showStartStack && startStack.denomsUsed.length > 0 && (
+      {showStartStack && castStack.denomsUsed.length > 0 && (
         <div className="tv-overlay tv-startstack" onClick={hideStartStack}>
-          <div className="tv-overlay-label">{t('table.startingStack')}</div>
+          <div className="tv-overlay-label">
+            {Math.abs(castAmount - buyIn) < 0.005 ? t('table.startingStack') : t('table.handoutTitle')}
+          </div>
           {/* The real pile per denomination, not one chip and a number: the phone's
               chip-mix slider moves these stacks, and the big screen shows the chips
               arriving and leaving as it is dragged. */}
           <div className="tv-startstack-grid">
             <ChipStackViz
-              denoms={startStack.denomsUsed}
-              counts={startStack.counts}
+              denoms={castStack.denomsUsed}
+              counts={castStack.counts}
               surface="tv"
               maxChipSize={tvChipSize}
             />
           </div>
           <div className="tv-startstack-total">
-            {num(startStack.totalValue)} {t('plan.chips').toLowerCase()} · {money(buyIn, currency)} · {startStack.chipCount} {t('plan.chips').toLowerCase()}
+            {num(castStack.totalValue)} {t('plan.chips').toLowerCase()} · {money(castAmount, currency)} · {castStack.chipCount} {t('plan.chips').toLowerCase()}
           </div>
           <div className="tv-overlay-hint">{t('tv.tapToDismiss')}</div>
         </div>

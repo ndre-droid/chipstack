@@ -35,7 +35,7 @@ type Handout = { id: string; amount: number; denoms: { value: number; color: str
  * later re-entry ADDS to `buyIn` — the earlier cash-out stays on the record and the
  * net stays right. Stacks (`chips`) are an overview figure and never feed settlement.
  */
-function PlayerRoster() {
+function PlayerRoster({ levelIdx }: { levelIdx?: number }) {
   const { state, dispatch } = useStore();
   const t = useT();
   const { money } = useFmt();
@@ -187,7 +187,9 @@ function PlayerRoster() {
   const buyIn = (id: string, amount: number) => {
     const p = ledger.find((x) => x.id === id);
     if (!p || amount <= 0) return;
-    const stack = handoutStack(state.denominations, session, unitValue, amount);
+    /* Built for the blinds being played NOW, not the opening ones: an hour in, a
+       €40 rebuy paid out in 5s is a pile nobody can bet with. */
+    const stack = handoutStack(state.denominations, session, unitValue, amount, levelIdx);
     dispatch({
       type: 'LEDGER_UPDATE',
       id,
@@ -838,8 +840,9 @@ function StackPrompt({
   );
 }
 
-/* Wrapped in `memo` because it takes no props: the Table tab repaints once a second
-   while the blind clock runs, and without this every tick rebuilt this whole subtree
-   for a countdown that lives somewhere else entirely. Store changes still reach it —
-   it reads the store itself, and context goes straight past `memo`. */
+/* Wrapped in `memo` because its only prop is the blind level: the Table tab repaints
+   once a second while the blind clock runs, and without this every tick rebuilt this
+   whole subtree for a countdown that lives somewhere else entirely. The level changes
+   once every twenty minutes, so it costs nothing. Store changes still reach it — it
+   reads the store itself, and context goes straight past `memo`. */
 export default memo(PlayerRoster);

@@ -1992,6 +1992,32 @@ input[type='color'] { cursor: pointer; }
 }
 .start-stack-meta b { color: var(--acc); font-size: 15px; }
 
+/* …and the amount it is showing chips FOR. Mid-game the same card answers "what do
+   I push across for a €40 rebuy", so the amount is a row of one-tap buttons rather
+   than a trip back to the Plan tab to rewrite the buy-in. */
+.handout-picks {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px;
+}
+.handout-pick {
+  flex: 1 1 0; min-width: 64px; padding: 7px 6px 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface-2); color: var(--text);
+  font-family: var(--mono); font-size: 13px; font-weight: 600;
+  font-variant-numeric: tabular-nums; cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+.handout-pick small { font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
+.handout-pick.active {
+  border-color: var(--acc-line); background: var(--acc-wash); color: var(--acc);
+}
+.handout-pick.active small { color: var(--acc); }
+.handout-amount { margin-top: 8px; text-align: center; font-family: var(--mono); }
+.handout-level {
+  margin-top: 8px; text-align: center; font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Departed-player profit/loss in the TV roster */
 .tv-players-row .tv-net.pos { color: var(--good); }
 .tv-players-row .tv-net.neg { color: var(--bad); }
