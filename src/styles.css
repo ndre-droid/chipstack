@@ -1644,6 +1644,11 @@ input[type='color'] { cursor: pointer; }
 .tv-legend-row { display: flex; align-items: center; gap: clamp(7px, 1.3vmin, 22px); padding: clamp(3px, 0.7vmin, 12px) 0; }
 .tv-legend-row .chip-svg { width: calc(clamp(30px, 4.2vmin, 112px) * var(--tv-fs-legend, 1)); height: calc(clamp(30px, 4.2vmin, 112px) * var(--tv-fs-legend, 1)); flex-shrink: 0; }
 .tv-legend-v { font-family: var(--tv-num); font-weight: 700; font-size: calc(clamp(16px, 2.4vmin, 58px) * var(--tv-fs-legend, 1)); min-width: 2.6em; }
+/* Chips the blinds have left behind: still in the box, no longer worth handing out.
+   Dimmed rather than removed — they are physically on the felt until the colour-up. */
+.tv-legend-row.is-out { opacity: 0.38; }
+.tv-legend-row.is-out .tv-legend-v { text-decoration: line-through; }
+.tv-legend-out { font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.08em; color: var(--tv-dim); font-size: calc(clamp(9px, 1.2vmin, 26px) * var(--tv-fs-legend, 1)); }
 .tv-legend-m { margin-left: auto; font-family: var(--tv-num); color: var(--tv-dim); font-size: calc(clamp(14px, 2vmin, 48px) * var(--tv-fs-legend, 1)); }
 
 .tv-quip { flex-shrink: 0; text-align: center; font-style: italic; color: var(--tv-faint); font-size: calc(clamp(15px, 2.1vmin, 52px) * var(--tv-fs-quips, 1)); padding: clamp(4px, 0.9vmin, 18px) 0; animation: quip-in 0.5s ease; }

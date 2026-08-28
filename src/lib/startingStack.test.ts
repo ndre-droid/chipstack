@@ -4,6 +4,7 @@ import {
   handoutAmountOf,
   handoutBlindOf,
   handoutStack,
+  liveBaseValue,
   stacksNeededOf,
   stackBasisKey,
   startingStackOf,
@@ -141,6 +142,23 @@ console.log('\nthe amount the card is showing chips for');
     'a nonsense amount falls back to the buy-in',
     handoutAmountOf({ ...session, handoutAmount: 0 } as SessionConfig) === session.buyIn,
   );
+}
+
+console.log('\nthe chip legend follows the blinds too');
+{
+  // What the TV greys out: at 10/20 nothing is dead yet, at 50/100 the 10s and 25s are.
+  const excluded = { ...session, excludedDenoms: ['10'] } as SessionConfig;
+  check('at the opening blinds the smallest chip is still the base', liveBaseValue(denoms, session, 0) === 10);
+  check(
+    'at 50/100 the base has moved up',
+    liveBaseValue(denoms, session, 2) === 50,
+    String(liveBaseValue(denoms, session, 2)),
+  );
+  check(
+    '"use all my chips" keeps every value in play',
+    liveBaseValue(denoms, { ...session, useAllChips: true } as SessionConfig, 2) === 10,
+  );
+  check('an excluded chip is never the base', liveBaseValue(denoms, excluded, 0) !== 10, String(liveBaseValue(denoms, excluded, 0)));
 }
 
 console.log('\nhand-tuned counts only survive while their inputs do');

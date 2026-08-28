@@ -1,5 +1,5 @@
 import type { Denomination, SessionConfig } from '../types.ts';
-import { computeStack, moneyToUnits } from './distribution.ts';
+import { baseChipValue, computeStack, moneyToUnits } from './distribution.ts';
 import type { StackResult } from './distribution.ts';
 
 /**
@@ -64,6 +64,24 @@ export function handoutBlindOf(session: SessionConfig, levelIdx: number | null |
   const start = Math.max(0, session.startLevelIdx ?? 0);
   const wanted = typeof levelIdx === 'number' ? Math.max(levelIdx, start) : start;
   return levels[Math.min(levels.length - 1, wanted)] ?? null;
+}
+
+/**
+ * The smallest chip still in play at `levelIdx` — anything below it is dead weight.
+ *
+ * The stack builder already drops those chips (see `handoutBlindOf`); this is the
+ * same answer for screens that show the whole chip set rather than one stack, so the
+ * TV legend can grey out the 5s at 25/50 instead of still offering them.
+ */
+export function liveBaseValue(
+  denominations: Denomination[],
+  session: SessionConfig,
+  levelIdx?: number | null,
+): number {
+  return baseChipValue(denominations, handoutBlindOf(session, levelIdx), {
+    excluded: excludedSetOf(session),
+    useAllChips: session.useAllChips,
+  });
 }
 
 /** The amount the stack card is showing chips for — the buy-in unless overridden. */

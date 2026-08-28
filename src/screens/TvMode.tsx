@@ -13,7 +13,7 @@ import { secondsLeft as clockSecondsLeft, initialClock } from '../lib/clockLogic
 import type { ClockState } from '../lib/clockLogic';
 import { queueClock } from '../lib/liveSyncQueue';
 import { getLocalClock, setLocalClock } from '../lib/localClock';
-import { handoutAmountOf, handoutStack, startingStackOf } from '../lib/startingStack';
+import { handoutAmountOf, handoutStack, liveBaseValue, startingStackOf } from '../lib/startingStack';
 import { autoTvScale, clampTvScale, tvGpuBudget, TV_SCALE_MIN, TV_SCALE_MAX, TV_SCALE_STEP } from '../lib/tvScale';
 import {
   TV_COLS,
@@ -37,6 +37,7 @@ import type { MomentVotes } from '../lib/liveSession';
 import { customAccentVars } from '../lib/color';
 import Sparkline from '../components/Sparkline';
 import { useWakeLock } from '../lib/useWakeLock';
+import { useTvAwake } from '../lib/useTvAwake';
 import { quipsFor, penaltiesFor, houseRulesFor } from '../lib/quips';
 
 // The app is intentionally SILENT: on the TV, any sound the browser makes hijacks
@@ -208,24 +209,31 @@ const TvLegend = memo(function TvLegend({
   unitValue,
   currency,
   chipSize,
+  retiredBelow,
 }: {
   rows: Denomination[];
   unitValue: number;
   currency: string;
   chipSize: number;
+  /** face value of the smallest chip still in play — smaller ones are shown as out */
+  retiredBelow: number;
 }) {
   const t = useT();
   const { money } = useFmt();
   return (
     <div className="tv-legend">
       <div className="tv-legend-h">{t('tv.chipValues')}</div>
-      {rows.map((d) => (
-        <div className="tv-legend-row" key={d.id}>
-          <Chip value={d.value} color={d.color} accent={d.accent} size={chipSize} shape={d.shape} />
-          <span className="tv-legend-v">{d.value}</span>
-          <span className="tv-legend-m">{money(d.value * unitValue, currency)}</span>
-        </div>
-      ))}
+      {rows.map((d) => {
+        const out = retiredBelow > 0 && d.value < retiredBelow;
+        return (
+          <div className={`tv-legend-row${out ? ' is-out' : ''}`} key={d.id}>
+            <Chip value={d.value} color={d.color} accent={d.accent} size={chipSize} shape={d.shape} />
+            <span className="tv-legend-v">{d.value}</span>
+            {out && <span className="tv-legend-out">{t('tv.chipOut')}</span>}
+            <span className="tv-legend-m">{money(d.value * unitValue, currency)}</span>
+          </div>
+        );
+      })}
     </div>
   );
 });
@@ -826,6 +834,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   // Keep the big screen awake for the whole session (see lib/useWakeLock.ts —
   // the browser hands the lock back only if you ask again after every hide).
   useWakeLock(true);
+  /* …and the panel's own idle timer, which a wake lock cannot reach (see useTvAwake). */
+  useTvAwake(true);
 
   /* The page behind the big screen.
      `.tv` is fixed at 100% of the viewport, but on a TV browser "the viewport" and
@@ -1194,6 +1204,13 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const legend = useMemo(
     () => denominations.filter((d) => d.enabled && d.value > 0).sort((a, b) => a.value - b.value),
     [denominations],
+  );
+  /* The legend lists the whole chip set, which stops being the truth an hour in: at
+     25/50 a 5 posts nothing and is only clutter on the felt. Same base chip the
+     handout builder picks, so the legend and the stack can never disagree. */
+  const legendBase = useMemo(
+    () => liveBaseValue(denominations, state.session, levelIdx),
+    [denominations, state.session, levelIdx],
   );
   // roster shown on the TV — names + amounts, live from the host's ledger. A player
   // who is still in shows what their counted chips are worth in money, plus how far
@@ -1850,7 +1867,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
 
         <Column side="right" on={!placed}>
         <TvCell id="legend" label={t('tv.panel.legend')} slot={shownLayout.legend} {...cellProps}>
-          <TvLegend rows={legend} unitValue={unitValue} currency={currency} chipSize={legendChipSize} />
+          <TvLegend rows={legend} unitValue={unitValue} currency={currency} chipSize={legendChipSize} retiredBelow={legendBase} />
         </TvCell>
 
         {payoutsPanel && (

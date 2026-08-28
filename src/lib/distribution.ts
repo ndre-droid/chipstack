@@ -303,6 +303,27 @@ function selectPool(
   return { pool, base, blindOk, warnings, notes };
 }
 
+/**
+ * The smallest chip still worth handing out at a blind level — the stack's "base".
+ *
+ * The same choice `computeStack` makes internally, exposed on its own so the UI can
+ * say which chips have gone dead: at 25/50 a 5 can't post anything and only makes a
+ * pile taller, so the legend greys it out instead of implying it is still in play.
+ * Returns 0 when nothing is usable.
+ */
+export function baseChipValue(
+  denominations: Denomination[],
+  blind: BlindLevel | null,
+  opts: { excluded?: Set<string>; useAllChips?: boolean } = {},
+): number {
+  const excluded = opts.excluded ?? new Set<string>();
+  const owned = denominations
+    .filter((d) => d.enabled && !excluded.has(d.id) && d.value > 0 && d.maxPerPlayer !== 0)
+    .sort((a, b) => a.value - b.value);
+  if (!owned.length) return 0;
+  return selectPool(owned, blind, opts.useAllChips ?? false).base.value;
+}
+
 function clampCount(raw: number, cap: number) {
   const n = Math.max(0, raw);
   return cap >= 0 ? Math.min(n, cap) : n;
