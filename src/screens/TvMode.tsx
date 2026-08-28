@@ -974,6 +974,15 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       } catch {
         /* same */
       }
+      /* Behind the worker sits the ordinary HTTP cache, and it holds the page itself.
+         Dropping the worker alone still came back on the old build once, because the
+         reload was answered out of that cache — so re-fetch the document past it,
+         which replaces the cached copy, and only then reload. */
+      try {
+        await fetch(window.location.href, { cache: 'reload', credentials: 'same-origin' });
+      } catch {
+        /* offline: the reload below still has the precache to fall back on */
+      }
     };
     void wipe().finally(() => window.location.reload());
   };
