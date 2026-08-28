@@ -252,5 +252,42 @@ console.log('\nthe level the stack card is built for');
   );
 }
 
+console.log('\na hand-tuned plan does not override the blinds being played');
+{
+  /* Straight off a photo of the big screen: chips 5/25/50/100/500, blinds 50/100, and
+     the quick buy-in offering fifteen 5s for a EUR 20 rebuy. No auto stack produces
+     those counts — it was the hand-tuned opening stack, handed over whole by the
+     "full buy-in at the starting blinds" shortcut. A tuned stack answers to nobody, so
+     the shortcut has to check that what it is about to hand over is still legal at the
+     blinds in play. */
+  const chips = [set(5, 100), set(25, 100), set(50, 60), set(100, 100), set(500, 50)];
+  const levels = [
+    { smallBlind: 10, bigBlind: 20 },
+    { smallBlind: 25, bigBlind: 50 },
+    { smallBlind: 50, bigBlind: 100 },
+  ];
+  const counts5 = { '5': 15, '25': 5, '50': 12, '100': 7, '500': 1 };
+  const planAt = (startLevelIdx: number) => {
+    const b = { ...session, playerCount: 6, earlyRebuys: 0, blindLevels: levels, startLevelIdx } as SessionConfig;
+    return { ...b, stackOverride: { key: stackBasisKey(chips, b, unit), counts: counts5 } } as SessionConfig;
+  };
+
+  const late = handoutStack(chips, planAt(2), unit, 20, 2); // plan starts at 50/100, tuned with 5s
+  check(
+    'a tuned stack full of 5s is not handed over at 50/100',
+    !late.denomsUsed.some((d) => d.value < 50),
+    late.denomsUsed.map((d) => `${d.value}x${late.counts[d.id]}`).join(' '),
+  );
+  check('and the rebuy is still worth the money', late.exact && late.totalValue === moneyToUnits(20, unit));
+
+  // …but a plan that really does start at 10/20 still deals a new player what it promises.
+  const early = handoutStack(chips, planAt(0), unit, 20, 0);
+  check(
+    'the tuned opening stack survives where it belongs',
+    JSON.stringify(early.counts) === JSON.stringify(counts5),
+    JSON.stringify(early.counts),
+  );
+}
+
 console.log(`\n${failures === 0 ? 'ALL PASS' : `${failures} FAILED`}`);
 assert.equal(failures, 0, `${failures} starting-stack check(s) failed`);

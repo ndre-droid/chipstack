@@ -95,7 +95,7 @@ export function handoutLevelOf(session: SessionConfig, levelIdx?: number | null)
  *
  * So it holds at the starting blind and stops there. Above it, the blinds decide.
  */
-function useAllChipsAt(session: SessionConfig, levelIdx?: number | null): boolean {
+function wholeSetAllowedAt(session: SessionConfig, levelIdx?: number | null): boolean {
   return !!session.useAllChips && handoutBlindOf(session, levelIdx) === startBlindOf(session);
 }
 
@@ -121,7 +121,7 @@ export function liveBaseValue(
 ): number {
   return baseChipValue(denominations, handoutBlindOf(session, levelIdx), {
     excluded: excludedSetOf(session),
-    useAllChips: useAllChipsAt(session, levelIdx),
+    useAllChips: wholeSetAllowedAt(session, levelIdx),
   });
 }
 
@@ -142,6 +142,16 @@ export function handoutAmountOf(session: SessionConfig): number {
  * fine-tuning included), so a new player is dealt what the Plan tab promises. Anything
  * else gets the FEWEST chips (`smallBias` 0): mid-game nobody wants 25 pieces for €5,
  * and the small chips they need for blinds are already in front of them.
+ *
+ * …with one guard on that first sentence. The planned stack is whatever the Plan tab
+ * says, INCLUDING hand-tuned counts, and a hand-tuned stack answers to nobody: someone
+ * who put fifteen 5s in it gets fifteen 5s back, and the shortcut hands that straight
+ * over for any amount equal to the buy-in. On the TV's quick buy-in that is the default
+ * amount, so a rebuy at 50/100 came back as the opening stack, small change and all —
+ * which is what the photo of the big screen showed after three fixes aimed elsewhere.
+ * So the shortcut now has to pass the same test as everything else: if the planned
+ * stack contains a chip the blinds being played have retired, it is not what should be
+ * pushed across the table, and the handout is built for the live blind instead.
  */
 export function handoutStack(
   denominations: Denomination[],
@@ -153,7 +163,9 @@ export function handoutStack(
   const blind = handoutBlindOf(session, levelIdx);
   const atStart = blind === startBlindOf(session);
   if (atStart && Math.abs(amount - session.buyIn) < 0.005) {
-    return startingStackOf(denominations, session, unitValue);
+    const planned = startingStackOf(denominations, session, unitValue);
+    const live = liveBaseValue(denominations, session, levelIdx);
+    if (!planned.denomsUsed.some((d) => d.value < live)) return planned;
   }
   const opts = {
     // A full buy-in handed out at higher blinds is still a top-up, not an opening
@@ -164,7 +176,7 @@ export function handoutStack(
     stacksNeeded: stacksNeededOf(session),
     maxDenoms: session.maxDenoms,
     // …and once the blinds have moved, "use all my chips" no longer overrides them.
-    useAllChips: useAllChipsAt(session, levelIdx),
+    useAllChips: wholeSetAllowedAt(session, levelIdx),
   };
   /* No floor of our own on top of the blind. `computeStack` already refuses everything
      below the largest chip that divides the small blind, and that line is the real one:

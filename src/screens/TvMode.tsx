@@ -13,7 +13,7 @@ import { secondsLeft as clockSecondsLeft, initialClock } from '../lib/clockLogic
 import type { ClockState } from '../lib/clockLogic';
 import { queueClock } from '../lib/liveSyncQueue';
 import { getLocalClock, setLocalClock } from '../lib/localClock';
-import { handoutAmountOf, handoutStack, liveBaseValue, startingStackOf } from '../lib/startingStack';
+import { handoutAmountOf, handoutBlindOf, handoutStack, liveBaseValue, startingStackOf } from '../lib/startingStack';
 import { autoTvScale, clampTvScale, tvGpuBudget, TV_SCALE_MIN, TV_SCALE_MAX, TV_SCALE_STEP } from '../lib/tvScale';
 import {
   TV_COLS,
@@ -1611,6 +1611,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       : handout.mode === 'money'
         ? handoutValue
         : handoutValue * unitValue;
+  /** The level the chips below are built for — printed under them, see the overlay. */
+  const handoutBlind = handoutBlindOf(state.session, levelIdx);
   const handoutResult = useMemo(
     () => (handoutMoney > 0 ? handoutStack(denominations, state.session, unitValue, handoutMoney, levelIdx) : null),
     [denominations, state.session, unitValue, handoutMoney, levelIdx],
@@ -2186,6 +2188,15 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
                     {money(handoutResult.totalValue * unitValue, currency)} · {handoutResult.chipCount}{' '}
                     {t('plan.chips').toLowerCase()}
                   </div>
+                  {/* Which blinds these chips are for. It reads as a detail and it is
+                      the answer to the only question this panel can get wrong — the
+                      spread depends entirely on the level, and there was no way to see
+                      from the sofa which level it had used. */}
+                  {handoutBlind && (
+                    <div className="tv-handout-for">
+                      {t('tv.handoutFor', { blind: `${num(handoutBlind.smallBlind)}/${num(handoutBlind.bigBlind)}` })}
+                    </div>
+                  )}
                   {/* The inventory really can run out mid-night; saying so beats
                       handing over a stack that is quietly short. */}
                   {!handoutResult.exact && handoutResult.totalValue < handoutResult.targetValue && (

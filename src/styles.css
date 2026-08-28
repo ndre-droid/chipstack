@@ -1749,6 +1749,7 @@ input[type='color'] { cursor: pointer; }
 .tv-handout-chips .stack-viz { margin: 0; }
 .tv-handout-empty { color: var(--tv-faint); font-size: clamp(16px, 2.4vmin, 50px); text-align: center; }
 .tv-handout-short { color: var(--bad); font-weight: 700; font-size: clamp(13px, 1.9vmin, 40px); text-align: center; }
+.tv-handout-for { color: var(--tv-dim); font-size: clamp(11px, 1.4vmin, 28px); text-align: center; letter-spacing: 0.04em; }
 .tv-handout-close {
   background: var(--tv-panel); border: 1px solid var(--tv-line); color: var(--acc);
   border-radius: 999px; padding: clamp(9px, 1.4vmin, 20px) clamp(16px, 2.4vmin, 40px);
