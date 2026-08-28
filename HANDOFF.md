@@ -18,12 +18,15 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-08-28 from `main` @ `6eb0b32`**, 4.58 MB (4,801,139 B),
+  (**CURRENT — rebuilt 2026-08-28 from `main` @ `febc7f4`**, 4.58 MB (4,805,445 B),
+  run `33170290822`: the step back — one column of names, a quieter big screen,
+  remote-dismissable overlays, the heartbeat fix and ONE chip stack (see "Recent work
+  2026-08-28 (later)").
+  Pages run `33170287523` green from the same commit, so **APK / `main` / Pages are IN SYNC**.
+  Download verified: `200`, `application/vnd.android.package-archive`, 4,805,445 B.
+  Previous build: 2026-08-28 from `main` @ `6eb0b32`, 4.58 MB (4,801,139 B),
   run `33155215226`: the TV perfection pass — 4K sizing, the sticky cast switch, the
-  render-loop fix, the quick buy-in and the background folders (see "Recent work
-  2026-08-28").
-  Pages run `33155212299` green from the same commit, so **APK / `main` / Pages are IN SYNC**.
-  Download verified: `200`, `application/vnd.android.package-archive`, 4,801,139 B.
+  render-loop fix, the quick buy-in and the background folders.
   Previous build: 2026-08-26 from `main` @ `c275092`, 4.57 MB (4,790,559 B),
   run `32956874967`: the big-screen pass — arrangeable panels, per-role text size, the
   chip-spread glide, the render placeholder, TV auto-resync.
@@ -1304,7 +1307,22 @@ measurements in the browser pane at 1280×720, 1920×1080 and 3840×2160 (screen
 were unavailable in that session — every number above is a measurement, not a look).
 **Not verified on real TV hardware.**
 
-### STATE RIGHT NOW (2026-08-26)
+### STATE RIGHT NOW (2026-08-28, second pass)
+Everything in the repo is shipped and green. Local branch **`feat/chip-3d-render` == `main`
+== `febc7f4`**; Pages (`33170287523`) and the APK (`33170290822`) are both built from it.
+Nothing is half-finished in the working tree.
+
+**Waiting on the real TV / a real phone**, and only a person can answer:
+1. Does the big screen now read as *elegant* rather than crowded, and are the names the
+   right size in one column? Both are tuned by measurement, not by eye — screenshots have
+   been unavailable for two sessions running. A−/A+ is the first dial to reach for.
+2. Does the cast overlay go away with the remote (any key, or Back), and does Back no
+   longer drop out of fullscreen while an overlay is up?
+3. Does the "phone offline" warning stay away with the phone locked in a pocket for a few
+   minutes? 20s beat, 150s patience — if it still appears, the next suspect is the write
+   itself failing (watch `hostHeartbeat` in the phone's console), not the timing.
+
+### STATE (2026-08-26)
 Everything in the repo is shipped and green. Local branch **`feat/chip-3d-render` == `main` ==
 `c275092`**; Pages (`32956871468`) and the APK (`32956874967`) are both built from it. Nothing is
 half-finished in the working tree; the only untracked things are the user's own `koffer.png` and
