@@ -155,67 +155,61 @@ console.log('\nthe chip legend follows the blinds too');
     liveBaseValue(denoms, session, 2) === 50,
     String(liveBaseValue(denoms, session, 2)),
   );
-  // "Use all my chips" says which chips the PLAN may use; it cannot make a 10 postable
-  // at 50/100, so mid-game it does not drag the base back under the blind.
+  /* "Use all my chips" is a wish about the box and the opening stack, so it holds at
+     the starting blind — and stops there. Left applying to every level it reads as
+     "ignore the blind structure", which kept the smallest chip owned in play all
+     night: 5s offered at 50/100 on the legend and in every handout. */
+  const allChips = { ...session, useAllChips: true } as SessionConfig;
   check(
-    '"use all my chips" still stops below the blind mid-game',
-    liveBaseValue(denoms, { ...session, useAllChips: true } as SessionConfig, 2) === 50,
-    String(liveBaseValue(denoms, { ...session, useAllChips: true } as SessionConfig, 2)),
+    '"use all my chips" keeps every value at the opening blinds',
+    liveBaseValue(denoms, allChips, 0) === 10,
+    String(liveBaseValue(denoms, allChips, 0)),
   );
   check(
-    'but at the opening blinds it keeps every value in play',
-    liveBaseValue(denoms, { ...session, useAllChips: true } as SessionConfig, 0) === 10,
+    'but the blinds take over once they have moved',
+    liveBaseValue(denoms, allChips, 2) === 50,
+    String(liveBaseValue(denoms, allChips, 2)),
+  );
+  const allChipsLate = handoutStack(denoms, allChips, unit, 20, 2);
+  check(
+    'and no chip the blinds retired is handed out',
+    allChipsLate.exact && allChipsLate.denomsUsed.every((d) => d.value >= 50),
+    allChipsLate.denomsUsed.map((d) => `${d.value}x${allChipsLate.counts[d.id]}`).join(' '),
   );
   check('an excluded chip is never the base', liveBaseValue(denoms, excluded, 0) !== 10, String(liveBaseValue(denoms, excluded, 0)));
 }
 
-console.log('\nno chip smaller than the small blind, once the blinds have moved');
+console.log('\nthe base chip is the one that can post the blind');
 {
-  // The 25 is gone from the set, so `selectPool` used to fall back to the 10 (it
-  // divides a 50 small blind). A rebuy at 50/100 must not arrive as ten-point change.
-  const noTwentyFive = [set(10, 80), set(50, 80), set(100, 80), set(500, 40), set(1000, 20)];
-  const r = handoutStack(noTwentyFive, session, unit, 20, 2);
-  check(
-    'a €20 rebuy at 50/100 has nothing under the blind',
-    r.denomsUsed.every((d) => d.value >= 50),
-    r.denomsUsed.map((d) => `${d.value}x${r.counts[d.id]}`).join(' '),
-  );
-  check('and it still adds up exactly', r.exact && r.totalValue === moneyToUnits(20, unit));
-  check('the legend agrees with it', liveBaseValue(noTwentyFive, session, 2) === 50);
-
-  // …unless the floor is what makes the amount impossible: 30 points cannot be built
-  // from 50s, so the blind-compatible base comes back rather than shorting the player.
-  const odd = handoutStack(noTwentyFive, session, unit, 0.3, 2);
-  check(
-    'an amount the big chips cannot make falls back',
-    odd.exact && odd.totalValue === 30,
-    odd.denomsUsed.map((d) => `${d.value}x${odd.counts[d.id]}`).join(' '),
-  );
-
-  /* …and when it does fall back, it falls ONE step, not all the way down. This is the
-     bug the first version shipped with: the per-player cap is the inventory divided by
-     the stacks it serves, so a thin box of 50s cannot pay a €20 rebuy — and the whole
-     floor was dropped for it, handing back the 5s the floor exists to prevent. There
-     are enough 25s here, so 25s is the answer. */
-  const thin = [set(5, 400), set(10, 400), set(25, 400), set(50, 6)];
-  const thinSession = {
+  /* The rule is `selectPool`'s: the largest owned chip that DIVIDES the small blind.
+     Not the small blind itself — a floor there retires the 100s at 200/400, which are
+     exactly the chips a 200 is posted with. */
+  const wide = [set(5, 200), set(25, 200), set(100, 200), set(500, 100), set(1000, 60)];
+  const deep = {
     ...session,
-    playerCount: 4,
-    earlyRebuys: 0,
-    excludedDenoms: ['25'], // the greens are in another set tonight
     blindLevels: [
       { smallBlind: 10, bigBlind: 20 },
       { smallBlind: 25, bigBlind: 50 },
+      { smallBlind: 200, bigBlind: 400 },
     ],
   } as SessionConfig;
-  // 25/50 with no 25 to hand out and six 50s for four stacks: the floor cannot be met.
-  const short = handoutStack(thin, thinSession, unit, 5, 1);
+  check('at 25/50 the 5s are gone', liveBaseValue(wide, deep, 1) === 25, String(liveBaseValue(wide, deep, 1)));
   check(
-    'too few big chips steps down one denomination, not to the change',
-    short.exact && !short.denomsUsed.some((d) => d.value === 5),
-    short.denomsUsed.map((d) => `${d.value}x${short.counts[d.id]}`).join(' '),
+    'but at 200/400 the 100s stay — they are how a 200 is posted',
+    liveBaseValue(wide, deep, 2) === 100,
+    String(liveBaseValue(wide, deep, 2)),
   );
-  check('and the player still gets every point they paid for', short.totalValue === moneyToUnits(5, unit));
+  const late = handoutStack(wide, deep, unit, 40, 2);
+  check(
+    'and the handout can still make the blind',
+    late.exact && late.denomsUsed.every((d) => d.value >= 100),
+    late.denomsUsed.map((d) => `${d.value}x${late.counts[d.id]}`).join(' '),
+  );
+
+  // With no chip dividing the small blind there is no better answer than the small one:
+  // a 25 blind is five 5s or nothing.
+  const noDivider = [set(5, 200), set(10, 200), set(50, 200), set(100, 200)];
+  check('no divider means the small chip is the only way to post', liveBaseValue(noDivider, deep, 1) === 5);
 }
 
 console.log('\nhand-tuned counts only survive while their inputs do');

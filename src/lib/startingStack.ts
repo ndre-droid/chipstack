@@ -83,48 +83,45 @@ export function handoutLevelOf(session: SessionConfig, levelIdx?: number | null)
 }
 
 /**
- * The hard floor on a mid-game handout's chips: nothing smaller than the small blind.
+ * Does "use all my chips" still have a say at this level?
  *
- * `selectPool` picks the largest chip that DIVIDES the small blind, which is the right
- * answer for a stack that has to post blinds — but it still lands on a 5 at 25/50 when
- * there is no 25 in the set (or when "use all my chips" is on). Nobody wants five 5s
- * for a 25 in a rebuy: the small change for posting is already on the felt, and a
- * top-up should be the biggest chips that make the number.
+ * The switch means "don't leave chip types sitting in the box" — a wish about the
+ * INVENTORY, and about the one stack it is spent on: the opening one. It was being
+ * applied to every level instead, and `selectPool` reads it as "skip the blind check
+ * entirely", so with it on the base chip stays the smallest chip OWNED for the whole
+ * night: 1s and 5s offered at 25/50, at 50/100, at 200/400, on the TV legend and in
+ * every handout, no matter what the clock says. That is the setting quietly cancelling
+ * the blind structure, not a preference being honoured.
  *
- * Zero while the handout is still built for the STARTING blind — there the plan's own
- * base chip has the final word, so the Plan tab and a late arrival's full stack are
- * untouched by this.
+ * So it holds at the starting blind and stops there. Above it, the blinds decide.
  */
-export function handoutMinChipValue(session: SessionConfig, levelIdx?: number | null): number {
-  const blind = handoutBlindOf(session, levelIdx);
-  if (!blind || blind === startBlindOf(session)) return 0;
-  return Math.max(0, blind.smallBlind);
+function useAllChipsAt(session: SessionConfig, levelIdx?: number | null): boolean {
+  return !!session.useAllChips && handoutBlindOf(session, levelIdx) === startBlindOf(session);
 }
 
 /**
  * The smallest chip still in play at `levelIdx` — anything below it is dead weight.
  *
- * The stack builder already drops those chips (see `handoutBlindOf` and
- * `handoutMinChipValue`); this is the same answer for screens that show the whole chip
- * set rather than one stack, so the TV legend can grey out the 5s at 25/50 instead of
- * still offering them.
+ * This is `selectPool`'s own choice: the largest owned chip that DIVIDES the small
+ * blind. That rule is not a heuristic, it is what the table needs — at 200/400 the
+ * 100s are exactly how a 200 gets posted, and at 25/50 a 5 composes nothing anybody
+ * can bet, so it is clutter. The stack builder already works to this line; exposing it
+ * here lets screens that show the whole chip set draw the same one.
+ *
+ * An earlier version of this floored the base at the SMALL BLIND itself, on the theory
+ * that a mid-game top-up should never be small change. That was wrong twice over: it
+ * retired the 100s at 200/400, leaving nothing that could post the blind, and it never
+ * addressed the case it was written for — a set with no chip that divides the small
+ * blind, where the 5 genuinely IS the only way to make a 25.
  */
 export function liveBaseValue(
   denominations: Denomination[],
   session: SessionConfig,
   levelIdx?: number | null,
 ): number {
-  const floor = handoutMinChipValue(session, levelIdx);
-  const base = baseChipValue(denominations, handoutBlindOf(session, levelIdx), {
+  return baseChipValue(denominations, handoutBlindOf(session, levelIdx), {
     excluded: excludedSetOf(session),
-    useAllChips: session.useAllChips,
-    minDenomValue: floor,
-  });
-  // Nothing at or above the blind? Then the floor is unusable and the poker-correct
-  // base stands — the legend must not grey out every chip on the table.
-  return base || baseChipValue(denominations, handoutBlindOf(session, levelIdx), {
-    excluded: excludedSetOf(session),
-    useAllChips: session.useAllChips,
+    useAllChips: useAllChipsAt(session, levelIdx),
   });
 }
 
@@ -166,45 +163,15 @@ export function handoutStack(
     blind,
     stacksNeeded: stacksNeededOf(session),
     maxDenoms: session.maxDenoms,
-    useAllChips: session.useAllChips,
+    // …and once the blinds have moved, "use all my chips" no longer overrides them.
+    useAllChips: useAllChipsAt(session, levelIdx),
   };
-  const units = moneyToUnits(amount, unitValue);
-  const floor = handoutMinChipValue(session, levelIdx);
-  if (!floor) return computeStack(units, denominations, opts);
-
-  /* Refuse everything under the blind, then climb back DOWN one denomination at a
-     time until the amount comes out exactly.
-
-     The first version of this had one step: the blind, or no floor at all. That looks
-     right until the big chips run out — the per-player cap is the inventory divided by
-     the stacks it has to serve, so at a full table with rebuys there may not be enough
-     50s to make €20 — and then the whole floor was dropped and the handout came back as
-     5s and 1s, which is the exact complaint this code exists to answer. It was also
-     invisible: the fallback fires on the same screens as the good path, so the fix
-     looked deployed and unapplied at the same time.
-
-     Walking down one value at a time keeps the promise as far as the chips allow: at
-     50/100 with too few 50s the answer is 25s, not a pile of change. Exactness still
-     outranks chip size — the player must get the money they paid for — so a floor that
-     cannot make the number is passed over rather than shorting them. */
-  const excluded = excludedSetOf(session);
-  const rungs = [
-    ...new Set(
-      denominations
-        .filter((d) => d.enabled && !excluded.has(d.id) && d.value > 0 && d.value < floor)
-        .map((d) => d.value),
-    ),
-  ].sort((a, b) => b - a); // biggest chip under the blind first, then smaller
-
-  let best: StackResult | null = null;
-  for (const rung of [floor, ...rungs]) {
-    const r = computeStack(units, denominations, { ...opts, minDenomValue: rung });
-    if (r.exact) return r;
-    if (!best && r.denomsUsed.length) best = r; // the strictest attempt that produced anything
-  }
-  // Not even the whole chip set can make this number exactly — keep the closest the
-  // strictest floor got to it rather than dropping to change for no gain.
-  return best ?? computeStack(units, denominations, opts);
+  /* No floor of our own on top of the blind. `computeStack` already refuses everything
+     below the largest chip that divides the small blind, and that line is the real one:
+     above it the chips can post and make change, below it they cannot. Adding a second,
+     stricter floor at the small blind itself retired the 100s at 200/400 — the very
+     chips a 200 is posted with. */
+  return computeStack(moneyToUnits(amount, unitValue), denominations, opts);
 }
 
 /**
