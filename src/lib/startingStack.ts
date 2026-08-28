@@ -172,12 +172,39 @@ export function handoutStack(
   const floor = handoutMinChipValue(session, levelIdx);
   if (!floor) return computeStack(units, denominations, opts);
 
-  // Chips below the blind are refused first; the floor is only lifted again when it is
-  // what stopped the amount coming out exactly (odd money, or no big chips left).
-  const floored = computeStack(units, denominations, { ...opts, minDenomValue: floor });
-  if (floored.exact) return floored;
-  const free = computeStack(units, denominations, opts);
-  return free.exact ? free : floored.denomsUsed.length ? floored : free;
+  /* Refuse everything under the blind, then climb back DOWN one denomination at a
+     time until the amount comes out exactly.
+
+     The first version of this had one step: the blind, or no floor at all. That looks
+     right until the big chips run out — the per-player cap is the inventory divided by
+     the stacks it has to serve, so at a full table with rebuys there may not be enough
+     50s to make €20 — and then the whole floor was dropped and the handout came back as
+     5s and 1s, which is the exact complaint this code exists to answer. It was also
+     invisible: the fallback fires on the same screens as the good path, so the fix
+     looked deployed and unapplied at the same time.
+
+     Walking down one value at a time keeps the promise as far as the chips allow: at
+     50/100 with too few 50s the answer is 25s, not a pile of change. Exactness still
+     outranks chip size — the player must get the money they paid for — so a floor that
+     cannot make the number is passed over rather than shorting them. */
+  const excluded = excludedSetOf(session);
+  const rungs = [
+    ...new Set(
+      denominations
+        .filter((d) => d.enabled && !excluded.has(d.id) && d.value > 0 && d.value < floor)
+        .map((d) => d.value),
+    ),
+  ].sort((a, b) => b - a); // biggest chip under the blind first, then smaller
+
+  let best: StackResult | null = null;
+  for (const rung of [floor, ...rungs]) {
+    const r = computeStack(units, denominations, { ...opts, minDenomValue: rung });
+    if (r.exact) return r;
+    if (!best && r.denomsUsed.length) best = r; // the strictest attempt that produced anything
+  }
+  // Not even the whole chip set can make this number exactly — keep the closest the
+  // strictest floor got to it rather than dropping to change for no gain.
+  return best ?? computeStack(units, denominations, opts);
 }
 
 /**

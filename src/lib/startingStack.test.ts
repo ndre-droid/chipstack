@@ -191,6 +191,31 @@ console.log('\nno chip smaller than the small blind, once the blinds have moved'
     odd.exact && odd.totalValue === 30,
     odd.denomsUsed.map((d) => `${d.value}x${odd.counts[d.id]}`).join(' '),
   );
+
+  /* …and when it does fall back, it falls ONE step, not all the way down. This is the
+     bug the first version shipped with: the per-player cap is the inventory divided by
+     the stacks it serves, so a thin box of 50s cannot pay a €20 rebuy — and the whole
+     floor was dropped for it, handing back the 5s the floor exists to prevent. There
+     are enough 25s here, so 25s is the answer. */
+  const thin = [set(5, 400), set(10, 400), set(25, 400), set(50, 6)];
+  const thinSession = {
+    ...session,
+    playerCount: 4,
+    earlyRebuys: 0,
+    excludedDenoms: ['25'], // the greens are in another set tonight
+    blindLevels: [
+      { smallBlind: 10, bigBlind: 20 },
+      { smallBlind: 25, bigBlind: 50 },
+    ],
+  } as SessionConfig;
+  // 25/50 with no 25 to hand out and six 50s for four stacks: the floor cannot be met.
+  const short = handoutStack(thin, thinSession, unit, 5, 1);
+  check(
+    'too few big chips steps down one denomination, not to the change',
+    short.exact && !short.denomsUsed.some((d) => d.value === 5),
+    short.denomsUsed.map((d) => `${d.value}x${short.counts[d.id]}`).join(' '),
+  );
+  check('and the player still gets every point they paid for', short.totalValue === moneyToUnits(5, unit));
 }
 
 console.log('\nhand-tuned counts only survive while their inputs do');

@@ -240,17 +240,20 @@ const TvLegend = memo(function TvLegend({
   return (
     <div className="tv-legend">
       <div className="tv-legend-h">{t('tv.chipValues')}</div>
-      {rows.map((d) => {
-        const out = retiredBelow > 0 && d.value < retiredBelow;
-        return (
-          <div className={`tv-legend-row${out ? ' is-out' : ''}`} key={d.id}>
+      {/* A retired chip used to stay on the list, greyed out and labelled "out". The
+          intent was to explain where it went; the effect was a 5 still drawn on the
+          wall at 25/50, which is indistinguishable from the app still offering it. The
+          board announces the colour-up when it happens ("Colour up the 25s → 50"), so
+          the list can just be the chips that are in play. */}
+      {rows
+        .filter((d) => !(retiredBelow > 0 && d.value < retiredBelow))
+        .map((d) => (
+          <div className="tv-legend-row" key={d.id}>
             <Chip value={d.value} color={d.color} accent={d.accent} size={chipSize} shape={d.shape} />
             <span className="tv-legend-v">{d.value}</span>
-            {out && <span className="tv-legend-out">{t('tv.chipOut')}</span>}
             <span className="tv-legend-m">{money(d.value * unitValue, currency)}</span>
           </div>
-        );
-      })}
+        ))}
     </div>
   );
 });
@@ -1781,8 +1784,16 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       {/* This device is the TV, waiting for a phone — show the code to type on the phone */}
       {firebaseConfigured && isTv && !paired && liveSessionCode && (
         <div className="tv-pair">
+          {/* The chip spinning next to the pairing code is the smallest one still in
+              play, not the smallest one owned — no retired value gets to be the face
+              of the screen. */}
           <div className="tv-pair-idle" aria-hidden>
-            <Chip value={legend[0]?.value ?? 100} color={legend[0]?.color ?? '#0C0C10'} accent={legend[0]?.accent ?? '#CBA85A'} size={56} shape={legend[0]?.shape} />
+            {(() => {
+              const face = legend.find((d) => d.value >= legendBase) ?? legend[0];
+              return (
+                <Chip value={face?.value ?? 100} color={face?.color ?? '#0C0C10'} accent={face?.accent ?? '#CBA85A'} size={56} shape={face?.shape} />
+              );
+            })()}
           </div>
           <div className="tv-pair-lead">
             <div className="tv-pair-title">{t('tv.controlFromPhone')}</div>
