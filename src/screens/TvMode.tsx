@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import qrcode from 'qrcode-generator';
 import { useStore } from '../store';
+import type { Denomination } from '../types';
 import Chip from '../components/Chip';
 import ChipStackViz from '../components/ChipStackViz';
 import { IconPlay, IconPause, IconChevron, IconReset } from '../components/Icons';
@@ -12,8 +13,8 @@ import { secondsLeft as clockSecondsLeft, initialClock } from '../lib/clockLogic
 import type { ClockState } from '../lib/clockLogic';
 import { queueClock } from '../lib/liveSyncQueue';
 import { getLocalClock, setLocalClock } from '../lib/localClock';
-import { startingStackOf } from '../lib/startingStack';
-import { autoTvScale, clampTvScale, TV_SCALE_MIN, TV_SCALE_MAX, TV_SCALE_STEP } from '../lib/tvScale';
+import { handoutStack, startingStackOf } from '../lib/startingStack';
+import { autoTvScale, clampTvScale, tvGpuBudget, TV_SCALE_MIN, TV_SCALE_MAX, TV_SCALE_STEP } from '../lib/tvScale';
 import {
   TV_COLS,
   TV_MIN_H,
@@ -56,8 +57,20 @@ const digitCells = (text: string) =>
       : <i className="tv-d-sep" key={i}>{c}</i>,
   );
 
+/* How big a roster row is allowed to get.
+   These three are the whole answer to "the player names are too small on the TV".
+   The fitter below never makes a row bigger than the space it has, so a cap is only
+   ever a ceiling on a roster that HAS room to spare — and the old ceiling
+   (1.8% of the short edge, 40px) was hit on every 4K panel with four players on it,
+   which is why a half-empty screen still showed small names. A 55" panel reporting a
+   1080-class CSS viewport now allows ~35px, which is about 2.2cm of letter on the
+   glass: readable from four metres, where 1.2cm was not. */
 /** Smallest roster row still worth reading across a room; matches the CSS clamp. */
-const ROW_MIN_FS = 11;
+const ROW_MIN_FS = 13;
+/** Hard ceiling in px, for a viewport large enough that the fraction stops binding. */
+const ROW_MAX_FS = 72;
+/** Ceiling as a fraction of the viewport's short edge — the one that usually binds. */
+const ROW_MAX_VMIN = 0.032;
 
 /** One row of the big screen's player list, as the panel needs it. */
 export interface TvRosterRow {
@@ -183,6 +196,41 @@ const TvRoster = memo(function TvRoster({
 });
 
 /**
+ * The chip legend.
+ *
+ * Memoised for the same reason the roster is: the big screen repaints once a second
+ * for the countdown, and this panel draws a whole chip per denomination — eight
+ * SVGs (or eight rendered bitmaps) rebuilt every tick for a list that changes when
+ * somebody edits the chip set, which is to say almost never.
+ */
+const TvLegend = memo(function TvLegend({
+  rows,
+  unitValue,
+  currency,
+  chipSize,
+}: {
+  rows: Denomination[];
+  unitValue: number;
+  currency: string;
+  chipSize: number;
+}) {
+  const t = useT();
+  const { money } = useFmt();
+  return (
+    <div className="tv-legend">
+      <div className="tv-legend-h">{t('tv.chipValues')}</div>
+      {rows.map((d) => (
+        <div className="tv-legend-row" key={d.id}>
+          <Chip value={d.value} color={d.color} accent={d.accent} size={chipSize} shape={d.shape} />
+          <span className="tv-legend-v">{d.value}</span>
+          <span className="tv-legend-m">{money(d.value * unitValue, currency)}</span>
+        </div>
+      ))}
+    </div>
+  );
+});
+
+/**
  * The side columns of the automatic layout.
  *
  * On the grid they would only get in the way — every panel names its own cell — so
@@ -273,7 +321,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const t = useT();
   const { money, num } = useFmt();
   const { blindLevels } = state.session;
-  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvRosterSort, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack, bountyMode, bountyAmount, customAccent, tvPenalties, tvHouseRules, showTrend, language } = state.settings;
+  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvRosterSort, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack, tvStartStackHidden, bountyMode, bountyAmount, customAccent, tvPenalties, tvHouseRules, showTrend, language } = state.settings;
 
   /* Display size. Per-device and deliberately NOT part of LiveData: the laptop
      acting as the big screen needs its own zoom, and a phone must not shrink it.
@@ -302,11 +350,26 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('resize', onResize);
   }, []);
   const tvCompact = viewportH / tvScale < 860;
+  /* What this screen can afford to paint. A TV stick or a set-top browser has a
+     fraction of a laptop's fill rate, and the big screen leans on exactly the two
+     things such a chip is worst at: a `backdrop-filter` behind every panel and a
+     `drop-shadow` filter around piles of chips that are moving. Both are repainted
+     per frame, and at 4K that is what the stutter actually was. Answered once —
+     whether this is a TV browser does not change mid-session. */
+  const gpu = useMemo(() => tvGpuBudget(), []);
   /* How big a chip may be drawn on the big screen. The row already fills the width on
      its own; this is the height bound, because a pile of eleven plus the room a chip
      falls through is roughly two and a half chips tall. Measured against the SCALED
      viewport: the whole TV is laid out at 100%/--tv-scale and scaled back up. */
   const tvChipSize = Math.round(Math.max(72, Math.min(240, (viewportH / tvScale) * 0.2)));
+  /* The chip beside each value in the legend. It used to be a flat 34px, which is a
+     thumbnail on a 4K panel across a room — and unlike the text around it, it did not
+     grow with the display size. Sized off the same scaled viewport as the pile above,
+     and it follows the legend's own text setting so "make the legend bigger" moves
+     the chip with the number. */
+  const legendChipSize = Math.round(
+    Math.max(24, Math.min(96, (viewportH / tvScale) * 0.05 * (state.settings.tvTextScale?.legend ?? 1))),
+  );
   const isCash = gameMode === 'cash';
   // Cash game with the timer off = no countdown. There's still a ladder, though:
   // a cash table raises the blinds when it feels like it, not on a clock, so the
@@ -353,6 +416,10 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
      and a laptop or TV browser with the tab in the background delivers roughly one
      tick a minute; the big screen then quietly runs minutes behind the table. */
   const deadline = useRef<number | null>(null);
+  /* Bumped every time the current period is re-armed. The progress bar is keyed on
+     it so a new level snaps the bar back to full instead of sweeping backwards over
+     its one-second transition — see the bar in the clock panel. */
+  const [periodSeq, setPeriodSeq] = useState(0);
   const [flash, setFlash] = useState(false);
   const [onBreak, setOnBreak] = useState(false);
   const [quipIdx, setQuipIdx] = useState(0);
@@ -373,6 +440,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   /* Bumped when the session document disappears, to make the pairing effect below
      run again and put it back. */
   const [pairSeq, setPairSeq] = useState(0);
+  /** What the phone last asked for re: the starting-stack overlay; null = never heard. */
+  const castWanted = useRef<boolean | null>(null);
   /* The clock exactly as it stands, for the effects that must not depend on it.
      Re-advertising mid-game has to restore THIS, not a fresh level 1. */
   const clockRef = useRef<ClockState>(initialClock(minutesPerLevel));
@@ -416,6 +485,16 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         (doc) => {
           if (isTv && doc.data) {
             setPaired(true);
+            /* A fresh cast request clears this screen's "put it away". The phone's
+               `tvShowStartStack` stays true for as long as the card on the Table tab
+               says "Hide from TV", so a TV that merely cleared the flag had it pushed
+               back on the host's very next write — see `tvStartStackHidden`. Only the
+               phone turning it OFF and ON again counts as asking twice. */
+            const wantsCast = !!doc.data.tvShowStartStack;
+            if (wantsCast && castWanted.current === false) {
+              dispatch({ type: 'UPDATE_SETTINGS', patch: { tvStartStackHidden: false } });
+            }
+            castWanted.current = wantsCast;
             dispatch({
               type: 'LIVE_APPLY_REMOTE',
               denominations: doc.data.denominations,
@@ -564,6 +643,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const setPeriod = (secs: number, run: boolean) => {
     setSeconds(secs);
     deadline.current = run ? Date.now() + secs * 1000 : null;
+    setPeriodSeq((n) => n + 1);
   };
 
   const pushClockIfConnected = (li: number, ob: boolean, run: boolean, secs: number) => {
@@ -592,7 +672,12 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       const qr = qrcode(0, 'M');
       qr.addData(pairUrl);
       qr.make();
-      return qr.createDataURL(6, 12);
+      /* 10px a module, not 6. The big QR overlay is drawn at up to 46vmin, which on a
+         4K panel is well over a thousand pixels — a 6px-module bitmap blown up that
+         far is soft enough that a phone camera hunts for it. Rendering it larger and
+         letting the browser scale DOWN is free (and the small pairing-card copy is
+         crisper for it too); the whole image is still a few kB. */
+      return qr.createDataURL(10, 16);
     } catch {
       return null;
     }
@@ -1144,15 +1229,41 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
      a row, while two columns of four sit at full size. */
   const rosterCols = sortedRoster.length > 6 ? 2 : 1;
   const rosterRows = Math.ceil(sortedRoster.length / rosterCols) || 1;
-  /* The stat tiles are the biggest thing in this column (three tiles ate 522 of
-     665px, leaving the roster 121px for eight players). From six rows up they go
-     side by side and lose some bulk so the roster keeps its share of the height. */
-  const statsTwoUp = tvCompact || (tvShowPlayers && rosterRows >= 6);
+  /* The stat tiles are the roster's one real competitor for this column, and they
+     win by default: three stacked tiles measured 263 of the column's 511px, which
+     left a FOUR-player roster 157px and its names at 23px — on a screen with room
+     to spare. The tiles go side by side whenever the roster is on screen at all
+     now, which is the same designed state a short canvas already used and hands the
+     roster back about a third of the column. With the roster switched off there is
+     nothing to protect, so the tiles keep their full size. */
+  const statsTwoUp = tvCompact || tvShowPlayers;
   const rosterListRef = useRef<HTMLDivElement | null>(null);
   /** the roster's share of the per-role text sizing — see lib/tvLayout */
   const playersScale = textScale.players;
   const [rowFs, setRowFs] = useState(0); // px; 0 = not measured yet, CSS default applies
   const [rosterHidden, setRosterHidden] = useState(0); // players that still didn't fit
+  /* Written on render so `fit()` below can tell a real change from a repeat without
+     waiting for a re-render to hand it back. */
+  const hiddenRef = useRef(0);
+  hiddenRef.current = rosterHidden;
+  /* How many more times this fit may change something.
+
+     The fitter is a feedback loop: it measures a row, resizes it, and a
+     ResizeObserver measures the result. That converges in two or three passes when
+     row height scales with font size — and a roster row does NOT always, because the
+     trail is sized off the fitted font, the emoji has its own clamp, and the money
+     cell can win or lose a second line. One pixel of non-linearity there is enough
+     for the loop to settle into A → B → A forever, which React reports as "Maximum
+     update depth exceeded" and a TV shows as a screen that never stops repainting.
+     So the loop is given a budget instead of being trusted to terminate: six
+     changes per real input change is more than convergence ever needs, and it is a
+     hard stop for the case that would not converge. */
+  const fitBudget = useRef(6);
+  useEffect(() => {
+    fitBudget.current = 6;
+    // deliberately NOT keyed on rowFs: that is the loop's own output, and refilling
+    // the budget from it would defeat the whole point
+  }, [rosterRows, rosterCols, sortedRoster.length, viewportH, tvScale, statsTwoUp, playersScale]);
   useEffect(() => {
     const el = rosterListRef.current;
     if (!el) {
@@ -1187,11 +1298,17 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
          are too small" gets an answer that the fitter does not immediately undo.
          Asking for MORE than fits still cannot win: the rows that overflow are
          counted into the header rather than dropped silently. */
-      const cap = Math.min(40 * playersScale, 0.018 * Math.min(window.innerWidth, window.innerHeight) * playersScale);
+      const cap =
+        Math.min(ROW_MAX_FS, ROW_MAX_VMIN * Math.min(window.innerWidth, window.innerHeight)) * playersScale;
       const floor = ROW_MIN_FS * Math.min(1, playersScale);
       const target = avail / rosterRows;
       const next = Math.max(floor, Math.min(cap, (currentFs * target) / rowH));
-      if (Math.abs(next - currentFs) > 0.3) setRowFs(next);
+      if (fitBudget.current <= 0) return; // hunting, not converging — leave it where it is
+      let changed = false;
+      if (Math.abs(next - currentFs) > 0.3) {
+        setRowFs(next);
+        changed = true;
+      }
       // Only a roster pinned at the smallest readable size can still lose rows.
       // Count the ones that really don't fit — this runs again after the size
       // change lands, so the number it reports is the number on screen.
@@ -1201,7 +1318,13 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
         const b = row.getBoundingClientRect();
         if (b.top >= box.top - 1 && b.bottom <= box.bottom + 1) shown++;
       });
-      setRosterHidden(Math.max(0, sortedRoster.length - shown));
+      const missing = Math.max(0, sortedRoster.length - shown);
+      if (missing !== hiddenRef.current) {
+        hiddenRef.current = missing;
+        setRosterHidden(missing);
+        changed = true;
+      }
+      if (changed) fitBudget.current -= 1;
     };
     fit();
     /* The panel keeps moving after this first pass: the display webfont swaps in
@@ -1210,8 +1333,16 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
        the belt for browsers that deliver observer callbacks lazily. */
     const ro = new ResizeObserver(fit);
     ro.observe(el);
-    const settle = window.setTimeout(fit, 400);
-    document.fonts?.ready?.then(fit).catch(() => {});
+    /* The webfont landing and the 400ms settle are OUTSIDE news — the panel really did
+       change under the fitter — so they are allowed to top the budget up. A
+       ResizeObserver callback is not: it may well be the fitter's own last move
+       coming back round, which is the loop the budget exists to stop. */
+    const refit = () => {
+      fitBudget.current = Math.max(fitBudget.current, 4);
+      fit();
+    };
+    const settle = window.setTimeout(refit, 400);
+    document.fonts?.ready?.then(refit).catch(() => {});
     return () => {
       window.clearTimeout(settle);
       ro.disconnect();
@@ -1345,6 +1476,56 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
 
   const pct = Math.max(0, Math.min(100, (seconds / ((onBreak ? breakMins : minutesPerLevel) * 60)) * 100));
 
+  /* ------------------------------------------------------------- quick buy-in --
+     Somebody rebuys at level 7 and wants €20 in chips. Everything needed to answer
+     that is already here (the same `handoutStack` the phone's roster uses), what was
+     missing was a way to ASK from the sofa: the phone is across the table and the
+     answer belongs on the wall anyway, where the person counting the chips out can
+     see it. Local to this screen and never synced — it is a calculator, not a
+     change to the night. */
+  const [handout, setHandout] = useState<{ raw: string; mode: 'money' | 'chips' } | null>(null);
+  const handoutValue = handout ? Number(handout.raw.replace(',', '.')) : 0;
+  /* One number in euros, whichever way it was typed: the chip spread is computed from
+     money, so entering a chip total just converts before it gets there. */
+  const handoutMoney =
+    !handout || !Number.isFinite(handoutValue) || handoutValue <= 0
+      ? 0
+      : handout.mode === 'money'
+        ? handoutValue
+        : handoutValue * unitValue;
+  const handoutResult = useMemo(
+    () => (handoutMoney > 0 ? handoutStack(denominations, state.session, unitValue, handoutMoney) : null),
+    [denominations, state.session, unitValue, handoutMoney],
+  );
+  /** Buy-in, half of it and double it — the three amounts a rebuy is actually for. */
+  const handoutQuick = useMemo(() => {
+    const raw = [Math.round((buyIn / 2) * 100) / 100, buyIn, buyIn * 2].filter((a) => a > 0);
+    return [...new Set(raw)].sort((a, b) => a - b);
+  }, [buyIn]);
+  const handoutKey = (k: string) =>
+    setHandout((h) => {
+      if (!h) return h;
+      if (k === 'del') return { ...h, raw: h.raw.slice(0, -1) };
+      if (k === '.') return h.mode === 'chips' || h.raw.includes('.') ? h : { ...h, raw: `${h.raw || '0'}.` };
+      // seven significant digits is more money than any home game has ever seen, and
+      // it is what stops a held-down remote key from building an unbounded string
+      if (h.raw.replace('.', '').length >= 7) return h;
+      return { ...h, raw: h.raw === '0' ? k : h.raw + k };
+    });
+
+  /* The starting-stack overlay: the phone asks for it, THIS screen may refuse. */
+  const showStartStack = tvShowStartStack && !tvStartStackHidden;
+  const hideStartStack = () =>
+    dispatch({ type: 'UPDATE_SETTINGS', patch: { tvStartStackHidden: true, tvShowStartStack: false } });
+  const toggleStartStack = () =>
+    dispatch({
+      type: 'UPDATE_SETTINGS',
+      patch: tvStartStackHidden
+        ? // back on: a standalone screen also cleared the request itself on the way out
+          { tvStartStackHidden: false, tvShowStartStack: true }
+        : { tvStartStackHidden: true, tvShowStartStack: false },
+    });
+
   // "Can I still buy in?" — the same answer the phone shows, on the wall.
   const lateReg = lateRegState(isCash ? 0 : state.settings.lateRegLevels ?? 0, levelIdx, seconds, minutesPerLevel);
 
@@ -1388,6 +1569,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       data-tv-accent={tvAccent}
       data-tv-focus-v={tvBackground ? focusV : undefined}
       data-tv-compact={tvCompact ? '' : undefined}
+      data-tv-gpu={gpu}
       style={{
         ['--tv-scale']: tvScale,
         // per-role text size, on top of whatever the layout already worked out
@@ -1552,7 +1734,14 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           {showTimer && (
             <>
               <div className={`tv-time ${running && seconds <= 30 ? 'urgent' : ''}`}>{digitCells(fmtClock(seconds))}</div>
-              <div className="tv-progress"><i style={{ transform: `scaleX(${pct / 100})` }} /></div>
+              {/* The bar is fed one number a second, so a plain width would tick along
+                  in twelve visible steps a minute. A one-second linear transition on a
+                  transform makes the same numbers read as a bar that simply moves.
+                  Keyed on the period: a new level (or a reset) remounts the bar, so it
+                  snaps back to full instead of sweeping backwards for a second. */}
+              <div className="tv-progress">
+                <i key={`${levelIdx}:${onBreak}:${periodSeq}`} style={{ transform: `scaleX(${pct / 100})` }} />
+              </div>
               <div className="tv-next">{onBreak ? '' : next ? t('tv.next', { blinds: `${next.smallBlind} / ${next.bigBlind}` }) : t('tv.finalLevel')}</div>
               {topMoment && (
                 <div className="tv-topmoment">
@@ -1603,16 +1792,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
 
         <Column side="right" on={!placed}>
         <TvCell id="legend" label={t('tv.panel.legend')} slot={shownLayout.legend} {...cellProps}>
-          <div className="tv-legend">
-            <div className="tv-legend-h">{t('tv.chipValues')}</div>
-            {legend.map((d) => (
-              <div className="tv-legend-row" key={d.id}>
-                <Chip value={d.value} color={d.color} accent={d.accent} size={34} shape={d.shape} />
-                <span className="tv-legend-v">{d.value}</span>
-                <span className="tv-legend-m">{money(d.value * unitValue, currency)}</span>
-              </div>
-            ))}
-          </div>
+          <TvLegend rows={legend} unitValue={unitValue} currency={currency} chipSize={legendChipSize} />
         </TvCell>
 
         {payoutsPanel && (
@@ -1695,6 +1875,17 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             {showTrend !== false ? '✓ ' : ''}📈 {t('tv.trend')}
           </button>
         )}
+        {/* The phone's cast, answered from the sofa. Only here once the phone has
+            actually asked for it — or once this screen has said no, which is what
+            keeps the way back on screen. */}
+        {(tvShowStartStack || tvStartStackHidden) && (
+          <button className="tv-txt" onClick={toggleStartStack}>
+            {showStartStack ? `✓ 🃏 ${t('tv.castOff')}` : `🃏 ${t('tv.castOn')}`}
+          </button>
+        )}
+        <button className="tv-txt" onClick={() => setHandout({ raw: '', mode: 'money' })}>
+          💶 {t('tv.handout')}
+        </button>
         <button className="tv-txt" onClick={() => setShot(30)}>{t('tv.shotClock')}</button>
         <button className="tv-txt" onClick={spinRound}>{t('tv.whoDrinks')}</button>
         <button
@@ -1734,8 +1925,8 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       )}
 
       {/* starting-stack overlay — cast from the phone (Table → Starting stack → Show on TV) */}
-      {tvShowStartStack && startStack.denomsUsed.length > 0 && (
-        <div className="tv-overlay tv-startstack" onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvShowStartStack: false } })}>
+      {showStartStack && startStack.denomsUsed.length > 0 && (
+        <div className="tv-overlay tv-startstack" onClick={hideStartStack}>
           <div className="tv-overlay-label">{t('table.startingStack')}</div>
           {/* The real pile per denomination, not one chip and a number: the phone's
               chip-mix slider moves these stacks, and the big screen shows the chips
@@ -1752,6 +1943,96 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             {num(startStack.totalValue)} {t('plan.chips').toLowerCase()} · {money(buyIn, currency)} · {startStack.chipCount} {t('plan.chips').toLowerCase()}
           </div>
           <div className="tv-overlay-hint">{t('tv.tapToDismiss')}</div>
+        </div>
+      )}
+
+      {/* quick buy-in: type an amount, see the chips to hand over */}
+      {handout && (
+        <div className="tv-overlay tv-handout">
+          <div className="tv-overlay-label">{t('tv.handoutTitle')}</div>
+          <div className="tv-handout-body">
+            <div className="tv-handout-pad">
+              <div className="tv-handout-modes">
+                <button
+                  className={handout.mode === 'money' ? 'on' : ''}
+                  onClick={() => setHandout((h) => (h ? { ...h, mode: 'money' } : h))}
+                >
+                  {currency} {t('tv.handoutMoney')}
+                </button>
+                <button
+                  className={handout.mode === 'chips' ? 'on' : ''}
+                  onClick={() => setHandout((h) => (h ? { ...h, mode: 'chips' } : h))}
+                >
+                  {t('tv.handoutChips')}
+                </button>
+              </div>
+              <div className="tv-handout-amt">
+                {/* the raw keystrokes, not a formatted value: a number that reflows
+                    its thousands separators under the finger is impossible to type */}
+                <b>
+                  {handout.mode === 'money' && <span className="tv-handout-cur">{currency}</span>}
+                  {handout.raw || '0'}
+                </b>
+                <small>
+                  {/* the same amount in the OTHER unit — repeating the one just typed
+                      says nothing */}
+                  {handout.mode === 'money'
+                    ? `${num(handoutResult?.targetValue ?? 0)} ${t('plan.chips').toLowerCase()}`
+                    : t('tv.handoutWorth', { amount: money(handoutMoney, currency) })}
+                </small>
+              </div>
+              <div className="tv-handout-quick">
+                {handoutQuick.map((a) => (
+                  <button key={a} onClick={() => setHandout({ mode: 'money', raw: String(a) })}>
+                    {money(a, currency)}
+                  </button>
+                ))}
+              </div>
+              <div className="tv-handout-keys">
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'del'].map((k) => (
+                  <button
+                    key={k}
+                    className={k === 'del' ? 'tv-handout-del' : undefined}
+                    disabled={k === '.' && handout.mode === 'chips'}
+                    onClick={() => handoutKey(k)}
+                  >
+                    {k === 'del' ? '⌫' : k}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="tv-handout-chips">
+              {handoutResult && handoutResult.denomsUsed.length > 0 ? (
+                <>
+                  <ChipStackViz
+                    denoms={handoutResult.denomsUsed}
+                    counts={handoutResult.counts}
+                    surface="tv"
+                    maxChipSize={tvChipSize}
+                  />
+                  <div className="tv-startstack-total">
+                    {num(handoutResult.totalValue)} {t('plan.chips').toLowerCase()} ·{' '}
+                    {money(handoutResult.totalValue * unitValue, currency)} · {handoutResult.chipCount}{' '}
+                    {t('plan.chips').toLowerCase()}
+                  </div>
+                  {/* The inventory really can run out mid-night; saying so beats
+                      handing over a stack that is quietly short. */}
+                  {!handoutResult.exact && handoutResult.totalValue < handoutResult.targetValue && (
+                    <div className="tv-handout-short">
+                      {t('tv.handoutShort', {
+                        amount: money((handoutResult.targetValue - handoutResult.totalValue) * unitValue, currency),
+                      })}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="tv-handout-empty">{t('tv.handoutNothing')}</div>
+              )}
+            </div>
+          </div>
+          <button className="tv-txt tv-handout-close" onClick={() => setHandout(null)}>
+            ✓ {t('tv.arrangeDone')}
+          </button>
         </div>
       )}
 

@@ -22,6 +22,43 @@ export function isTvBrowser(ua = typeof navigator === 'undefined' ? '' : navigat
 }
 
 /**
+ * Is the panel behind this viewport a 4K one?
+ *
+ * A TV browser almost never hands out a 3840-wide CSS viewport: it reports a
+ * 1080-class one and paints it at a device pixel ratio of 2. So the `vmin` the whole
+ * layout is sized in resolves against 1080 either way, and a 4K panel gets exactly
+ * the same physical letter height as a 1080p one — bigger pixels, not bigger text.
+ * The panel being 4K is nevertheless a real signal about the room: nobody buys a 4K
+ * set to watch it from a desk, so it is a hint that the viewer is further away.
+ */
+export function isUhd(): boolean {
+  if (typeof window === 'undefined') return false;
+  const dpr = window.devicePixelRatio || 1;
+  return Math.max(window.innerWidth, window.innerHeight) * dpr >= 2800;
+}
+
+/**
+ * How much painting this screen can afford per frame.
+ *
+ * 'lite' turns off the two things that stutter on a TV stick and cost nothing to
+ * lose: the `backdrop-filter` behind every panel (a full-screen blur, recomputed
+ * whenever anything above it moves) and the `drop-shadow` filter around a pile of
+ * chips while its chips are moving. Both are per-frame GPU work on a chip that has
+ * to fill four times as many pixels as the laptop the layout was tuned on.
+ *
+ * `hardwareConcurrency` is a poor proxy for a GPU and a good proxy for the class of
+ * device — a set-top box reports 2 or 4, a laptop 8 or more.
+ */
+export function tvGpuBudget(): 'full' | 'lite' {
+  if (typeof navigator === 'undefined') return 'full';
+  if (isTvBrowser()) return 'lite';
+  const cores = navigator.hardwareConcurrency ?? 8;
+  // a 4K canvas is four times the fill rate; a weak machine driving one is 'lite'
+  if (cores <= 4 || (isUhd() && cores <= 6)) return 'lite';
+  return 'full';
+}
+
+/**
  * A sensible default for this device, used until the user touches the A−/A+ control.
  *
  * Everything here is one notch larger than it was: across a living room, the first
@@ -34,7 +71,10 @@ export function isTvBrowser(ua = typeof navigator === 'undefined' ? '' : navigat
  */
 export function autoTvScale(): number {
   if (typeof window === 'undefined') return 1;
-  if (isTvBrowser()) return 1.15;
+  // A TV browser gets the layout the sizing was tuned for. A 4K set is further from
+  // the sofa than the 1080p one it replaced and reports the same CSS viewport, so it
+  // gets a notch more — see `isUhd`.
+  if (isTvBrowser()) return isUhd() ? 1.3 : 1.15;
   const w = window.innerWidth;
   const h = window.innerHeight;
   const short = Math.min(w, h);

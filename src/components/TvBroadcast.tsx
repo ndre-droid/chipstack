@@ -1,7 +1,7 @@
 import { memo, useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { IconCheck, IconChevron } from './Icons';
-import { TV_BACKGROUNDS, backgroundsFor } from '../lib/tvBackgrounds';
+import { TV_BACKGROUNDS, backgroundFolders, groupOfBackground, type TvBackgroundGroup } from '../lib/tvBackgrounds';
 import { addPhoto, deletePhoto, listPhotos, type SavedPhoto } from '../lib/photoStore';
 import { useT } from '../lib/i18n';
 import { analyzeBackground } from '../lib/imageAnalysis';
@@ -33,6 +33,14 @@ const ACCENTS: { id: AccentId; color: string }[] = [
   { id: 'crimson', color: '#ff6b6b' }, { id: 'coral', color: '#ff7a4d' },
 ];
 const accentColor = (id: AccentId) => ACCENTS.find((a) => a.id === id)?.color ?? '#f0b429';
+
+/** The background folder a style belongs to — where the picker opens with nothing picked. */
+const GROUP_OF_SKIN: Record<Skin, TvBackgroundGroup> = {
+  minimal: 'minimal',
+  casino: 'table',
+  playful: 'playful',
+  scifi: 'scifi',
+};
 
 /**
  * Which panel name to show for a text role. Most roles ARE a panel; the three that
@@ -82,6 +90,13 @@ function TvBroadcast() {
   const [bgError, setBgError] = useState<string | null>(null);
   const [photos, setPhotos] = useState<SavedPhoto[]>([]);
   const [penaltyText, setPenaltyText] = useState('');
+  /* Which background folder is open. Starts on the folder holding the current
+     background, so the picked one is never behind a closed lid; with nothing picked
+     it opens the one drawn for the chosen big-screen style. Only ever one at a time —
+     the whole point is that the list is short enough to see past. */
+  const [openGroup, setOpenGroup] = useState<TvBackgroundGroup | null>(
+    () => groupOfBackground(state.settings.tvBackground) ?? GROUP_OF_SKIN[state.settings.skin ?? 'minimal'],
+  );
 
   // The gallery lives in IndexedDB (see lib/photoStore.ts), so it is read once the
   // panel is actually opened rather than on every Table-tab render.
@@ -332,20 +347,47 @@ function TvBroadcast() {
             <div className="divider" />
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{t('settings.tvBackground')}</div>
             <div className="faint" style={{ fontSize: 12, marginBottom: 10 }}>{t('settings.tvBackgroundDesc')}</div>
-            {/* Ordered so the ones drawn for the chosen big-screen style come first —
-                casino and sci-fi each have their own set. */}
-            <div className="bg-preset-grid">
-              {backgroundsFor(effTvSkin).map((p) => (
-                <button
-                  key={p.id}
-                  className={`bg-preset ${settings.tvBackground === p.url ? 'active' : ''} ${p.skin === effTvSkin ? 'matches' : ''}`}
-                  style={{ backgroundImage: `url("${p.url}")` }}
-                  onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: p.url, tvBackgroundFocus: { x: 50, y: 50 }, tvBackgroundTone: p.tone } })}
-                  title={p.name}
-                >
-                  <span>{p.name}</span>
-                </button>
-              ))}
+            {/* One folder per mood, collapsed. There are three dozen of these now, and
+                a single grid of them was a wall you had to scroll past to reach
+                anything else on the tab. The folder holding the current pick is open,
+                so the selection is never hidden behind a closed lid; failing that, the
+                one drawn for the chosen big-screen style is. */}
+            <div className="bg-folders">
+              {backgroundFolders(effTvSkin).map((folder) => {
+                const isOpen = openGroup === folder.group;
+                const holdsPick = folder.items.some((b) => b.url === settings.tvBackground);
+                return (
+                  <div className={`bg-folder${isOpen ? ' open' : ''}`} key={folder.group}>
+                    <button
+                      className="bg-folder-h"
+                      aria-expanded={isOpen}
+                      onClick={() => setOpenGroup(isOpen ? null : folder.group)}
+                    >
+                      <span className="bg-folder-caret" aria-hidden>
+                        <IconChevron size={14} />
+                      </span>
+                      <span className="bg-folder-name">{t(`settings.bgGroup.${folder.group}`)}</span>
+                      {holdsPick && <span className="bg-folder-dot" aria-hidden />}
+                      <span className="faint bg-folder-n">{folder.items.length}</span>
+                    </button>
+                    {isOpen && (
+                      <div className="bg-preset-grid">
+                        {folder.items.map((p) => (
+                          <button
+                            key={p.id}
+                            className={`bg-preset ${settings.tvBackground === p.url ? 'active' : ''} ${p.skin === effTvSkin ? 'matches' : ''}`}
+                            style={{ backgroundImage: `url("${p.url}")` }}
+                            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackground: p.url, tvBackgroundFocus: { x: 50, y: 50 }, tvBackgroundTone: p.tone } })}
+                            title={p.skin === effTvSkin ? `${p.name} — ${t('settings.bgMatches')}` : p.name}
+                          >
+                            <span>{p.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {/* The user's own gallery — saved on this device, never synced. */}

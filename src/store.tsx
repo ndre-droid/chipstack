@@ -84,6 +84,7 @@ const defaultSettings: Settings = {
   tvLayout: null,
   tvTextScale: { ...DEFAULT_TV_TEXT_SCALE },
   tvLayoutOwn: false,
+  tvStartStackHidden: false,
   deviceIsTv: false,
   tvScale: null,
   liveSessionCode: null,
@@ -908,6 +909,7 @@ function migrate(raw: string | null): AppState {
   if (typeof settings.cashUseTimer !== 'boolean') settings.cashUseTimer = false;
   if (settings.countMode !== 'money' && settings.countMode !== 'colours') settings.countMode = 'money';
   if (typeof settings.tvShowStartStack !== 'boolean') settings.tvShowStartStack = false;
+  if (typeof settings.tvStartStackHidden !== 'boolean') settings.tvStartStackHidden = false;
   if (typeof settings.bountyMode !== 'boolean') settings.bountyMode = false;
   if (typeof settings.bountyAmount !== 'number' || settings.bountyAmount < 0) settings.bountyAmount = 5;
   if (typeof settings.showTrend !== 'boolean') settings.showTrend = true;

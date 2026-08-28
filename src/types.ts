@@ -142,6 +142,14 @@ export interface Settings {
    *  layout, and "Reset arrangement" clears it and hands the screen back to the
    *  phone. Per-device (never synced or shared). */
   tvLayoutOwn: boolean;
+  /** This screen was told to put the cast starting-stack away, and it stays away.
+   *  `tvShowStartStack` is the PHONE's request and travels in LiveData, so a TV that
+   *  simply cleared it had it pushed straight back on the host's next write — the
+   *  overlay reappeared on its own, which is exactly what it looked like. The TV
+   *  keeps its own answer here instead, and only a fresh request from the phone
+   *  (off, then on again) clears it. Per-device: a TV telling the phone what to stop
+   *  casting is the phone's business, not the setup's. */
+  tvStartStackHidden: boolean;
   /** This device is designated the big screen: it boots straight into TV mode,
    *  advertises a pairing code, and a phone connects to it. Per-device (never
    *  synced or shared), so only the actual TV carries it. */

@@ -39,7 +39,7 @@ interface Props {
  * pile, so when the numbers change the chips that were added drop in from above
  * and the ones that went away lift off — see lib/stackDrop.
  */
-export default function ChipStackViz({
+function ChipStackViz({
   denoms,
   counts: target,
   maxDiscs = 11,
@@ -550,3 +550,11 @@ function isLightColor(hex: string) {
   const b = parseInt(n.slice(4, 6), 16);
   return 0.299 * r + 0.587 * g + 0.114 * b > 165;
 }
+
+/* Memoised because of the big screen: TV mode repaints once a second for the
+   countdown, and a spread of eight piles is ~90 positioned elements with a 3D bitmap
+   each. Nothing in here changes with the clock, so with the props held steady
+   upstream (`startStack`, the handout result — both `useMemo`d) it simply does not
+   run on a tick. Every other caller passes stable props too, so this costs nothing
+   anywhere else. */
+export default memo(ChipStackViz);
