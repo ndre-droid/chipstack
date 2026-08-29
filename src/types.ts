@@ -278,6 +278,9 @@ export interface LedgerPlayer {
   personId?: string;
 }
 
+/** The whole ledger as it stood before a change — one undo shape for every money action. */
+export type LedgerSnapshot = LedgerPlayer[];
+
 /** A counting round in progress, so the big screen can show how far around the table it is. */
 export interface CountingProgress {
   index: number;   // 1-based position of the player being counted

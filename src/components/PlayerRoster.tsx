@@ -3,7 +3,8 @@ import { useStore } from '../store';
 import { useT, useFmt } from '../lib/i18n';
 import { IconPlus, IconTrash } from './Icons';
 import { EmojiPicker } from './EmojiPicker';
-import CountRound, { type LedgerSnapshot } from './CountRound';
+import CountStack from './CountStack';
+import StackShareRound from './StackShareRound';
 import PlayerSheet from './PlayerSheet';
 import Sparkline from './Sparkline';
 import { handoutStack } from '../lib/startingStack';
@@ -14,6 +15,7 @@ import { netOf } from '../lib/settle';
 import { useBackHandler } from '../lib/backHandler';
 import { haptic } from '../lib/platform';
 import PeoplePicker from './PeoplePicker';
+import type { LedgerSnapshot } from '../types';
 
 /** how old the newest count may get before the roster nudges you to count again */
 const STALE_MINUTES = 25;
@@ -49,7 +51,10 @@ function PlayerRoster({ levelIdx }: { levelIdx?: number }) {
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   const [koPickId, setKoPickId] = useState<string | null>(null); // busted player awaiting bounty attribution
   const [editId, setEditId] = useState<string | null>(null);
-  const [round, setRound] = useState<{ only?: string } | null>(null);
+  /** the whole-table round: one screen of bars that always adds up */
+  const [round, setRound] = useState(false);
+  /** one pile counted exactly, colour by colour */
+  const [countId, setCountId] = useState<string | null>(null);
   // The stack being typed in right now. Entering the euro amount straight into the
   // row is the FASTEST thing at a live table, so it is the primary path; the
   // colour-by-colour tally sits one tap further in.
@@ -474,7 +479,7 @@ function PlayerRoster({ levelIdx }: { levelIdx?: number }) {
                         quick={quickAmounts}
                         confirmLabel={t('count.save')}
                         byColourLabel={t('roster.byColour')}
-                        onByColour={() => { setStackId(null); setRound({ only: p.id }); }}
+                        onByColour={() => { setStackId(null); setCountId(p.id); }}
                         onCancel={() => setStackId(null)}
                         onConfirm={(v) => setStackMoney(p.id, v)}
                       />
@@ -581,7 +586,7 @@ function PlayerRoster({ levelIdx }: { levelIdx?: number }) {
               <button className="btn btn-ghost btn-sm" onClick={addPlayer}>
                 <IconPlus size={15} /> {t('roster.addPlayer')}
               </button>
-              <button className={`btn btn-sm ${stale ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setRound({})}>
+              <button className={`btn btn-sm ${stale ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setRound(true)}>
                 🧮 {t('roster.countRound')}
               </button>
               <button
@@ -682,7 +687,8 @@ function PlayerRoster({ levelIdx }: { levelIdx?: number }) {
       </div>
 
       {confirm.node}
-      {round && <CountRound only={round.only} onClose={() => setRound(null)} onUndoable={offerUndo} />}
+      {round && <StackShareRound onClose={() => setRound(false)} onUndoable={offerUndo} />}
+      {countId && <CountStack playerId={countId} onClose={() => setCountId(null)} onUndoable={offerUndo} />}
       {pickPeople && <PeoplePicker onClose={() => setPickPeople(false)} />}
       {editId && <PlayerSheet playerId={editId} onClose={() => setEditId(null)} />}
 

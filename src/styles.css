@@ -2351,15 +2351,6 @@ input[type='color'] { cursor: pointer; }
 .cr-total b { font-size: 24px; color: var(--acc); font-family: var(--font-display); }
 .cr-bar { display: flex; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--line); background: var(--surface); }
-.cr-sum-list { display: flex; flex-direction: column; }
-.cr-sum-row { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0;
-  border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
-.cr-sum-row:first-child { border-top: 0; }
-.cr-sum-name { font-weight: 600; }
-.cr-check { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; padding-top: 12px;
-  border-top: 1px solid var(--line); font-size: 13.5px; font-variant-numeric: tabular-nums; }
-.cr-check .pos { color: var(--good); }
-.cr-check .neg { color: var(--bad); }
 .cr-note { font-size: 12px; margin-top: 10px; }
 
 /* --- Settle-up rows (Cash tab is read-only reporting now) --- */
@@ -2389,10 +2380,27 @@ input[type='color'] { cursor: pointer; }
 .cr-key { height: 46px; border-radius: var(--r-sm); font-size: 19px; font-weight: 600;
   background: var(--surface); border: 1px solid var(--line); color: inherit; }
 .cr-key:active { background: var(--surface-3); }
-.cr-moves { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; padding-top: 12px;
-  border-top: 1px solid var(--line); font-size: 13.5px; }
-.cr-moves .pos { color: var(--good); }
-.cr-moves .neg { color: var(--bad); }
+/* --- The counting round: one dragged bar per player, always adding up --- */
+.csr-row { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center;
+  gap: 4px 8px; padding: 10px 0 12px; border-top: 1px solid var(--line); }
+.csr-row:first-child { border-top: 0; }
+.csr-name { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 0;
+  background: none; border: 0; color: inherit; font: inherit; text-align: left; }
+.csr-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.csr-emoji { font-size: 17px; }
+.csr-crown { font-size: 14px; }
+.csr-val { font-weight: 800; font-variant-numeric: tabular-nums; font-family: var(--font-display); }
+.csr-delta { min-width: 62px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
+.csr-delta.pos { color: var(--good); }
+.csr-delta.neg { color: var(--bad); }
+/* the pin is a state, not a button you hunt for — it only lights up once it means something */
+.csr-pin { width: 30px; height: 30px; flex: none; border-radius: var(--r-sm); border: 0;
+  background: none; font-size: 13px; opacity: .28; filter: grayscale(1); }
+.csr-pin.on { opacity: 1; filter: none; background: var(--acc-wash); }
+/* the bar owns the full row width under the name — that is the whole input */
+.csr-bar { grid-column: 1 / -1; margin-top: 2px; height: 10px; touch-action: pan-y; }
+.csr-row.is-set .csr-bar::-webkit-slider-thumb { border-width: 3px; }
+.csr-row.is-set .csr-bar::-moz-range-thumb { border-width: 3px; }
 
 /* --- Roster: stack trail, count age, undo --- */
 .pr-spark { color: var(--text-faint); flex: none; }

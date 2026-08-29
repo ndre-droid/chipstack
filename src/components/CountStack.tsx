@@ -5,31 +5,29 @@ import { useT, useFmt } from '../lib/i18n';
 import { moneyToUnits } from '../lib/distribution';
 import { parseMoney } from '../lib/money';
 import { startingStackOf, handoutStack } from '../lib/startingStack';
-import type { Denomination, LedgerPlayer } from '../types';
-
-/** The whole ledger as it stood before a change — one undo shape for every
- *  money action, not just counting rounds. */
-export type LedgerSnapshot = LedgerPlayer[];
+import type { Denomination, LedgerSnapshot } from '../types';
 
 /**
- * The counting round: walk the table player by player and tally each stack by
- * COLOUR (how many of each denomination), so nobody has to add up chip values in
- * their head. Input is chip pieces, the running total is shown in money.
+ * ONE player's stack, counted exactly.
  *
- * Deliberately an overview tool, not an audit — the closing summary compares the
- * counted total against the money on the table and shows the difference as a
- * hint; it never blocks. Everything commits in ONE dispatch at the end, so the
- * live TV gets a single push instead of one per player.
+ * The exact path, not the usual one: the round itself is dragged on
+ * `StackShareRound`, and this sheet is what you open when a single pile has to be
+ * right — a colour-by-colour tally, or a typed amount. It never walks the table.
  *
- * Pass `only` to count a single player (the stack value tapped in the roster).
+ * With `onResult` it hands the number back instead of writing it, so the slider
+ * round can take an exact stack for one row without committing the whole table.
  */
-export default function CountRound({
-  only,
+export default function CountStack({
+  playerId,
   onClose,
+  onResult,
   onUndoable,
 }: {
-  only?: string;
+  playerId: string;
   onClose: () => void;
+  /** given: return the counted units to the caller. Absent: write them to the ledger. */
+  onResult?: (units: number) => void;
+  /** offered the ledger as it stood, so the caller can put an undo up */
   onUndoable?: (previous: LedgerSnapshot) => void;
 }) {
   const { state, dispatch } = useStore();
@@ -38,12 +36,7 @@ export default function CountRound({
   const { denominations, ledger, session, settings } = state;
   const { unitValue, currency } = settings;
 
-  // Who gets counted: still-in players, in table order (busted / cashed-out players
-  // have no stack left to count).
-  const players = useMemo(
-    () => (only ? ledger.filter((p) => p.id === only) : ledger.filter((p) => !p.out && !(p.cashOut > 0))),
-    [ledger, only],
-  );
+  const player = ledger.find((p) => p.id === playerId);
 
   // Default to the colours the starting stack actually uses — that's what is on the
   // table. "Show all colours" falls back to the whole owned inventory.
@@ -59,32 +52,24 @@ export default function CountRound({
       : startStack.denomsUsed;
 
   /* How the stack gets entered. Typing the euro amount is the default because at a
-     real table it is by far the fastest — you look at the pile, type a number, next
-     player. Tallying by colour is the exact-but-slow path, kept one tap away. The
-     choice is remembered in settings, so a table that prefers one never re-picks it. */
+     real table it is by far the fastest — you look at the pile, type a number. Tallying
+     by colour is the exact-but-slow path, kept one tap away. The choice is remembered
+     in settings, so a table that prefers one never re-picks it. */
   const mode: 'money' | 'colours' = settings.countMode ?? 'money';
   const setMode = (m: 'money' | 'colours') => dispatch({ type: 'UPDATE_SETTINGS', patch: { countMode: m } });
 
-  const [idx, setIdx] = useState(0);
   const [counts, setCounts] = useState<Record<string, number>>({});
   /** the money-mode field, as typed (a string so "" isn't the same as 0) */
   const [moneyText, setMoneyText] = useState('');
   const [prefilled, setPrefilled] = useState(false);
   const [padId, setPadId] = useState<string | null>(null);
-  // back closes the numpad first, then the whole round
+  // back closes the numpad first, then the sheet
   useBackHandler(padId !== null, () => setPadId(null));
   useBackHandler(true, onClose);
-  // playerId → new chip-unit total; only players actually counted appear here
-  const [results, setResults] = useState<Record<string, number>>({});
-  // playerId → per-colour tally, so the inventory check can add up the whole table
-  const [tallies, setTallies] = useState<Record<string, Record<string, number>>>({});
-  const [done, setDone] = useState(false);
 
-  const player: LedgerPlayer | undefined = players[idx];
   const colourUnits = denoms.reduce((s, d) => s + (counts[d.id] || 0) * d.value, 0);
   const moneyUnits = moneyToUnits(Math.max(0, parseMoney(moneyText)), unitValue);
   const currentUnits = mode === 'money' ? moneyUnits : colourUnits;
-  const isLast = idx >= players.length - 1;
 
   /** One-tap amounts, same set the roster offers. */
   const quickAmounts = [session.buyIn, 5, 10, 20, 50].filter((v, i, a) => v > 0 && a.indexOf(v) === i).slice(0, 4);
@@ -96,7 +81,7 @@ export default function CountRound({
   // buy-in. Someone who bought in for €5 starts from €5 of chips.
   const seeded = useRef<string | null>(null);
   useEffect(() => {
-    if (!player || done || seeded.current === player.id) return;
+    if (!player || seeded.current === player.id) return;
     seeded.current = player.id;
     const counted = (player.chipHistory?.length ?? 0) > 0;
     const held = (player.chips || 0) * unitValue || session.buyIn;
@@ -111,84 +96,32 @@ export default function CountRound({
       setCounts({});
       setPrefilled(false);
     }
-  }, [player, done, denominations, session, unitValue]);
-
-  // Tell the big screen how far around the table we are.
-  useEffect(() => {
-    if (only) return; // a single-player count is not a "round"
-    if (done || !player) {
-      dispatch({ type: 'COUNTING_SET', progress: null });
-      return;
-    }
-    dispatch({
-      type: 'COUNTING_SET',
-      progress: { index: idx + 1, total: players.length, name: player.name || 'Player', emoji: player.emoji, at: Date.now() },
-    });
-  }, [idx, done, only, player, players.length, dispatch]);
-
-  useEffect(() => () => { dispatch({ type: 'COUNTING_SET', progress: null }); }, [dispatch]);
+  }, [player, denominations, session, unitValue]);
 
   const bump = (id: string, by: number) =>
     setCounts((c) => ({ ...c, [id]: Math.max(0, (c[id] || 0) + by) }));
 
-  /** Single-player mode (tapped one stack in the roster): save straight away. */
-  const saveOnly = () => {
-    onUndoable?.(ledger);
-    dispatch({ type: 'LEDGER_SET_CHIPS_MANY', entries: [{ id: player!.id, chips: currentUnits }] });
-    onClose();
-  };
-
-  const goNext = (units: number | null) => {
-    const next = units === null ? results : { ...results, [player!.id]: units };
-    setResults(next);
-    // Only a real colour tally may feed the inventory check — in money mode `counts`
-    // is just the untouched pre-fill and would flag phantom over-counts.
-    if (units !== null && mode === 'colours') setTallies((tl) => ({ ...tl, [player!.id]: { ...counts } }));
-    setPadId(null);
-    seeded.current = null;
-    if (isLast) setDone(true);
-    else setIdx((i) => i + 1);
-  };
-
-  /** Money that must be on the table right now = bought in − cashed out. */
-  const tableUnits = moneyToUnits(
-    ledger.reduce((s, p) => s + (p.buyIn || 0) - (p.cashOut || 0), 0),
-    unitValue,
-  );
-
-  /** Last player shortcut: whatever the others aren't holding. */
-  const restUnits = Math.max(
-    0,
-    tableUnits -
-      ledger
-        .filter((p) => p.id !== player?.id && !p.out)
-        .reduce((s, p) => s + (results[p.id] ?? p.chips ?? 0), 0),
-  );
-
-  /**
-   * Inventory check: you can't be holding more chips of a colour than exist in the
-   * box. Counts this round's other players plus what's on screen right now.
-   */
-  const overCount = (d: Denomination) => {
-    const others = Object.entries(tallies)
-      .filter(([id]) => id !== player?.id)
-      .reduce((s, [, tl]) => s + (tl[d.id] || 0), 0);
-    const total = others + (counts[d.id] || 0);
-    return d.count > 0 && total > d.count ? total : 0;
-  };
-
-  const commit = () => {
-    const entries = Object.entries(results).map(([id, chips]) => ({ id, chips: chips > 0 ? chips : undefined }));
-    if (entries.length) {
-      // the whole ledger, not just the counted rows: a round appends a trail point
-      // to every player still in play, so undo has to be able to take them all back
+  const save = () => {
+    if (onResult) {
+      onResult(currentUnits);
+    } else {
       onUndoable?.(ledger);
-      dispatch({ type: 'LEDGER_SET_CHIPS_MANY', entries });
+      dispatch({ type: 'LEDGER_SET_CHIPS_MANY', entries: [{ id: playerId, chips: currentUnits }] });
     }
     onClose();
   };
 
-  if (players.length === 0) {
+  /**
+   * Inventory check: you can't be holding more chips of a colour than exist in the
+   * box. One player against the whole box — the table-wide version went away with
+   * the walk-the-table round.
+   */
+  const overCount = (d: Denomination) => {
+    const held = counts[d.id] || 0;
+    return d.count > 0 && held > d.count ? held : 0;
+  };
+
+  if (!player) {
     return (
       <div className="cr-sheet" role="dialog" aria-modal="true">
         <div className="cr-body">
@@ -199,80 +132,6 @@ export default function CountRound({
     );
   }
 
-  // ---- closing summary: what changed, who moved, and does it add up? ----
-  if (done) {
-    const countedUnits = ledger
-      .filter((p) => !p.out)
-      .reduce((s, p) => s + (results[p.id] ?? p.chips ?? 0), 0);
-    const diff = (countedUnits - tableUnits) * unitValue;
-
-    const moved = players
-      .filter((p) => results[p.id] !== undefined && (p.chips || 0) > 0)
-      .map((p) => ({ p, delta: results[p.id] - (p.chips || 0) }))
-      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
-    const biggest = moved[0];
-    const leader = players
-      .map((p) => ({ p, chips: results[p.id] ?? p.chips ?? 0 }))
-      .sort((a, b) => b.chips - a.chips)[0];
-    const nameOf = (p: LedgerPlayer) => `${p.emoji ? p.emoji + ' ' : ''}${p.name || 'Player'}`;
-
-    return (
-      <div className="cr-sheet" role="dialog" aria-modal="true">
-        <div className="cr-head">
-          <div className="cr-title">{t('count.summary')}</div>
-        </div>
-        <div className="cr-body">
-          <div className="cr-sum-list">
-            {players.map((p) => {
-              const nu = results[p.id];
-              return (
-                <div className="cr-sum-row" key={p.id}>
-                  <span className="cr-sum-name">{nameOf(p)}</span>
-                  {nu === undefined ? (
-                    <span className="faint">{t('count.skipped')}</span>
-                  ) : (
-                    <span className="cr-sum-val">
-                      <span className="faint">{money((p.chips || 0) * unitValue, currency)} → </span>
-                      <b>{money(nu * unitValue, currency)}</b>
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {leader && leader.chips > 0 && (
-            <div className="cr-moves">
-              <div>👑 {t('count.leader')} <b>{nameOf(leader.p)}</b> · {money(leader.chips * unitValue, currency)}</div>
-              {biggest && biggest.delta !== 0 && (
-                <div className={biggest.delta > 0 ? 'pos' : 'neg'}>
-                  {biggest.delta > 0 ? '📈' : '📉'} {t('count.biggestMove')} <b>{nameOf(biggest.p)}</b>{' '}
-                  {biggest.delta > 0 ? '+' : '−'}{money(Math.abs(biggest.delta) * unitValue, currency)}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="cr-check">
-            <span>{t('count.onTable')} <b>{money(tableUnits * unitValue, currency)}</b></span>
-            <span>{t('count.counted')} <b>{money(countedUnits * unitValue, currency)}</b></span>
-            <span className={Math.abs(diff) < 0.005 ? 'faint' : diff > 0 ? 'pos' : 'neg'}>
-              {t('count.diff')} {diff > 0 ? '+' : ''}{money(diff, currency)}
-            </span>
-          </div>
-          <p className="faint cr-note">{t('count.diffHint')}</p>
-        </div>
-        <div className="cr-bar">
-          <button className="btn btn-ghost" onClick={() => { setDone(false); setIdx(players.length - 1); seeded.current = null; }}>
-            {t('count.back')}
-          </button>
-          <button className="btn btn-primary" style={{ flex: 1 }} onClick={commit}>{t('count.finish')}</button>
-        </div>
-      </div>
-    );
-  }
-
-  // ---- one player's stack, tallied by colour ----
   const padDenom = denoms.find((d) => d.id === padId) ?? null;
   const typeDigit = (digit: string) =>
     setCounts((c) => {
@@ -283,14 +142,11 @@ export default function CountRound({
   return (
     <div className="cr-sheet" role="dialog" aria-modal="true">
       <div className="cr-head">
-        {players.length > 1 && (
-          <div className="cr-step">{t('count.playerOf', { i: idx + 1, n: players.length })}</div>
-        )}
         <div className="cr-title">
-          {player!.emoji ? player!.emoji + ' ' : ''}{player!.name || 'Player'}
+          {player.emoji ? player.emoji + ' ' : ''}{player.name || 'Player'}
         </div>
         <div className="cr-prev">
-          {t('count.before')} {money((player!.chips || 0) * unitValue, currency)}
+          {t('count.before')} {money((player.chips || 0) * unitValue, currency)}
         </div>
         <button className="cr-x icon-btn" onClick={onClose} aria-label={t('count.close')}>✕</button>
       </div>
@@ -308,7 +164,7 @@ export default function CountRound({
         {mode === 'money' && (
           <div className="cr-money">
             <div className="faint" style={{ fontSize: 13 }}>
-              {t('count.amountOf', { name: player!.name || 'Player' })}
+              {t('count.amountOf', { name: player.name || 'Player' })}
             </div>
             <div className="quick-row">
               {heldMoney > 0 && (
@@ -343,9 +199,7 @@ export default function CountRound({
                 onFocus={(e) => e.currentTarget.select()}
                 onChange={(e) => setMoneyText(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key !== 'Enter' || currentUnits <= 0) return;
-                  if (only) saveOnly();
-                  else goNext(currentUnits);
+                  if (e.key === 'Enter' && currentUnits > 0) save();
                 }}
               />
             </div>
@@ -396,16 +250,6 @@ export default function CountRound({
           <span>{num(currentUnits)} {t('plan.chips').toLowerCase()}</span>
           <b>{money(currentUnits * unitValue, currency)}</b>
         </div>
-
-        {isLast && players.length > 1 && (
-          <button
-            className="btn btn-ghost btn-block btn-sm"
-            onClick={() => goNext(restUnits)}
-            title={t('count.restHint')}
-          >
-            {t('count.rest')} {money(restUnits * unitValue, currency)}
-          </button>
-        )}
       </div>
 
       {mode === 'colours' && padDenom && (
@@ -435,14 +279,14 @@ export default function CountRound({
       )}
 
       <div className="cr-bar">
-        <button className="btn btn-ghost" onClick={() => goNext(null)}>{t('count.skip')}</button>
+        <button className="btn btn-ghost" onClick={onClose}>{t('count.close')}</button>
         <button
           className="btn btn-primary"
           style={{ flex: 1 }}
           disabled={currentUnits <= 0}
-          onClick={() => (only ? saveOnly() : goNext(currentUnits))}
+          onClick={save}
         >
-          {only ? t('count.save') : isLast ? t('count.toSummary') : t('count.next')}
+          {t('count.save')}
         </button>
       </div>
     </div>
