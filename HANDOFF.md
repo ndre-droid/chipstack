@@ -18,12 +18,14 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-08-28 from `main` @ `febc7f4`**, 4.58 MB (4,805,445 B),
+  (**CURRENT — rebuilt 2026-08-29 from `main` @ `6ff3845`**, 4.58 MB (4,806,340 B),
+  run `33241256818`: the counting round is now a dragged split of one known pot
+  (see "Recent work 2026-08-29").
+  Pages run `33241163295` green from the same commit, so **APK / `main` / Pages are IN SYNC**.
+  Download verified: `200`, `application/vnd.android.package-archive`, 4,806,340 B.
+  Previous build: 2026-08-28 from `main` @ `febc7f4`, 4.58 MB (4,805,445 B),
   run `33170290822`: the step back — one column of names, a quieter big screen,
-  remote-dismissable overlays, the heartbeat fix and ONE chip stack (see "Recent work
-  2026-08-28 (later)").
-  Pages run `33170287523` green from the same commit, so **APK / `main` / Pages are IN SYNC**.
-  Download verified: `200`, `application/vnd.android.package-archive`, 4,805,445 B.
+  remote-dismissable overlays, the heartbeat fix and ONE chip stack.
   Previous build: 2026-08-28 from `main` @ `6eb0b32`, 4.58 MB (4,801,139 B),
   run `33155215226`: the TV perfection pass — 4K sizing, the sticky cast switch, the
   render-loop fix, the quick buy-in and the background folders.
@@ -242,9 +244,15 @@ src/
     SeasonLeague.tsx   NEW — season league on the Cash tab (save night → net/ROI standings + history)
     PlayerRoster.tsx   THE player list (Table tab): join / rename / emoji / rebuy / stack / cash-out /
                        bust / remove. Replaced the player-count stepper + the photo chip-count card.
-    CountRound.tsx     counting-round sheet, TWO modes (Settings.countMode, default 'money'):
-                       type the euro amount per player, or tally by denomination (−/+1/+20).
-                       "assign the rest" for the last player, summary, one LEDGER_SET_CHIPS_MANY dispatch
+    StackShareRound.tsx  THE counting round (2026-08-29): one bar per player splitting the pot
+                       that is already known (bought in − cashed out). Dragging one bar makes the
+                       untouched ones give way, so the total cannot drift and there is no
+                       difference check. Maths in lib/stackShare.ts. One LEDGER_SET_CHIPS_MANY
+                       dispatch at the end; COUNTING_SET only when the pinned set changes.
+    CountStack.tsx     ONE pile, counted exactly. TWO modes (Settings.countMode, default 'money'):
+                       type the euro amount, or tally by denomination (−/+1/+20). Opened by
+                       tapping a name in the round (hands the number back via onResult) or by
+                       "By colour" in the roster (writes it itself). Was CountRound.tsx.
     EmojiPicker.tsx    the 74-emoji set + grid, shared by PlayerRoster and RemoteControl
     MoneyInput.tsx     EVERY money field. Text + inputMode=decimal + parseMoney; keeps the raw
                        text while typing and only re-syncs when the value changes from elsewhere.
@@ -599,7 +607,7 @@ clean; every item below was checked in the dev preview unless it says otherwise.
 - **Android back** — `lib/backHandler.ts` + `useBackHandler`. Sheets and dialogs
   register themselves; App falls back to leaving Settings, then press-again-to-exit.
   Native uses `@capacitor/app`'s `backButton`; the web/PWA keeps one spare history
-  entry and re-pushes it. Registered by: Confirm, ShareSheet, CountRound (numpad
+  entry and re-pushes it. Registered by: Confirm, ShareSheet, CountStack (numpad
   first), PlayerSheet, PeoplePicker, TableTools, ClockFocus, the big screen, and the
   roster's inline editors.
 - **Screens stay mounted** (`App.tsx` renders every visited view, only the active one
@@ -750,7 +758,7 @@ accent colour, hairline accent underline — `.pr-name-btn.leader` on the phone,
   only to the rows in that dispatch — so typing ONE player's stack gave that player a longer history
   than everyone else. Now a counting round appends a point to **every player still in play**; an
   uncounted one carries their last known stack forward. Undo snapshots the whole ledger to match (both
-  call sites in `CountRound.tsx` and `PlayerRoster.tsx`).
+  call sites in `CountStack.tsx` and `PlayerRoster.tsx`).
 - What it means is now drawn: `Sparkline` takes a `baseline` (break-even = buy-in − cash-out, in chip
   units) and draws it as a dotted line; the path takes its colour from where it ENDS — `var(--good)`
   above, `var(--bad)` below. Two points is still the minimum.
@@ -766,7 +774,7 @@ audit turned up. **NOT deployed** — see the ⚠️ Firebase steps at the end.
 - Roster row: tapping the stack opens an inline `€` field (`StackPrompt` in `PlayerRoster.tsx`)
   with `= Buy-in` / `+€x` quick chips; Enter saves. Colour tallying is a `🧮 Nach Farben` button
   inside that panel.
-- `CountRound` gained a mode switch, **`Betrag eingeben` is the default**: one big money field per
+- `CountRound` (now `CountStack`) gained a mode switch, **`Betrag eingeben` is the default**: one big money field per
   player, pre-filled with what they are believed to hold, `Rest zuweisen` on the last player. The
   colour-by-colour sheet is unchanged behind `Nach Farben zählen`. The choice persists in the new
   `Settings.countMode`.
@@ -911,7 +919,8 @@ RemoteControl) — a rebuy could be entered in three of them. Now:
   Row = emoji · name · `⋯` menu; body = buy-in + one-tap rebuy + stack (as money, tap to count).
   Menu = cash out (prefilled from the counted stack) · mark out (tournament) · back in · remove.
   Footer = money on the table vs counted + difference. Add/remove syncs `session.playerCount`.
-- **`components/CountRound.tsx`** — the counting round. Steps through the still-in players; per
+- **`components/CountRound.tsx`** (superseded 2026-08-29 — see StackShareRound / CountStack) — the
+  counting round. Steps through the still-in players; per
   denomination a `−` / number / `+1` / `+20` row (20 = a barrel), running total in chips AND money,
   previous value for reference. Denoms default to the ones the starting stack uses (`computeStack`),
   toggle shows the whole inventory. Last player gets **"assign the rest"** (money on the table minus
@@ -1184,6 +1193,90 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 ---
 
 ## ⚠️ Open items / next steps
+
+### STATE RIGHT NOW (2026-08-29)
+Local branch **`feat/chip-3d-render`**, whose tip is `main` == **`6ff3845`**; Pages
+(`33241163295`) and the APK (`33241256818`) are both built from it. **The working tree is
+NOT clean** — and deliberately so:
+
+- `src/lib/chipTrail.ts` + `chipTrail.test.ts` (untracked), `src/components/Sparkline.tsx`,
+  `src/store.tsx`, and one comment hunk in `src/types.ts` are an **in-flight chip-trail /
+  3D-render change that predates this session and was never committed**. It was kept out
+  of the counting-round commit on purpose (the commit was verified to build and pass with
+  that WIP stashed away). Do not sweep it into an unrelated commit; ask what it is first.
+
+**Rollback point:** tag **`pre-count-slider`** → `d8266f1` is `main` as it stood before the
+counting round, pushed to the remote. `git push origin pre-count-slider:main --force`
+rolls the web app back; follow it with `git reset --soft pre-count-slider` so the local
+tree keeps both the change and the WIP. A plain `git revert` needs the WIP stashed first,
+because it also touches `types.ts`.
+
+**UNRESOLVED, waiting on the user:** they looked at the new round and said *"it still looks
+like before"*, and the session ended before they said on what. The live bundle at
+github.io was checked and genuinely contains the new screen (`csr-row`, "Drag a bar"), so
+the two candidates are (a) they tapped a player's `Stack €x ✎` chip, which is the OLD
+money prompt and deliberately unchanged, rather than the `🧮 Counting round` button, or
+(b) a stale cached build — an installed PWA needs a cold start (swiped out of recents),
+and an old APK serves its own bundle until replaced. **Ask which surface, and whether the
+sheet says "ON THE TABLE €120" or "Player 1 of 4".** That one answer decides between
+"nothing to fix" and a real bug.
+
+### Recent work 2026-08-29 — the counting round is a SPLIT, not six questions
+
+The user's complaint: entering stacks, counting through the night and interrupting the
+game is tedious. Two facts settled the design before any code:
+
+- **Stacks never feed settlement** (`PlayerRoster.tsx` says so in a comment) — `chips`
+  drives the crown, the trend line, the TV leaderboard and the awards, nothing that pays
+  anybody. So precision is spendable.
+- Asked directly, the user confirmed **only the host phone runs the app** (guests do not
+  use the guest view), **breaks are not used**, and **"roughly right" is fine**. That
+  killed the two obvious alternatives — guests self-reporting from their own phones, and
+  a prompt hung off break-start.
+
+So the round stopped asking for N independent numbers. The money on the table is already
+known (bought in − cashed out); the only open question is how it is **split**.
+
+1. **`lib/stackShare.ts`** — the whole idea, as pure integer maths. `rebalance()` moves one
+   row and takes the difference out of the others; the total is the invariant and a pin is
+   only a preference, so **pins yield rather than let the table drift**. Shares land on the
+   drag step (largest-remainder on a step grid), because "€28.92" claims a precision an
+   eyeballed estimate does not have. `shareStep()` picks a step a person would say out
+   loud — €5 on a €340 table. `stackShare.test.ts`: 25 checks including 200 random drags
+   with pins flipping — never drifted, never went negative.
+2. **`components/StackShareRound.tsx`** — the round. One screen, one bar per player, header
+   showing the pot. Drag a bar and the untouched bars give way; a touched row pins itself
+   (📌 lights up) so the next drag takes its money from rows nobody has looked at yet.
+   There is no difference check and no closing summary, because drift is not possible.
+   The crown and the ↑/↓ deltas live in the rows instead.
+3. **`components/CountStack.tsx`** — what `CountRound.tsx` became: ONE pile, counted exactly
+   (money or colour-by-colour), opened by tapping a name in the round, or by "By colour"
+   in the roster. With `onResult` it hands the number back instead of writing it, which is
+   how an exact count lands in the round and pins itself. The walk-the-table machinery —
+   wizard steps, per-player results, the summary, the inventory cross-check across
+   players — is gone, and so are the 15 i18n strings only it used.
+4. Class prefix is **`csr-`** (`.csr-row`, `.csr-bar`, …). `ss-` was already SeasonStats and
+   the first attempt silently collided with it — worth remembering before adding a prefix.
+5. `LedgerSnapshot` moved to `types.ts` (both sheets need it now).
+
+The TV still gets a counting banner: the round dispatches `COUNTING_SET` with
+`index = pinned rows`, but **only when the pinned set or the touched player changes** —
+never per drag frame, or a dragged thumb would push the whole state to the cloud a few
+hundred times.
+
+Verified before pushing: `tsc -b` clean, `oxlint` no new warnings, 24 test files green,
+`npm run build` ok, and the sheet driven live in the browser on a seeded 5-player table —
+dragging held the total at €120, pinned rows did not pay for later drags, an exact €27.50
+count landed and pinned, and Done wrote the ledger (6000+2050+2750+1200), appended the
+trail points and raised the undo snackbar. Dark and light both checked.
+
+Known wart: an exact value off the step grid parks the range thumb up to one step away
+from the number shown (€27.50 → thumb at €28). Sub-half-percent of the bar; the value text
+is right. Fixing it means abandoning `input[type=range]` for a custom pointer drag.
+
+Pitched, not built: since breaks are out, offer the round when someone **busts** — the game
+has already stopped there. One-tap dismiss, no new screens.
+
 
 ### Recent work 2026-08-28 (later) — the step back, and one chip stack
 
