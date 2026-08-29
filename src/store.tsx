@@ -4,6 +4,7 @@ import type { AppState, CarryBalance, ChipSet, Denomination, TimelineEvent, Blin
 
 import { applySharedSettings, shareableSettings } from './lib/settingsScope';
 import { DEFAULT_TV_TEXT_SCALE, isDefaultTvLayout, normalizeTvLayout, normalizeTvTextScale } from './lib/tvLayout';
+import { pushTrail } from './lib/chipTrail';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -112,9 +113,6 @@ const defaultSession: SessionConfig = {
   handoutAmount: null,
   handoutLevelIdx: null,
 };
-
-/** how many counting rounds a player's stack trail keeps (sparkline length) */
-const HISTORY_MAX = 12;
 
 /** how many of tonight's events the timeline keeps — a long night, not a database */
 const TIMELINE_MAX = 200;
@@ -683,7 +681,7 @@ function baseReducer(state: AppState, action: Action): AppState {
           return {
             ...p,
             chips,
-            chipHistory: [...(p.chipHistory ?? []), { at, chips: chips ?? 0 }].slice(-HISTORY_MAX),
+            chipHistory: pushTrail(p.chipHistory, { at, chips: chips ?? 0 }),
           };
         }),
       };

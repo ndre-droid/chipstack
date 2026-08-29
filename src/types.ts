@@ -264,7 +264,8 @@ export interface LedgerPlayer {
   out?: boolean;   // busted / eliminated this game (drives "players left" + struck-through on the TV)
   outAt?: number;  // epoch ms of elimination — orders the bust-out / finish leaderboard
   chips?: number;  // current live chip count (in chip-units) — optional, drives the TV chip-leader crown
-  /** one entry per counting round, oldest first, capped — drives the stack sparkline */
+  /** One entry per counting round, oldest first — drives the stack sparkline. Always
+   *  spans the WHOLE session: past the cap it is thinned, not truncated (see pushTrail). */
   chipHistory?: { at: number; chips: number }[];
   /** The stack (in chip-units) they held the moment their LAST buy-in landed — the
    *  baseline for "how are they doing with the money they put in most recently".
