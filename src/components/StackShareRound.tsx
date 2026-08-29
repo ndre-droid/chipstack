@@ -24,9 +24,12 @@ import type { LedgerSnapshot } from '../types';
  * is exactly why an eyeballed drag is the right instrument here.
  */
 export default function StackShareRound({
+  levelIdx,
   onClose,
   onUndoable,
 }: {
+  /** the blind level being played — passed through to the exact count */
+  levelIdx?: number | null;
   onClose: () => void;
   onUndoable?: (previous: LedgerSnapshot) => void;
 }) {
@@ -210,6 +213,7 @@ export default function StackShareRound({
       {exactFor && (
         <CountStack
           playerId={exactFor}
+          levelIdx={levelIdx}
           onResult={(units) => move(exactFor, units)}
           onClose={() => setExactFor(null)}
         />

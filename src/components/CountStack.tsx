@@ -5,6 +5,8 @@ import { useT, useFmt } from '../lib/i18n';
 import { moneyToUnits } from '../lib/distribution';
 import { parseMoney } from '../lib/money';
 import { startingStackOf, handoutStack } from '../lib/startingStack';
+import { smallChangeOf } from '../lib/smallChange';
+import ChipRuler from './ChipRuler';
 import type { Denomination, LedgerSnapshot } from '../types';
 
 /**
@@ -19,11 +21,14 @@ import type { Denomination, LedgerSnapshot } from '../types';
  */
 export default function CountStack({
   playerId,
+  levelIdx,
   onClose,
   onResult,
   onUndoable,
 }: {
   playerId: string;
+  /** the blind level being played — decides which colours are dead weight */
+  levelIdx?: number | null;
   onClose: () => void;
   /** given: return the counted units to the caller. Absent: write them to the ledger. */
   onResult?: (units: number) => void;
@@ -46,10 +51,23 @@ export default function CountStack({
     [denominations, session, unitValue],
   );
 
-  const denoms: Denomination[] =
+  const shown: Denomination[] =
     showAll || startStack.denomsUsed.length === 0
       ? denominations.filter((d) => d.count > 0).slice().sort((a, b) => a.value - b.value)
       : startStack.denomsUsed;
+
+  /* Small change: the colours the blinds have left behind. They are most of the
+     chips in front of a player and almost none of the money, so by default they
+     fold into one assumed figure rather than being tallied. Inert at the starting
+     level, where nothing is below the base yet — see lib/smallChange.ts. */
+  const small = useMemo(
+    () => smallChangeOf(denominations, session, unitValue, levelIdx),
+    [denominations, session, unitValue, levelIdx],
+  );
+  const canFold = small.denoms.length > 0;
+  const bigOnly = canFold && (settings.countBigOnly ?? true);
+  const smallIds = useMemo(() => new Set(small.denoms.map((d) => d.id)), [small]);
+  const denoms: Denomination[] = bigOnly ? shown.filter((d) => !smallIds.has(d.id)) : shown;
 
   /* How the stack gets entered. Typing the euro amount is the default because at a
      real table it is by far the fastest — you look at the pile, type a number. Tallying
@@ -63,11 +81,17 @@ export default function CountStack({
   const [moneyText, setMoneyText] = useState('');
   const [prefilled, setPrefilled] = useState(false);
   const [padId, setPadId] = useState<string | null>(null);
+  /** the colour currently being measured with the ruler, if any */
+  const [rulerId, setRulerId] = useState<string | null>(null);
   // back closes the numpad first, then the sheet
   useBackHandler(padId !== null, () => setPadId(null));
   useBackHandler(true, onClose);
 
-  const colourUnits = denoms.reduce((s, d) => s + (counts[d.id] || 0) * d.value, 0);
+  /* The folded colours are still carried in `counts` — the fold hides the rows, it
+     does not hold a second, separate figure. That is the whole reason the total does
+     not jump when you open the small-change row: there is only ever one source. */
+  const assumed = bigOnly ? small.denoms.reduce((s, d) => s + (counts[d.id] || 0) * d.value, 0) : 0;
+  const colourUnits = denoms.reduce((s, d) => s + (counts[d.id] || 0) * d.value, 0) + assumed;
   const moneyUnits = moneyToUnits(Math.max(0, parseMoney(moneyText)), unitValue);
   const currentUnits = mode === 'money' ? moneyUnits : colourUnits;
 
@@ -85,18 +109,21 @@ export default function CountStack({
     seeded.current = player.id;
     const counted = (player.chipHistory?.length ?? 0) > 0;
     const held = (player.chips || 0) * unitValue || session.buyIn;
+    /** the small chips they were handed at buy-in and nobody is going to count */
+    const smallSeed: Record<string, number> = {};
+    for (const d of small.denoms) smallSeed[d.id] = startStack.counts[d.id] ?? 0;
     // the money field always opens on what they are believed to hold — usually right,
     // and always a shorter edit than typing the whole number from scratch
     setMoneyText(held > 0 ? String(Math.round(held * 100) / 100) : '');
     if (!counted && held > 0) {
       const pattern = handoutStack(denominations, session, unitValue, held).counts;
-      setCounts({ ...pattern });
+      setCounts({ ...pattern, ...smallSeed });
       setPrefilled(true);
     } else {
-      setCounts({});
+      setCounts({ ...smallSeed });
       setPrefilled(false);
     }
-  }, [player, denominations, session, unitValue]);
+  }, [player, denominations, session, unitValue, small, startStack]);
 
   const bump = (id: string, by: number) =>
     setCounts((c) => ({ ...c, [id]: Math.max(0, (c[id] || 0) + by) }));
@@ -133,6 +160,7 @@ export default function CountStack({
   }
 
   const padDenom = denoms.find((d) => d.id === padId) ?? null;
+  const rulerDenom = denoms.find((d) => d.id === rulerId) ?? null;
   const typeDigit = (digit: string) =>
     setCounts((c) => {
       const nextRaw = `${c[padId!] || 0}${digit}`.replace(/^0+(?=\d)/, '');
@@ -232,13 +260,39 @@ export default function CountStack({
                 {counts[d.id] || 0}
               </button>
               <button className="cr-btn" onClick={() => bump(d.id, 1)}>+1</button>
-              <button className="cr-btn wide" onClick={() => bump(d.id, 20)}>+20</button>
+              <button
+                className="cr-btn cr-ruler"
+                onClick={() => setRulerId(d.id)}
+                aria-label={t('ruler.measure', { v: num(d.value) })}
+                title={t('ruler.title')}
+              >
+                📏
+              </button>
               <span className={`cr-denom-sum ${over ? 'over' : ''}`}>
                 {over ? `⚠ ${over}/${d.count}` : num((counts[d.id] || 0) * d.value)}
               </span>
             </div>
           );
         })}
+
+        {mode === 'colours' && canFold && (
+          <button
+            className={`cr-small ${bigOnly ? 'folded' : ''}`}
+            onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { countBigOnly: !bigOnly } })}
+          >
+            <span className="cr-small-dots">
+              {small.denoms.map((d) => (
+                <i key={d.id} style={{ background: d.color, borderColor: d.accent }} />
+              ))}
+            </span>
+            <span className="cr-small-txt">
+              {bigOnly ? t('count.smallAssumed') : t('count.smallCounting')}
+            </span>
+            <span className="cr-small-sum">
+              {bigOnly ? money(assumed * unitValue, currency) : t('count.smallFold')}
+            </span>
+          </button>
+        )}
 
         {mode === 'colours' && (
           <button className="mins-toggle cr-all" onClick={() => setShowAll((v) => !v)}>
@@ -251,6 +305,14 @@ export default function CountStack({
           <b>{money(currentUnits * unitValue, currency)}</b>
         </div>
       </div>
+
+      {rulerDenom && (
+        <ChipRuler
+          denom={rulerDenom}
+          onResult={(chips) => setCounts((c) => ({ ...c, [rulerDenom.id]: chips }))}
+          onClose={() => setRulerId(null)}
+        />
+      )}
 
       {mode === 'colours' && padDenom && (
         <div className="cr-pad">

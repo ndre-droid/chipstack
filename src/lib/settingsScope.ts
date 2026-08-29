@@ -34,6 +34,10 @@ export const DEVICE_LOCAL_SETTINGS = [
   'tvStartStackHidden',
   'rosterSort',
   'countMode',
+  // how the colour count is entered on this phone, and what one chip measures on
+  // this screen — both facts about the device in your hand, not about the night
+  'countBigOnly',
+  'chipRulerPx',
   'levelAlerts',
   // how chips are drawn: a weak phone and a TV stick want different answers, and
   // the 3D renderer needs WebGL this device may not have
@@ -84,6 +88,8 @@ function pinned(s: Settings): Pick<Settings, DeviceLocalKey> {
     tvStartStackHidden: s.tvStartStackHidden,
     rosterSort: s.rosterSort,
     countMode: s.countMode,
+    countBigOnly: s.countBigOnly,
+    chipRulerPx: s.chipRulerPx,
     levelAlerts: s.levelAlerts,
     chipStyle: s.chipStyle,
     chipAnim: s.chipAnim,

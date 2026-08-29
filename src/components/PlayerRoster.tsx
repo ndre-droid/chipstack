@@ -687,8 +687,10 @@ function PlayerRoster({ levelIdx }: { levelIdx?: number }) {
       </div>
 
       {confirm.node}
-      {round && <StackShareRound onClose={() => setRound(false)} onUndoable={offerUndo} />}
-      {countId && <CountStack playerId={countId} onClose={() => setCountId(null)} onUndoable={offerUndo} />}
+      {round && <StackShareRound levelIdx={levelIdx} onClose={() => setRound(false)} onUndoable={offerUndo} />}
+      {countId && (
+        <CountStack playerId={countId} levelIdx={levelIdx} onClose={() => setCountId(null)} onUndoable={offerUndo} />
+      )}
       {pickPeople && <PeoplePicker onClose={() => setPickPeople(false)} />}
       {editId && <PlayerSheet playerId={editId} onClose={() => setEditId(null)} />}
 

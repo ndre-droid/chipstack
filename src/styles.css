@@ -2380,6 +2380,55 @@ input[type='color'] { cursor: pointer; }
 .cr-key { height: 46px; border-radius: var(--r-sm); font-size: 19px; font-weight: 600;
   background: var(--surface); border: 1px solid var(--line); color: inherit; }
 .cr-key:active { background: var(--surface-3); }
+
+/* the ruler lives where +20 used to: it counts full columns itself */
+.cr-ruler { min-width: 36px; font-size: 16px; line-height: 1; }
+/* --- Small change: the colours the blinds left behind, folded into one figure --- */
+.cr-small { display: flex; align-items: center; gap: 8px; width: 100%; margin: 6px 0 2px;
+  padding: 9px 10px; border-radius: var(--r-sm); background: var(--surface-2);
+  border: 1px solid var(--line); color: inherit; font: inherit; text-align: left; }
+.cr-small.folded { background: var(--acc-wash); border-color: var(--acc-line); }
+.cr-small-dots { display: flex; flex: none; }
+.cr-small-dots i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid; margin-right: -5px; }
+.cr-small-txt { flex: 1; font-size: 12.5px; color: var(--text-dim); }
+.cr-small-sum { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* --- The chip ruler: a length on the glass, read back as a count --- */
+.ruler-sheet { z-index: 70; }
+.ruler-sheet .cr-title { display: flex; align-items: center; gap: 8px; }
+.ruler-recal { position: absolute; right: 50px; top: 14px; width: 34px; height: 34px; }
+.ruler-hint { margin: 10px 16px 2px; font-size: 13px; color: var(--text-dim); }
+.ruler-columns { display: flex; align-items: center; gap: 8px; margin: 10px 16px 2px;
+  font-size: 12.5px; color: var(--text-dim); }
+.ruler-columns b { min-width: 26px; text-align: center; font-size: 17px; color: var(--text);
+  font-variant-numeric: tabular-nums; }
+.ruler-columns > span:first-child { flex: 1; }
+.ruler-columns-sum { min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+/* the baseline sits INSIDE the screen: a case lip makes the phone's own edge useless */
+/* not clipped: the ticks are generated to fit, and the grip hangs below the line */
+.ruler-stage { position: relative; flex: 1; margin: 10px 16px 34px;
+  touch-action: none; -webkit-user-select: none; user-select: none; }
+.ruler-tick { position: absolute; right: 0; width: 22px; height: 0; border-top: 1px solid var(--line-strong, var(--line)); }
+.ruler-tick.five { width: 40px; }
+.ruler-tick.col { width: 100%; border-top-color: var(--acc-line); }
+.ruler-tick.col span { position: absolute; left: 0; bottom: 2px; font-size: 11px;
+  color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.ruler-bar { position: absolute; left: 0; right: 0; height: 0; z-index: 2; border-top: 3px solid var(--acc); }
+.ruler-grip { position: absolute; left: 0; bottom: -15px; width: 30px; height: 30px;
+  border-radius: 50%; background: var(--acc); box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+/* the readout rides ABOVE the line, where the dragging thumb is not */
+.ruler-read { position: absolute; right: 0; bottom: 8px; padding: 3px 8px; border-radius: var(--r-sm);
+  background: var(--surface); border: 1px solid var(--acc-line); font-size: 13px;
+  white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ruler-read b { font-size: 19px; font-family: var(--font-display); }
+.ruler-base { position: absolute; left: 0; right: 0; bottom: 0; height: 0; z-index: 3;
+  border-top: 3px dashed var(--text-faint); }
+.ruler-nudge { display: flex; align-items: center; gap: 10px; padding: 0 16px 10px; }
+.ruler-nudge .ruler-total { flex: 1; margin: 0; padding: 0; border-top: 0; }
+.ruler-cal-bar { align-items: center; }
+.ruler-cal-n { display: flex; align-items: center; gap: 6px; }
+.ruler-cal-n b { min-width: 30px; text-align: center; font-variant-numeric: tabular-nums; }
+.ruler-error { margin: 0 16px 8px; font-size: 12.5px; color: var(--bad); }
 /* --- The counting round: one dragged bar per player, always adding up --- */
 .csr-row { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center;
   gap: 4px 8px; padding: 10px 0 12px; border-top: 1px solid var(--line); }
