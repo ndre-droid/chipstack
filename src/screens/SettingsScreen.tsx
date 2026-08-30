@@ -7,6 +7,7 @@ import type { Appearance, AccentId, Skin, ChipArt } from '../types';
 import { useConfirm } from '../components/Confirm';
 import MoneyInput from '../components/MoneyInput';
 import { buildBackup, downloadBackup, parseBackup, restorePhotos } from '../lib/backup';
+import { haptic, hapticBackend } from '../lib/platform';
 
 const CURRENCIES = ['€', '$', '£', 'zł', 'Fr'];
 const UNIT_PRESETS = [
@@ -57,6 +58,8 @@ export default function SettingsScreen() {
   // WebGL is checked once: without it the 3D chips can never draw, so the option
   // is disabled rather than silently falling back forever.
   const [webgl] = useState(chip3dSupported);
+  /** which path the last test buzz took — null until the button is pressed */
+  const [buzzPath, setBuzzPath] = useState<'native' | 'web' | 'none' | null>(null);
 
   const activeStyle = STYLES.find((s) => s.id === settings.skin) ?? STYLES[0];
   const accentColor = (id: AccentId) => ACCENTS.find((a) => a.id === id)?.color ?? '#f0b429';
@@ -206,6 +209,36 @@ export default function SettingsScreen() {
         </div>
         <p className="muted mt12" style={{ fontSize: 12.5, margin: '12px 0 0' }}>
           {t('settings.chipAnimNote')}
+        </p>
+      </div>
+
+      {/* Vibration, with a way to prove it. It went unnoticed-dead in the APK for
+          months because a failed buzz looks exactly like a buzz nobody asked for —
+          so the test button says which path it took, not just "done". */}
+      <div className="section-label">{t('settings.haptics')}</div>
+      <div className="card">
+        <div className="chip-toggle-row">
+          {([true, false] as const).map((on) => (
+            <button
+              key={String(on)}
+              className={`chip-toggle ${(settings.countHaptics ?? true) === on ? '' : 'off'}`}
+              onClick={() => dispatch({ type: 'UPDATE_SETTINGS', patch: { countHaptics: on } })}
+            >
+              {t(on ? 'settings.hapticsOn' : 'settings.hapticsOff')}
+            </button>
+          ))}
+        </div>
+        <button
+          className="btn btn-ghost mt12"
+          style={{ width: '100%' }}
+          onClick={() => { haptic([18, 90, 18, 90, 45]); setBuzzPath(hapticBackend()); }}
+        >
+          {t('settings.hapticsTest')}
+        </button>
+        <p className="muted mt12" style={{ fontSize: 12.5, margin: '12px 0 0' }}>
+          {buzzPath
+            ? t(`settings.haptics.${buzzPath}` as 'settings.haptics.native')
+            : t('settings.hapticsNote')}
         </p>
       </div>
 

@@ -2396,7 +2396,15 @@ input[type='color'] { cursor: pointer; }
 /* --- The chip ruler: a length beside the phone, read back as a count --- */
 .ruler-sheet { z-index: 70; }
 .ruler-sheet .cr-title { display: flex; align-items: center; gap: 8px; }
-.ruler-recal { position: absolute; right: 50px; top: 14px; width: 34px; height: 34px; }
+/* No bottom bar: close and confirm sit in the header, so the ladder can own every
+   pixel down to the glass. Chrome floating over its foot costs the same chips as
+   chrome below it — they just cannot be dragged to. */
+.ruler-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 16px; }
+.ruler-head-txt { flex: 1; min-width: 0; }
+.ruler-head-txt .cr-prev { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ruler-head-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.ruler-head-actions .icon-btn { width: 34px; height: 34px; }
+.ruler-go { min-width: 62px; padding: 9px 12px; font-size: 15px; font-variant-numeric: tabular-nums; }
 .ruler-hint { margin: 10px 16px 2px; font-size: 13px; color: var(--text-dim); }
 /* the strip IS the overview: what has been logged, and what it comes to */
 .ruler-strip { display: flex; align-items: center; gap: 10px; margin: 8px 16px 0; padding: 8px 10px;
@@ -2455,11 +2463,6 @@ input[type='color'] { cursor: pointer; }
   border-top: 3px dashed var(--text-faint); }
 .ruler-foot { margin: 8px 16px 0; font-size: 12px; color: var(--text-faint); }
 .ruler-foot.bad { color: var(--bad); }
-/* The ladder runs to the bottom edge of the glass and the buttons float over its foot.
-   Every pixel of chrome BELOW the ladder is added to the calibrated table offset, and
-   a button bar's worth is four or five chips of pure guesswork under every stack. */
-.ruler-sheet .cr-bar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6;
-  border-top: 0; background: linear-gradient(to top, var(--bg) 70%, transparent); }
 .ruler-actions { display: flex; align-items: center; gap: 8px; padding: 10px 16px 0; }
 .ruler-actions .btn { flex: 1; min-width: 0; white-space: nowrap; font-size: 14px; }
 .ruler-error { margin: 0 16px 8px; font-size: 12.5px; color: var(--bad); }

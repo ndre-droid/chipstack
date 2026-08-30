@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { useBackHandler } from '../lib/backHandler';
 import { useStore } from '../store';
@@ -47,15 +47,18 @@ const BUZZ_COLUMN = 28;
  * ruler can be persuaded to see. Those get tapped in, and that row sits above the
  * ladder rather than hidden behind a mode.
  *
- * NOTHING is allowed below the ladder, and that is a correctness rule rather than a
- * layout preference. `zeroPx` is calibrated as a distance from the ladder's bottom
- * edge to the table, so any chrome down there is added to the real case-and-bezel
- * offset — a button bar's worth of it is four or five chips of extra guesswork under
- * every stack, and anything that appears or disappears between calibrating and
- * measuring moves the physical zero and silently invalidates the calibration. So the
- * ladder runs to the bottom edge of the glass and the button bar FLOATS over it.
- * Above the ladder anything may come and go: it only shortens the top, and the range
- * lost is range, not accuracy.
+ * NOTHING is allowed below the ladder, or over it — and that is a correctness rule
+ * rather than a layout preference. `zeroPx` is calibrated as a distance from the
+ * ladder's bottom edge to the table, so chrome below the ladder is added to the real
+ * case-and-bezel offset: a button bar's worth of it is four or five chips of extra
+ * guesswork under every stack, and anything that appears or disappears between
+ * calibrating and measuring moves the physical zero and silently invalidates the
+ * calibration. Chrome that merely FLOATS over the foot is no better in practice — the
+ * pixels it covers cannot be dragged to, so those chips are lost all the same. So the
+ * sheet has no bottom bar at all: close and confirm live in the header, and the ladder
+ * owns every pixel from the last line of text down to the glass. Above the ladder
+ * anything may come and go: it only shortens the top, and the range lost is range,
+ * not accuracy.
  *
  * The bar's grip sits on the RIGHT. The phone is held in the left hand against the
  * pile and dragged with the right thumb by most people, and a grip on the left is
@@ -98,22 +101,6 @@ export default function ChipRuler({
     return () => ro.disconnect();
   }, []);
 
-  /* How much of the ladder's foot the floating button bar covers. Not a calibration
-     input — the ladder still reaches the glass, so `zeroPx` is unaffected — but the
-     chips hiding under it cannot be dragged to, so the hint has to own up to them. */
-  const [barPx, setBarPx] = useState(0);
-  const barObs = useRef<ResizeObserver | null>(null);
-  // a callback ref, not an effect: the bar is a different node while calibrating, and
-  // an effect would keep watching the one that has already been unmounted
-  const barRef = useCallback((el: HTMLDivElement | null) => {
-    barObs.current?.disconnect();
-    barObs.current = null;
-    if (!el) return;
-    setBarPx(el.offsetHeight);
-    barObs.current = new ResizeObserver(() => setBarPx(el.offsetHeight));
-    barObs.current.observe(el);
-  }, []);
-
   /** how far the bar sits above the bottom edge of the screen */
   const [dragPx, setDragPx] = useState(0);
   /* Whether the bar means anything yet. It cannot be inferred from `dragPx`: the bar
@@ -138,9 +125,8 @@ export default function ChipRuler({
 
   const measured = !calibrating && touched ? chipsAt(dragPx, cal) : 0;
   const capacity = calibrating ? 0 : rulerCapacity(trackPx, cal);
-  /* What has to be tapped rather than measured: the chips below the glass, plus the
-     ones behind the floating button bar. */
-  const horizon = hiddenChips(cal, barPx);
+  /** what has to be tapped rather than measured: the chips below the glass */
+  const horizon = hiddenChips(cal);
   /* ...so the one-tap row has to reach at least that far, or the hint names piles it
      then offers no way to enter. */
   const tiny: number[] = [];
@@ -283,24 +269,48 @@ export default function ChipRuler({
 
   const priceOf = (chips: number) => money(chips * denom.value * unitValue, currency);
 
+  /* Where an untouched bar waits. Not zero: the ladder now ends ON the glass edge, so
+     a bar parked at zero has half its grip off the screen and nothing obvious to
+     grab. It means nothing until it is dragged — `touched` is what makes it a
+     measurement — so it may sit wherever it is easiest to find. */
+  const restPx = Math.round(trackPx * 0.35);
+
   return (
     <div className="cr-sheet ruler-sheet" role="dialog" aria-modal="true">
-      <div className="cr-head">
-        <div className="cr-title">
-          <span className="cr-swatch" style={{ background: denom.color, borderColor: denom.accent }} />
-          {num(denom.value)}
+      <div className="cr-head ruler-head">
+        <div className="ruler-head-txt">
+          <div className="cr-title">
+            <span className="cr-swatch" style={{ background: denom.color, borderColor: denom.accent }} />
+            {num(denom.value)}
+          </div>
+          <div className="cr-prev">
+            {calibrating
+              ? t('ruler.calibrateStep', { i: (calStep ?? 0) + 1, n: CALIBRATION_STEPS.length })
+              : t('ruler.title')}
+          </div>
         </div>
-        <div className="cr-prev">
-          {calibrating
-            ? t('ruler.calibrateStep', { i: (calStep ?? 0) + 1, n: CALIBRATION_STEPS.length })
-            : t('ruler.title')}
+        <div className="ruler-head-actions">
+          {!calibrating && (
+            <button className="icon-btn" onClick={restartCalibration} aria-label={t('ruler.recalibrate')}>
+              ⋯
+            </button>
+          )}
+          <button className="icon-btn" onClick={onClose} aria-label={t('count.close')}>✕</button>
+          {calibrating ? (
+            <button className="btn btn-primary ruler-go" disabled={!touched} onClick={nextCalStep}>
+              {t(calStep === 0 ? 'ruler.calibrateNext' : 'ruler.calibrateSaveShort')}
+            </button>
+          ) : (
+            <button
+              className="btn btn-primary ruler-go"
+              disabled={total <= 0}
+              onClick={() => { onResult(total); onClose(); }}
+              aria-label={t('ruler.use', { n: total })}
+            >
+              ✓ {total}
+            </button>
+          )}
         </div>
-        {!calibrating && (
-          <button className="ruler-recal icon-btn" onClick={restartCalibration} aria-label={t('ruler.recalibrate')}>
-            ⋯
-          </button>
-        )}
-        <button className="cr-x icon-btn" onClick={onClose} aria-label={t('count.close')}>✕</button>
       </div>
 
       {calibrating ? (
@@ -403,7 +413,7 @@ export default function ChipRuler({
               : calibrating
                 ? t('ruler.calibrateWhy')
                 : horizon > 0
-                  ? t('ruler.horizon', { n: horizon })
+                  ? t(horizon === 1 ? 'ruler.horizon1' : 'ruler.horizon', { n: horizon })
                   : t('ruler.standIt')}
       </p>
 
@@ -418,7 +428,7 @@ export default function ChipRuler({
           </div>
         ))}
 
-        <div className="ruler-bar" style={{ bottom: dragPx }}>
+        <div className="ruler-bar" style={{ bottom: touched ? dragPx : restPx }}>
           <span className="ruler-grip" />
           <span className="ruler-read">
             {calibrating ? (
@@ -436,26 +446,6 @@ export default function ChipRuler({
         <div className="ruler-base" />
       </div>
 
-      {calibrating ? (
-        <div className="cr-bar" ref={barRef}>
-          <button className="btn btn-ghost" onClick={onClose}>{t('count.close')}</button>
-          <button className="btn btn-primary" style={{ flex: 1 }} disabled={!touched} onClick={nextCalStep}>
-            {calStep === 0 ? t('ruler.calibrateNext') : t('ruler.calibrateSave')}
-          </button>
-        </div>
-      ) : (
-        <div className="cr-bar" ref={barRef}>
-          <button className="btn btn-ghost" onClick={onClose}>{t('count.close')}</button>
-          <button
-            className="btn btn-primary"
-            style={{ flex: 1 }}
-            disabled={total <= 0}
-            onClick={() => { onResult(total); onClose(); }}
-          >
-            {t('ruler.use', { n: total })}
-          </button>
-        </div>
-      )}
     </div>
   );
 }
