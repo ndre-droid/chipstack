@@ -108,10 +108,15 @@ export interface Settings {
    *  most of the physical chips and least of the money (see lib/smallChange.ts).
    *  Per-device, like `countMode`. */
   countBigOnly?: boolean;
-  /** The chip ruler's calibration: how tall one chip draws, in CSS pixels, on THIS
-   *  screen with THESE chips. Null until the user has measured a known column.
-   *  Device-local by nature — it is a fact about the glass, not about the game. */
-  chipRulerPx?: number | null;
+  /** The chip ruler's calibration, in CSS pixels on THIS screen with THESE chips:
+   *  `px` is one chip's height, `zeroPx` how far below the bottom of the screen the
+   *  table sits when the phone stands on it (case bottom + bezel). Null until both
+   *  have been measured — see lib/chipRuler.ts. Device-local by nature: a fact about
+   *  the glass and the case, not about the game. */
+  chipRuler?: { px: number; zeroPx: number } | null;
+  /** Buzz once per chip as the ruler's bar is dragged, so the count can be felt
+   *  rather than read. Taste, and battery — hence per-device, like `chipAnim`. */
+  countHaptics?: boolean;
   /** Show the computed starting-stack breakdown as an overlay on the big screen. */
   tvShowStartStack: boolean;
   /** Knockout bounty (tournament): every player pays `bountyAmount` on top of the

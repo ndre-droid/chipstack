@@ -1,104 +1,135 @@
 /**
- * The chip ruler — a length on the glass, read back as a number of chips.
+ * The chip ruler — a length beside the phone, read back as a number of chips.
  *
- * The tedious part of a colour count is never the full columns; three stacks of
- * twenty are countable at a glance. It is the odd column, the loose seventeen that
- * has to be counted one chip at a time. So the ruler measures THAT: you lay the
- * column flat on the screen with its base on the baseline, drag the bar to its top,
- * and the length becomes the count.
+ * The tedious part of a colour count is never the neat columns; it is the odd pile
+ * that has to be counted one chip at a time. So the ruler measures piles: the phone
+ * stands on the table next to a stack, you drag the bar to the top of it, and the
+ * length becomes a count.
  *
- * No millimetres and no device DPI anywhere in here, deliberately. Android reports
- * a density BUCKET, so a CSS pixel is only approximately 1/160 inch and the error
- * is a few percent — enough to miscount a tall column, silently and confidently.
- * Instead the user calibrates once against a real column of known height, and the
- * single number that comes out (`pxPerChip`) absorbs screen density, chip thickness
- * and chip material together. It is measured in CSS pixels, which stay put because
+ * No millimetres and no device DPI anywhere in here, deliberately. Android reports a
+ * density BUCKET, so a CSS pixel is only approximately 1/160 inch and the error is a
+ * few percent — enough to miscount a tall stack, silently and confidently. The user
+ * calibrates instead, and the numbers that come out absorb screen density, chip
+ * thickness and chip material together. They are CSS pixels, which stay put because
  * the viewport is pinned to `device-width`.
  *
- * That makes calibration load-bearing rather than optional: an uncalibrated ruler
- * would still produce a confident number, just a wrong one, so the sheet refuses to
- * measure until `calibrate()` has returned something.
+ * TWO numbers, though, not one — this is the part that standing the phone up changes.
+ * Zero is no longer on the glass, it is the table, and the table is a case bottom and
+ * a bezel BELOW the lowest pixel. So a calibration is a scale and an offset:
+ *
+ *     a stack of n chips has its top at   y = n·px − zeroPx
+ *     ...measured as y above the bottom edge of the screen.
+ *
+ * One measurement leaves that underdetermined, which is why calibrating takes two
+ * stacks of different known heights. And because `zeroPx` is real — a centimetre or
+ * so, three or four chips — the first few chips of every stack are physically below
+ * the screen and cannot be measured at all. `minMeasurable` is that horizon, and the
+ * sheet has to offer a way to just type those in rather than pretend.
  */
 
 /**
- * The band a believable calibration falls in. A poker chip is 3.0–3.5 mm, which at
- * Android's 160 CSS-px-per-inch is roughly 19–22 px; the range here is far wider
- * than that on both sides, because it exists to catch a mis-drag (a fat-fingered
- * 2 px, a drag to the top of the screen while the field says "3 chips"), not to
- * police what someone's chips actually measure.
+ * The band a believable chip height falls in. A poker chip is 3.0–3.5 mm, which at
+ * Android's 160 CSS-px-per-inch is roughly 19–22 px; this is far wider on both sides
+ * because it exists to catch a mis-drag, not to police what someone's chips measure.
  */
 export const MIN_PX_PER_CHIP = 6;
 export const MAX_PX_PER_CHIP = 80;
 
 /**
- * One standard poker column — the unit the table already stacks in, so it is both
- * what the full-column stepper counts in and what the calibration asks you to lay out.
+ * How far below the screen the table is allowed to be. A case bottom plus a bezel is
+ * a centimetre or so; 300 px is about 47 mm, which no phone reaches. Past that the
+ * two calibration drags were not what they claimed to be.
  */
-export const COLUMN_CHIPS = 20;
+export const MAX_ZERO_PX = 300;
+
+/** The two stacks calibration asks for, tallest first. */
+export const CALIBRATION_STEPS = [20, 5] as const;
+
+export interface RulerCalibration {
+  /** how tall one chip draws, in CSS px */
+  px: number;
+  /** how far below the bottom of the screen the table sits, in CSS px */
+  zeroPx: number;
+}
 
 /**
- * Turn a measured span of `chips` real chips into px-per-chip.
+ * Solve the scale and the offset from two stacks of known height.
  *
- * Returns null rather than a number when the result is outside the believable band:
- * a bad calibration poisons every count afterwards, so it must fail loudly at the
- * one moment the user is looking at it.
+ * Returns null rather than a number when the result is not believable: a bad
+ * calibration poisons every count afterwards, so it has to fail at the one moment
+ * the user is still looking at it.
  */
-export function calibrate(spanPx: number, chips: number): number | null {
-  if (!Number.isFinite(spanPx) || !Number.isFinite(chips)) return null;
-  if (!(chips > 0) || !(spanPx > 0)) return null;
-  const px = spanPx / chips;
-  return px >= MIN_PX_PER_CHIP && px <= MAX_PX_PER_CHIP ? px : null;
+export function calibrate(
+  tall: { y: number; chips: number },
+  short: { y: number; chips: number },
+): RulerCalibration | null {
+  const dChips = tall.chips - short.chips;
+  const dY = tall.y - short.y;
+  if (![tall.y, short.y, tall.chips, short.chips].every(Number.isFinite)) return null;
+  // both drags have to be a real stack: you cannot stand nothing on the table and
+  // drag to the top of it, so a zero-chip step is a bug, not a flat calibration
+  if (!(short.chips > 0) || !(dChips > 0) || !(dY > 0)) return null;
+
+  const px = dY / dChips;
+  if (!(px >= MIN_PX_PER_CHIP && px <= MAX_PX_PER_CHIP)) return null;
+
+  // The table cannot be ABOVE the screen's bottom edge. A hair negative is drag
+  // noise and gets flattened; more than a chip's worth means the two drags do not
+  // describe one straight line, and there is nothing to salvage.
+  const raw = short.chips * px - short.y;
+  if (raw < -px || raw > MAX_ZERO_PX) return null;
+
+  return { px, zeroPx: Math.max(0, raw) };
 }
 
 /** Is a stored calibration still one we are willing to measure with? */
-export function isCalibrated(pxPerChip: number | null | undefined): pxPerChip is number {
+export function isCalibrated(cal: RulerCalibration | null | undefined): cal is RulerCalibration {
   return (
-    typeof pxPerChip === 'number' &&
-    Number.isFinite(pxPerChip) &&
-    pxPerChip >= MIN_PX_PER_CHIP &&
-    pxPerChip <= MAX_PX_PER_CHIP
+    !!cal &&
+    Number.isFinite(cal.px) &&
+    Number.isFinite(cal.zeroPx) &&
+    cal.px >= MIN_PX_PER_CHIP &&
+    cal.px <= MAX_PX_PER_CHIP &&
+    cal.zeroPx >= 0 &&
+    cal.zeroPx <= MAX_ZERO_PX
   );
 }
 
-/** The count a span of glass represents. Nearest chip — half a chip is not a thing. */
-export function chipsAt(spanPx: number, pxPerChip: number): number {
-  if (!isCalibrated(pxPerChip) || !Number.isFinite(spanPx)) return 0;
-  return Math.max(0, Math.round(spanPx / pxPerChip));
+/** The count a bar at `y` above the screen's bottom edge represents. */
+export function chipsAt(y: number, cal: RulerCalibration | null | undefined): number {
+  if (!isCalibrated(cal) || !Number.isFinite(y)) return 0;
+  return Math.max(0, Math.round((y + cal.zeroPx) / cal.px));
 }
 
-/** The inverse: where the bar sits when it is showing `chips`. */
-export function spanFor(chips: number, pxPerChip: number): number {
-  if (!isCalibrated(pxPerChip)) return 0;
-  return Math.max(0, chips) * pxPerChip;
+/** The inverse: where the bar sits when it is showing `chips`. Negative = below the glass. */
+export function spanFor(chips: number, cal: RulerCalibration | null | undefined): number {
+  if (!isCalibrated(cal)) return 0;
+  return Math.max(0, chips) * cal.px - cal.zeroPx;
 }
 
 /**
- * The tallest column the ladder can measure in one go.
- *
- * At roughly 21 px a chip this lands around 25 on a phone — one column plus change,
- * which is exactly the job. Anything taller is counted as full columns instead, so
- * there is no need to make the ladder scroll (and a scrolling ruler would not be a
- * ruler).
+ * The shortest stack the ruler can actually see — everything under it is hidden by
+ * the case and the bezel, and has to be typed instead.
  */
-export function rulerCapacity(ladderPx: number, pxPerChip: number): number {
-  if (!isCalibrated(pxPerChip) || !(ladderPx > 0)) return 0;
-  return Math.floor(ladderPx / pxPerChip);
+export function minMeasurable(cal: RulerCalibration | null | undefined): number {
+  if (!isCalibrated(cal)) return 0;
+  return Math.ceil(cal.zeroPx / cal.px);
+}
+
+/** The tallest stack the ladder can take in one go. */
+export function rulerCapacity(ladderPx: number, cal: RulerCalibration | null | undefined): number {
+  if (!isCalibrated(cal) || !(ladderPx > 0)) return 0;
+  return chipsAt(ladderPx, cal);
 }
 
 /**
- * What the sheet hands back: the full columns you counted by eye plus the odd one
- * the ruler measured, never more of a colour than the box actually holds.
+ * What the sheet hands back: every stack logged for this colour, plus the one still
+ * under the bar, never more of a colour than the box actually holds.
  *
  * `inventory` of 0 means "unknown", not "none" — a set with no count recorded should
  * not clamp every answer to zero.
  */
-export function rulerTotal(opts: {
-  columns: number;
-  columnSize: number;
-  measured: number;
-  inventory?: number;
-}): number {
-  const { columns, columnSize, measured, inventory = 0 } = opts;
-  const total = Math.max(0, columns) * Math.max(0, columnSize) + Math.max(0, measured);
+export function stacksTotal(stacks: number[], pending = 0, inventory = 0): number {
+  const total = stacks.reduce((s, n) => s + Math.max(0, n), 0) + Math.max(0, pending);
   return inventory > 0 ? Math.min(total, inventory) : total;
 }
