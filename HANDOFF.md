@@ -21,7 +21,8 @@ sound would hijack the user's Sonos).
   (**CURRENT — rebuilt 2026-08-30 from `main` @ `1b98f94`**, 4.59 MB (4,811,091 B),
   run `33297841355`: count less — the small change folds away and the chip ruler measures
   a pile instead of counting it (see "Recent work 2026-08-30").
-  Pages run `33297838854` green from the same commit, so **APK / `main` / Pages are IN SYNC**.
+  Pages run `33297838854` green from the same commit, so **APK / `main` / Pages are IN SYNC**
+  (`main` then moved to `42a5723`, which is this file only — no app code differs).
   Download verified: `200`, `application/vnd.android.package-archive`, 4,811,091 B.
   Previous build: 2026-08-29 from `main` @ `6ff3845`, 4.58 MB (4,806,340 B),
   run `33241256818`: the counting round is now a dragged split of one known pot.
