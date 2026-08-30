@@ -34,6 +34,9 @@ export const DEVICE_LOCAL_SETTINGS = [
   'tvStartStackHidden',
   'rosterSort',
   'countMode',
+  // whether the phone goes round the table, and whether that flow has been seen once
+  'countStyle',
+  'countPassHintSeen',
   // how the colour count is entered on this phone, and what one chip measures on
   // this screen — both facts about the device in your hand, not about the night
   'countBigOnly',

@@ -27,11 +27,14 @@ export default function StackShareRound({
   levelIdx,
   onClose,
   onUndoable,
+  onSwitchStyle,
 }: {
   /** the blind level being played — passed through to the exact count */
   levelIdx?: number | null;
   onClose: () => void;
   onUndoable?: (previous: LedgerSnapshot) => void;
+  /** hand the round over to the pass-the-phone flow — see CountRound */
+  onSwitchStyle?: () => void;
 }) {
   const { state, dispatch } = useStore();
   const t = useT();
@@ -169,12 +172,22 @@ export default function StackShareRound({
           const name = p.name || 'Player';
           return (
             <div className={`csr-row ${isPinned ? 'is-set' : ''}`} key={p.id}>
-              <button className="csr-name" onClick={() => setExactFor(p.id)} title={t('count.exact')}>
+              <div className="csr-name">
                 {p.emoji && <span className="csr-emoji">{p.emoji}</span>}
                 <b>{name}</b>
                 {leaderId === p.id && contested && <span className="csr-crown">👑</span>}
+              </div>
+              {/* The exact count is the second instrument of this round, so it looks
+                  like one: a field next to the name, not a tap target hidden on it. */}
+              <button
+                className="csr-val"
+                onClick={() => setExactFor(p.id)}
+                title={t('count.exact')}
+                aria-label={t('count.exact')}
+              >
+                {money(units * unitValue, currency)}
+                <span className="csr-val-pen" aria-hidden>✎</span>
               </button>
-              <span className="csr-val">{money(units * unitValue, currency)}</span>
               <span className={`csr-delta ${delta > 0 ? 'pos' : delta < 0 ? 'neg' : 'faint'}`}>
                 {(p.chips || 0) > 0 && delta !== 0
                   ? `${delta > 0 ? '↑ +' : '↓ −'}${money(Math.abs(delta) * unitValue, currency)}`
@@ -203,6 +216,11 @@ export default function StackShareRound({
           );
         })}
         <p className="faint cr-note">{t('count.shareNote')}</p>
+        {onSwitchStyle && (
+          <button className="mins-toggle cr-all" onClick={onSwitchStyle}>
+            <span>🔁 {t('count.stylePass')}</span>
+          </button>
+        )}
       </div>
 
       <div className="cr-bar">

@@ -83,9 +83,36 @@ export default function CountStack({
   const [padId, setPadId] = useState<string | null>(null);
   /** the colour currently being measured with the ruler, if any */
   const [rulerId, setRulerId] = useState<string | null>(null);
+  /* A colour the pad has just been pointed at is not half-typed: the first digit
+     REPLACES the pre-filled guess instead of being appended to it. Typing 8 on a
+     seeded 12 means eight chips, not a hundred and twenty-eight. */
+  const padFresh = useRef(true);
+  /** the colour rows and their tabs, so the one being typed can be kept in view */
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const openPad = (id: string | null) => {
+    padFresh.current = true;
+    setPadId(id);
+  };
   // back closes the numpad first, then the sheet
-  useBackHandler(padId !== null, () => setPadId(null));
+  useBackHandler(padId !== null, () => openPad(null));
   useBackHandler(true, onClose);
+
+  /* The pad takes the bottom of the screen, and the row it is typing into would
+     otherwise sit wherever the list happened to be scrolled — usually jammed against
+     the top edge. Put it in the middle of what is left. */
+  useEffect(() => {
+    if (!padId) return;
+    // The strip is moved by hand rather than with scrollIntoView: a second smooth
+    // scroll aimed at the same page cancels the first, and the row is the one that
+    // matters — it would arrive back where it started.
+    const tab = tabRefs.current[padId];
+    const strip = tab?.parentElement;
+    if (tab && strip) {
+      strip.scrollTo({ left: tab.offsetLeft - (strip.clientWidth - tab.offsetWidth) / 2, behavior: 'smooth' });
+    }
+    rowRefs.current[padId]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [padId]);
 
   /* The folded colours are still carried in `counts` — the fold hides the rows, it
      does not hold a second, separate figure. That is the whole reason the total does
@@ -125,8 +152,10 @@ export default function CountStack({
     }
   }, [player, denominations, session, unitValue, small, startStack]);
 
-  const bump = (id: string, by: number) =>
+  const bump = (id: string, by: number) => {
+    if (id === padId) padFresh.current = false;
     setCounts((c) => ({ ...c, [id]: Math.max(0, (c[id] || 0) + by) }));
+  };
 
   const save = () => {
     if (onResult) {
@@ -161,11 +190,16 @@ export default function CountStack({
 
   const padDenom = denoms.find((d) => d.id === padId) ?? null;
   const rulerDenom = denoms.find((d) => d.id === rulerId) ?? null;
-  const typeDigit = (digit: string) =>
+  /** the colour after the one being typed — the pad walks the stack in one direction */
+  const nextDenom = padDenom ? denoms[denoms.indexOf(padDenom) + 1] : undefined;
+  const typeDigit = (digit: string) => {
+    const fresh = padFresh.current;
+    padFresh.current = false;
     setCounts((c) => {
-      const nextRaw = `${c[padId!] || 0}${digit}`.replace(/^0+(?=\d)/, '');
+      const nextRaw = `${fresh ? '' : c[padId!] || 0}${digit}`.replace(/^0+(?=\d)/, '');
       return { ...c, [padId!]: Math.min(999, +nextRaw) };
     });
+  };
 
   return (
     <div className="cr-sheet" role="dialog" aria-modal="true">
@@ -224,7 +258,11 @@ export default function CountStack({
                 inputMode="decimal"
                 autoFocus
                 value={moneyText}
-                onFocus={(e) => e.currentTarget.select()}
+                onFocus={(e) => {
+                  const el = e.currentTarget;
+                  el.select();
+                  requestAnimationFrame(() => el.scrollIntoView({ block: 'center' }));
+                }}
                 onChange={(e) => setMoneyText(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && currentUnits > 0) save();
@@ -232,6 +270,27 @@ export default function CountStack({
               />
             </div>
             <p className="faint cr-note">{t('count.moneyHint')}</p>
+          </div>
+        )}
+
+        {/* Every colour on one line, always in reach: which one the pad is typing,
+            which ones already have a number, and one tap to switch. */}
+        {mode === 'colours' && denoms.length > 1 && (
+          <div className="cr-strip" role="tablist" aria-label={t('count.colours')}>
+            {denoms.map((d) => (
+              <button
+                key={d.id}
+                role="tab"
+                aria-selected={padId === d.id}
+                className={`cr-tab ${padId === d.id ? 'on' : ''} ${(counts[d.id] || 0) > 0 ? 'has' : ''}`}
+                ref={(el) => { tabRefs.current[d.id] = el; }}
+                onClick={() => openPad(padId === d.id ? null : d.id)}
+              >
+                <span className="cr-swatch" style={{ background: d.color, borderColor: d.accent }} />
+                <b>{num(d.value)}</b>
+                <span className="cr-tab-n">{counts[d.id] || 0}</span>
+              </button>
+            ))}
           </div>
         )}
 
@@ -247,14 +306,18 @@ export default function CountStack({
         {mode === 'colours' && denoms.map((d) => {
           const over = overCount(d);
           return (
-            <div className={`cr-denom ${padId === d.id ? 'active' : ''}`} key={d.id}>
+            <div
+              className={`cr-denom ${padId === d.id ? 'active' : ''}`}
+              key={d.id}
+              ref={(el) => { rowRefs.current[d.id] = el; }}
+            >
               <span className="cr-swatch" style={{ background: d.color, borderColor: d.accent }} />
               <span className="cr-denom-v">{num(d.value)}</span>
               <button className="cr-btn" onClick={() => bump(d.id, -1)} aria-label="−1">−</button>
               <button
                 type="button"
                 className="cr-num"
-                onClick={() => setPadId(padId === d.id ? null : d.id)}
+                onClick={() => openPad(padId === d.id ? null : d.id)}
                 aria-label={`${num(d.value)} — ${t('count.tapToType')}`}
               >
                 {counts[d.id] || 0}
@@ -304,6 +367,10 @@ export default function CountStack({
           <span>{num(currentUnits)} {t('plan.chips').toLowerCase()}</span>
           <b>{money(currentUnits * unitValue, currency)}</b>
         </div>
+
+        {/* Scroll room, so even the LAST colour can be brought to the middle of the
+            half-screen the numpad leaves — otherwise it stays pinned to the bottom. */}
+        {mode === 'colours' && padId && <div className="cr-pad-space" aria-hidden />}
       </div>
 
       {rulerDenom && (
@@ -321,7 +388,24 @@ export default function CountStack({
             <b>{num(padDenom.value)}</b>
             <span className="cr-pad-val">{counts[padDenom.id] || 0}</span>
             <div className="spacer" />
-            <button className="btn btn-ghost btn-sm" onClick={() => setPadId(null)}>{t('count.padDone')}</button>
+            {nextDenom ? (
+              <button className="btn btn-primary btn-sm cr-pad-next" onClick={() => openPad(nextDenom.id)}>
+                <span
+                  className="cr-swatch sm"
+                  style={{ background: nextDenom.color, borderColor: nextDenom.accent }}
+                />
+                {t('count.padNext')}
+              </button>
+            ) : (
+              <button className="btn btn-primary btn-sm" onClick={() => openPad(null)}>{t('count.padDone')}</button>
+            )}
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => openPad(null)}
+              aria-label={t('count.padDone')}
+            >
+              ✕
+            </button>
           </div>
           <div className="cr-pad-grid">
             {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((k) => (

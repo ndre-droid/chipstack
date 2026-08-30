@@ -43,7 +43,7 @@ function spread(weights: readonly number[], amount: number): number[] {
  * are handed out in step-sized blocks and the odd remainder goes to the biggest
  * stack, where it is proportionally smallest. The sum is still exact.
  */
-function spreadOnStep(weights: readonly number[], amount: number, step: number): number[] {
+export function spreadOnStep(weights: readonly number[], amount: number, step: number): number[] {
   if (step <= 1 || weights.length === 0) return spread(weights, amount);
   const out = spread(weights, Math.floor(amount / step)).map((b) => b * step);
   const left = amount - out.reduce((s, v) => s + v, 0);

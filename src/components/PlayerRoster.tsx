@@ -4,7 +4,7 @@ import { useT, useFmt } from '../lib/i18n';
 import { IconPlus, IconTrash } from './Icons';
 import { EmojiPicker } from './EmojiPicker';
 import CountStack from './CountStack';
-import StackShareRound from './StackShareRound';
+import CountRound from './CountRound';
 import PlayerSheet from './PlayerSheet';
 import Sparkline from './Sparkline';
 import { handoutStack } from '../lib/startingStack';
@@ -687,7 +687,7 @@ function PlayerRoster({ levelIdx }: { levelIdx?: number }) {
       </div>
 
       {confirm.node}
-      {round && <StackShareRound levelIdx={levelIdx} onClose={() => setRound(false)} onUndoable={offerUndo} />}
+      {round && <CountRound levelIdx={levelIdx} onClose={() => setRound(false)} onUndoable={offerUndo} />}
       {countId && (
         <CountStack playerId={countId} levelIdx={levelIdx} onClose={() => setCountId(null)} onUndoable={offerUndo} />
       )}

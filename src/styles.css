@@ -2321,7 +2321,11 @@ input[type='color'] { cursor: pointer; }
 .dealer-name { flex: 1; font-weight: 500; }
 
 /* --- Counting round: tally each stack by colour, player by player --- */
-.cr-sheet { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column;
+/* Sized to the VISIBLE viewport, not the window: where the keyboard does not resize
+   the webview, `inset: 0` would leave the numpad and the confirm bar underneath it.
+   See lib/viewport.ts. */
+.cr-sheet { position: fixed; inset: 0 0 auto 0; height: var(--vvh, 100%);
+  z-index: 60; display: flex; flex-direction: column;
   background: var(--bg); color: var(--text); }
 .cr-head { position: relative; padding: 16px 54px 12px 16px; border-bottom: 1px solid var(--line); }
 .cr-step { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
@@ -2346,8 +2350,11 @@ input[type='color'] { cursor: pointer; }
 .cr-denom-sum { flex: 1; text-align: right; font-size: 12.5px; color: var(--text-faint);
   font-variant-numeric: tabular-nums; }
 .cr-all { margin: 8px 0 2px; }
-.cr-total { display: flex; justify-content: space-between; align-items: baseline; margin: 10px 0 12px;
-  padding-top: 10px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+/* Sticky: with the numpad up the list scrolls, and the figure being built is the one
+   thing that must never scroll out of sight. */
+.cr-total { position: sticky; bottom: 0; display: flex; justify-content: space-between;
+  align-items: baseline; margin: 10px 0 0; padding: 10px 0 12px; background: var(--bg);
+  border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
 .cr-total b { font-size: 24px; color: var(--acc); font-family: var(--font-display); }
 .cr-bar { display: flex; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--line); background: var(--surface); }
@@ -2373,7 +2380,26 @@ input[type='color'] { cursor: pointer; }
 .cr-prefill { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px 10px;
   border-radius: var(--r-sm); background: var(--acc-wash); border: 1px solid var(--acc-line); font-size: 12.5px; }
 .cr-prefill span { flex: 1; }
+/* Every chip colour on one scrollable line, pinned to the top of the list: the pad
+   below covers half the screen, so the way BETWEEN colours has to stay in sight. */
+.cr-strip { position: sticky; top: 0; z-index: 2; display: flex; gap: 6px; overflow-x: auto;
+  margin: 0 -16px 8px; padding: 4px 16px 8px; background: var(--bg);
+  border-bottom: 1px solid var(--line); scrollbar-width: none; }
+.cr-strip::-webkit-scrollbar { display: none; }
+.cr-tab { display: flex; align-items: center; gap: 6px; flex: none; height: 38px; padding: 0 10px;
+  border-radius: var(--r-sm); background: var(--surface-2); border: 1px solid var(--line);
+  color: inherit; font-size: 13px; font-variant-numeric: tabular-nums; }
+.cr-tab .cr-swatch { width: 16px; height: 16px; }
+.cr-tab-n { min-width: 20px; padding: 1px 5px; border-radius: 999px; background: var(--surface);
+  font-weight: 700; font-size: 12px; color: var(--text-faint); }
+.cr-tab.has .cr-tab-n { color: var(--text); }
+.cr-tab.on { border-color: var(--acc); background: var(--acc-wash); }
+.cr-tab.on .cr-tab-n { background: var(--acc); color: var(--on-acc); }
+.cr-pad-space { height: 34vh; }
 .cr-pad { border-top: 1px solid var(--line); background: var(--surface-2); padding: 10px 12px; }
+/* the colour after this one — the pad walks the stack instead of being dismissed per colour */
+.cr-pad-next { display: flex; align-items: center; gap: 6px; }
+.cr-swatch.sm { width: 14px; height: 14px; }
 .cr-pad-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
 .cr-pad-val { font-size: 20px; font-weight: 700; color: var(--acc); }
 .cr-pad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -2467,7 +2493,7 @@ input[type='color'] { cursor: pointer; }
 .ruler-actions .btn { flex: 1; min-width: 0; white-space: nowrap; font-size: 14px; }
 .ruler-error { margin: 0 16px 8px; font-size: 12.5px; color: var(--bad); }
 /* --- The counting round: one dragged bar per player, always adding up --- */
-.csr-row { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center;
+.csr-row { display: grid; grid-template-columns: minmax(0, auto) auto 1fr auto; align-items: center;
   gap: 4px 8px; padding: 10px 0 12px; border-top: 1px solid var(--line); }
 .csr-row:first-child { border-top: 0; }
 .csr-name { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 0;
@@ -2475,7 +2501,12 @@ input[type='color'] { cursor: pointer; }
 .csr-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .csr-emoji { font-size: 17px; }
 .csr-crown { font-size: 14px; }
-.csr-val { font-weight: 800; font-variant-numeric: tabular-nums; font-family: var(--font-display); }
+/* Not a label: the field the exact count is typed in, sitting next to the name */
+.csr-val { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: var(--r-sm);
+  background: var(--surface-2); border: 1px solid var(--line); color: inherit;
+  font-weight: 800; font-variant-numeric: tabular-nums; font-family: var(--font-display); }
+.csr-val:active { background: var(--surface-3); }
+.csr-val-pen { font-family: var(--font); font-size: 12px; font-weight: 400; color: var(--text-faint); }
 .csr-delta { min-width: 62px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
 .csr-delta.pos { color: var(--good); }
 .csr-delta.neg { color: var(--bad); }
@@ -2487,6 +2518,83 @@ input[type='color'] { cursor: pointer; }
 .csr-bar { grid-column: 1 / -1; margin-top: 2px; height: 10px; touch-action: pan-y; }
 .csr-row.is-set .csr-bar::-webkit-slider-thumb { border-width: 3px; }
 .csr-row.is-set .csr-bar::-moz-range-thumb { border-width: 3px; }
+
+/* --- The counting round when the phone goes round the table --- */
+/* Picked once per table, then remembered — see CountRound. */
+.pass-style { display: grid; grid-template-columns: 44px 1fr; grid-template-rows: auto auto;
+  gap: 2px 12px; width: 100%; margin-bottom: 10px; padding: 14px; text-align: left;
+  border-radius: var(--r); background: var(--surface-2); border: 1px solid var(--line); color: inherit; }
+.pass-style-icon { grid-row: 1 / 3; align-self: center; font-size: 30px; text-align: center; }
+.pass-style b { font-size: 17px; }
+.pass-style .faint { font-size: 12.5px; line-height: 1.35; }
+
+/* "Who has the phone?" — every name a target big enough for a stranger's thumb */
+.pass-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;
+  margin-bottom: 12px; }
+.pass-card { display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 104px;
+  padding: 14px 10px; border-radius: var(--r); background: var(--surface-2);
+  border: 1px solid var(--line); color: inherit; font: inherit; }
+.pass-card b { font-size: 16px; }
+.pass-card-emoji { font-size: 30px; line-height: 1; }
+.pass-card-state { font-size: 11.5px; color: var(--good); font-variant-numeric: tabular-nums; }
+/* counted, but still tappable: the wrong name gets picked, and that has to be undoable */
+.pass-card.done { background: var(--surface); border-color: var(--good); opacity: .75; }
+
+/* The last entry, kept visible and correctable without shuffling the name buttons */
+.pass-recent { display: flex; align-items: center; gap: 8px; width: 100%; margin-bottom: 12px;
+  padding: 9px 10px; border-radius: var(--r-sm); background: var(--surface-2);
+  border: 1px solid var(--good); color: inherit; font: inherit; text-align: left; font-size: 13px; }
+.pass-recent-tick { color: var(--good); font-weight: 700; }
+.pass-recent-who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-variant-numeric: tabular-nums; }
+.pass-recent-edit { flex: none; font-size: 12px; font-weight: 700; color: var(--acc); }
+.pass-card.just { border-color: var(--good); opacity: 1; }
+
+/* One player, the whole screen */
+.pass-who { display: flex; align-items: center; gap: 8px; font-size: 26px; }
+.pass-emoji { font-size: 28px; }
+/* The one instrument on the screen sits in the middle of it, where a thumb is */
+.pass-body { display: flex; flex-direction: column; justify-content: center; }
+.pass-amount { margin: 0 0 18px; text-align: center; font-family: var(--font-display);
+  font-size: 46px; font-weight: 800; color: var(--acc); font-variant-numeric: tabular-nums; }
+.pass-bar { height: 14px; touch-action: pan-y; }
+.pass-bar::-webkit-slider-thumb { width: 34px; height: 34px; border-width: 3px; }
+.pass-bar::-moz-range-thumb { width: 34px; height: 34px; border-width: 3px; }
+.pass-from { margin-top: 14px; text-align: center; font-size: 13px; }
+/* claiming more than the table still holds is allowed — and said out loud */
+.pass-from.over { color: var(--bad); font-weight: 600; }
+.pass-last { margin-top: 4px; text-align: center; font-size: 12.5px; }
+.pass-exact { margin-top: 18px; min-height: 48px; }
+.pass-take { min-height: 52px; font-size: 17px; }
+/* Shown until the first person has dragged anything, once per phone */
+.pass-hint { display: flex; align-items: center; gap: 10px; margin-top: 18px; padding: 10px 12px;
+  border-radius: var(--r-sm); background: var(--acc-wash); border: 1px solid var(--acc-line);
+  font-size: 12.5px; }
+.pass-hint span { flex: 1; }
+
+/* The end of the round: the table against what the table counted */
+.pass-sums { margin: 6px 0 10px; font-variant-numeric: tabular-nums; }
+.pass-sums > div { display: flex; justify-content: space-between; align-items: baseline;
+  padding: 10px 0; border-bottom: 1px solid var(--line); }
+.pass-sums b { font-size: 20px; font-family: var(--font-display); }
+.pass-diff.ok b { color: var(--text-faint); }
+.pass-diff.pos b { color: var(--good); }
+.pass-diff.neg b { color: var(--bad); }
+
+/* The tick as the phone changes hands */
+.pass-flash { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
+  animation: pass-flash .9s ease-out forwards; }
+.pass-flash-tick { display: grid; place-items: center; width: 84px; height: 84px; border-radius: 50%;
+  background: var(--good); color: var(--on-acc); font-size: 44px; }
+.pass-flash b { font-size: 18px; }
+@keyframes pass-flash {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.7); }
+  20% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  75% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .pass-flash { animation: none; } }
 
 /* --- Roster: stack trail, count age, undo --- */
 .pr-spark { color: var(--text-faint); flex: none; }

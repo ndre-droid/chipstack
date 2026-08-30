@@ -103,6 +103,15 @@ export interface Settings {
    *  straight in — the fastest thing at a real table; 'colours' tallies the stack
    *  chip by chip. Per-device preference, remembered between rounds. */
   countMode: 'money' | 'colours';
+  /** How the counting round is run. 'solo': one person drags the whole table (see
+   *  lib/stackShare.ts). 'pass': the phone goes round, everybody picks their own name
+   *  and counts their own pile (see lib/passRound.ts). Unset asks once, then sticks —
+   *  a table counts the same way every week. Per-device, like `countMode`. */
+  countStyle?: 'solo' | 'pass';
+  /** The one-off "drag your bar" hint on the pass-around player screen, dismissed
+   *  after the first person has used it. Per-device: it teaches the phone's owner's
+   *  friends, and only once. */
+  countPassHintSeen?: boolean;
   /** Colour counting: fold every chip below the smallest one still in play into a
    *  single assumed "small change" row instead of tallying it. Those colours are
    *  most of the physical chips and least of the money (see lib/smallChange.ts).
