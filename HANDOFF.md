@@ -18,12 +18,17 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-08-30 from `main` @ `1b98f94`**, 4.59 MB (4,811,091 B),
+  (**CURRENT — rebuilt 2026-08-30 from `main` @ `e1c830d`**, 4.60 MB (4,820,613 B),
+  run `33302460810`: the phone goes round the table — pick your own name, count your own
+  pile, one difference card at the end; plus the numpad/colour-strip rework (see
+  "Recent work 2026-08-30 (pass-the-phone)").
+  Pages run `33302458677` green from the same commit, so **APK / `main` / Pages are IN SYNC**.
+  Download verified: `200`, `application/vnd.android.package-archive`, 4,820,613 B.
+  Previous build: 2026-08-30 from `main` @ `3601a07`, run `33299907856`: haptics through the
+  native vibrator + the ruler's buttons in the header.
+  Previous build: 2026-08-30 from `main` @ `1b98f94`, 4.59 MB (4,811,091 B),
   run `33297841355`: count less — the small change folds away and the chip ruler measures
-  a pile instead of counting it (see "Recent work 2026-08-30").
-  Pages run `33297838854` green from the same commit, so **APK / `main` / Pages are IN SYNC**
-  (`main` then moved to `42a5723`, which is this file only — no app code differs).
-  Download verified: `200`, `application/vnd.android.package-archive`, 4,811,091 B.
+  a pile instead of counting it.
   Previous build: 2026-08-29 from `main` @ `6ff3845`, 4.58 MB (4,806,340 B),
   run `33241256818`: the counting round is now a dragged split of one known pot.
   Previous build: 2026-08-28 from `main` @ `febc7f4`, 4.58 MB (4,805,445 B),
@@ -1229,6 +1234,41 @@ actually FEELS. The old level-end notification is still unproven too.
 **The ruler needs a real calibration before it means anything.** It refuses to measure
 until it has one, so there is nothing to break, but the first person to open it has to
 stand 20 chips next to the phone and then 5. Any colour works.
+
+### Recent work 2026-08-30 (pass-the-phone) — the round the whole table can run
+
+The counting round now asks **once** how it is run (`settings.countStyle`, remembered,
+switchable from inside both flows) and `components/CountRound.tsx` is the entry point
+PlayerRoster renders. It also holds the screen awake for the whole round.
+
+- **solo** — the existing dragged split (`StackShareRound` + `lib/stackShare.ts`),
+  unchanged in behaviour. Its exact count is no longer hidden on the name: the amount
+  beside the name is a field-looking button that opens `CountStack`.
+- **pass** — `components/PassAroundRound.tsx` + `lib/passRound.ts` (+ tests). Three
+  screens: *who has the phone?* (name grid, any order, counted names ticked but still
+  tappable, last entry pinned as a named/priced "Change" row so a mistap is visible),
+  *one player* (name big, amount big, fat bar, `📏 count it exactly` into `CountStack`,
+  one-off hint per device), *the end* (table vs counted vs difference).
+
+Deliberate break with the split's invariant, at the user's request: **everybody counts,
+including the last player**, so the sum can drift. The bar therefore spans the whole
+table (a player can honestly hold more than the pool) and the line under it says where
+the money comes from — or, in red, how far past the table they have gone. The gap is
+reported exactly once, on the end card: "even it out" spreads it proportionally and hits
+the total exactly (`settleDifference`), or the counted numbers are kept as they are.
+Stopping early writes only the players who counted. Every confirmation buzzes, flashes a
+tick, and pushes `COUNTING_SET` so the big screen follows the round.
+
+The exact colour count (`CountStack`) was reworked in the same pass: a sticky strip of
+every colour at the top to switch with, a `Next` button that walks to the following
+colour, the first digit after a switch REPLACES the pre-filled guess instead of being
+appended, the row being typed is pulled to the middle of what the numpad leaves, and the
+running total sticks above the pad. `lib/viewport.ts` publishes `--vvh` (visual viewport
+height) and `.cr-sheet` is sized to it, so an on-screen keyboard cannot bury the confirm
+bar on a platform that does not resize the webview.
+
+Unverified on hardware: the `--vvh` path (only exercised in a browser) and the
+confirmation buzz in the APK.
 
 ### Recent work 2026-08-30 — count less: fold the small change, measure the odd pile
 
