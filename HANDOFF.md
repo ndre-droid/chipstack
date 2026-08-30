@@ -18,11 +18,13 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-08-29 from `main` @ `6ff3845`**, 4.58 MB (4,806,340 B),
-  run `33241256818`: the counting round is now a dragged split of one known pot
-  (see "Recent work 2026-08-29").
-  Pages run `33241163295` green from the same commit, so **APK / `main` / Pages are IN SYNC**.
-  Download verified: `200`, `application/vnd.android.package-archive`, 4,806,340 B.
+  (**CURRENT — rebuilt 2026-08-30 from `main` @ `1b98f94`**, 4.59 MB (4,811,091 B),
+  run `33297841355`: count less — the small change folds away and the chip ruler measures
+  a pile instead of counting it (see "Recent work 2026-08-30").
+  Pages run `33297838854` green from the same commit, so **APK / `main` / Pages are IN SYNC**.
+  Download verified: `200`, `application/vnd.android.package-archive`, 4,811,091 B.
+  Previous build: 2026-08-29 from `main` @ `6ff3845`, 4.58 MB (4,806,340 B),
+  run `33241256818`: the counting round is now a dragged split of one known pot.
   Previous build: 2026-08-28 from `main` @ `febc7f4`, 4.58 MB (4,805,445 B),
   run `33170290822`: the step back — one column of names, a quieter big screen,
   remote-dismissable overlays, the heartbeat fix and ONE chip stack.
@@ -1194,32 +1196,90 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 
 ## ⚠️ Open items / next steps
 
-### STATE RIGHT NOW (2026-08-29)
-Local branch **`feat/chip-3d-render`**, whose tip is `main` == **`6ff3845`**; Pages
-(`33241163295`) and the APK (`33241256818`) are both built from it. **The working tree is
-NOT clean** — and deliberately so:
+### STATE RIGHT NOW (2026-08-30)
+Local branch **`feat/chip-3d-render`**, whose tip is `main` == **`1b98f94`**. Working tree
+**clean** — the in-flight chip-trail WIP that this section used to warn about was finished,
+tested and committed as `1e70549`.
 
-- `src/lib/chipTrail.ts` + `chipTrail.test.ts` (untracked), `src/components/Sparkline.tsx`,
-  `src/store.tsx`, and one comment hunk in `src/types.ts` are an **in-flight chip-trail /
-  3D-render change that predates this session and was never committed**. It was kept out
-  of the counting-round commit on purpose (the commit was verified to build and pass with
-  that WIP stashed away). Do not sweep it into an unrelated commit; ask what it is first.
+Three commits went out since `6ff3845`:
 
-**Rollback point:** tag **`pre-count-slider`** → `d8266f1` is `main` as it stood before the
-counting round, pushed to the remote. `git push origin pre-count-slider:main --force`
-rolls the web app back; follow it with `git reset --soft pre-count-slider` so the local
-tree keeps both the change and the WIP. A plain `git revert` needs the WIP stashed first,
-because it also touches `types.ts`.
+- `1e70549` — the stack trail spans the whole night (thinned, not truncated), and the
+  sparkline buckets points to fit its width keeping the extremes.
+- `34be0a0` — small change folds away; the chip ruler, first version (phone flat on the
+  glass, one-point calibration).
+- `1b98f94` — the ruler REDESIGNED for a phone standing on the table: two-point
+  calibration, a list of stacks, tap-in for tiny piles, per-chip haptics.
 
-**UNRESOLVED, waiting on the user:** they looked at the new round and said *"it still looks
-like before"*, and the session ended before they said on what. The live bundle at
-github.io was checked and genuinely contains the new screen (`csr-row`, "Drag a bar"), so
-the two candidates are (a) they tapped a player's `Stack €x ✎` chip, which is the OLD
-money prompt and deliberately unchanged, rather than the `🧮 Counting round` button, or
-(b) a stale cached build — an installed PWA needs a cold start (swiped out of recents),
-and an old APK serves its own bundle until replaced. **Ask which surface, and whether the
-sheet says "ON THE TABLE €120" or "Player 1 of 4".** That one answer decides between
-"nothing to fix" and a real bug.
+**Rollback point:** tag **`pre-count-slider`** → `d8266f1`, still on the remote.
+`git push origin pre-count-slider:main --force` rolls the web app back.
+
+**STILL UNRESOLVED from 2026-08-29, waiting on the user:** they looked at the counting
+round and said *"it still looks like before"*, and never said on what surface. The live
+bundle genuinely contains the new screen, so the candidates remain (a) they tapped a
+player's `Stack €x ✎` chip — the OLD money prompt, deliberately unchanged — rather than
+the `🧮 Counting round` button, or (b) a stale cached build. **Ask which surface, and
+whether the sheet says "ON THE TABLE €120" or "Player 1 of 4".**
+
+**Unproven on real hardware** (both need the APK on a phone, neither is testable here):
+pointer capture during a real touch drag on the ruler — synthetic pointer events cannot
+hold a capture, so it is stubbed in the browser checks — and how the per-chip haptic
+actually FEELS. The old level-end notification is still unproven too.
+
+**The ruler needs a real calibration before it means anything.** It refuses to measure
+until it has one, so there is nothing to break, but the first person to open it has to
+stand 20 chips next to the phone and then 5. Any colour works.
+
+### Recent work 2026-08-30 — count less: fold the small change, measure the odd pile
+
+Follow-on from the split round. The user asked for faster ways to count an individual
+stack; of six pitched, they picked two.
+
+**Small change** (`lib/smallChange.ts`). An hour in, the blinds are 25/50 and the 1s and
+5s are most of the physical chips and a rounding error of the money. Those colours fold
+into one assumed row. The threshold is not invented here: `liveBaseValue` already knows
+the smallest chip still in play — the line the stack builder itself works to — so this
+asks the same question. At the STARTING level nothing is below the base, so the feature
+is correctly inert until the blinds have left those chips behind.
+
+The folded colours stay in `counts`; the fold hides rows and holds no second figure.
+That is not tidiness — the first cut kept the assumption separate and the total jumped
+by €7 when the row was opened, the two views flatly contradicting each other.
+
+**The chip ruler** (`lib/chipRuler.ts`, `components/ChipRuler.tsx`). Measure a pile
+instead of counting it. Built twice, because the physical model changed mid-design:
+
+1. First version: phone laid flat, column on the glass, ONE calibration number.
+2. Shipped version: the user will stand the phone on the table next to the pile. Zero
+   is then the TABLE, which is a case bottom and a bezel BELOW the lowest pixel — one
+   equation, two unknowns. Calibration is now two stacks of known height (20, then 5).
+
+Things worth not re-learning:
+
+- **Nothing but the button bar may sit below the ladder.** `zeroPx` is a distance from
+  the ladder's bottom edge down to the table, so chrome appearing or disappearing there
+  between calibrating and measuring moves the physical zero and silently invalidates the
+  calibration. Everything else lives above it, where coming and going only costs range.
+- **The bottom ~4 chips of every pile are invisible** (that is what the offset means), so
+  a 1–5 tap row and a keypad are part of the instrument, not a fallback.
+- **Piles are a list, not a number.** Measure, add, move the phone, measure again;
+  "⟲ Again" repeats the last stack, because most piles at a table are the same height.
+- **The strip scrolls on one line.** It wrapped at first, which grew it as stacks were
+  logged and ate the ladder underneath — the ruler measured fewer chips the more work
+  you had done.
+- **Haptics:** one buzz per chip crossed, harder every full column, throttled to 30 ms.
+  Reuses `haptic()` from `lib/platform.ts`.
+- A bad calibration is REFUSED, never rounded into something plausible — it would be
+  confidently wrong forever afterwards.
+
+The ruler took the `+20` button's slot in the colour row; its own stack list subsumes it.
+New device-local settings: `countBigOnly`, `chipRuler` (`{px, zeroPx}`), `countHaptics`.
+
+**The case question:** the user asked whether going caseless would help. It does not —
+calibration absorbs the offset either way — and a bare phone standing on felt slides.
+Keep the case, and recalibrate if it ever comes off.
+
+**Not built, offered and deferred:** auto-advance to the player's next colour after a
+measurement ("colour sweep"), which would turn a full exact count into one pass.
 
 ### Recent work 2026-08-29 — the counting round is a SPLIT, not six questions
 
