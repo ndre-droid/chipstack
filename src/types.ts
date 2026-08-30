@@ -113,7 +113,7 @@ export interface Settings {
    *  table sits when the phone stands on it (case bottom + bezel). Null until both
    *  have been measured — see lib/chipRuler.ts. Device-local by nature: a fact about
    *  the glass and the case, not about the game. */
-  chipRuler?: { px: number; zeroPx: number } | null;
+  chipRuler?: { px: number; zeroPx: number; samples?: { y: number; chips: number }[] } | null;
   /** Buzz once per chip as the ruler's bar is dragged, so the count can be felt
    *  rather than read. Taste, and battery — hence per-device, like `chipAnim`. */
   countHaptics?: boolean;

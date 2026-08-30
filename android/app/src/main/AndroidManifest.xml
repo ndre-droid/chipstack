@@ -58,4 +58,7 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Haptics. navigator.vibrate() is a silent no-op in the WebView without this,
+         which is why the ruler's per-chip buzz never fired in the APK. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 </manifest>
