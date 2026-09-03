@@ -9,8 +9,15 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
+        <!-- A foldable changes size, aspect AND density in the middle of a game.
+             Every one of those is listed here, so unfolding resizes the running
+             webview instead of restarting the activity underneath it: the clock
+             keeps ticking, the live session stays paired, and nothing flashes.
+             `fontScale` is deliberately NOT listed - the webview reads the text
+             zoom when it is created, so that one still wants a restart. -->
         <activity
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|density|navigation"
+            android:resizeableActivity="true"
             android:name=".MainActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
