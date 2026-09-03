@@ -49,7 +49,7 @@ const defaultSettings: Settings = {
   defaultBigBlind: 20,
   minutesPerLevel: 20,
   skin: 'minimal',
-  accents: { minimal: 'amber', casino: 'gold', playful: 'coral', scifi: 'cyan' },
+  accents: { minimal: 'amber', casino: 'gold', playful: 'coral', scifi: 'cyan', pokernacht: 'gold' },
   tvSkin: 'match',
   tvQuips: true,
   tvCustomQuips: [],
@@ -95,7 +95,7 @@ const defaultSettings: Settings = {
   onboardedAt: null,
 };
 
-const SKINS = ['minimal', 'casino', 'playful', 'scifi'];
+const SKINS = ['minimal', 'casino', 'playful', 'scifi', 'pokernacht'];
 const ACCENTS = ['amber', 'gold', 'emerald', 'cyan', 'cobalt', 'violet', 'crimson', 'coral'];
 
 const defaultSession: SessionConfig = {

@@ -173,6 +173,49 @@
   color-scheme: dark;
 }
 
+/* ---- Skin: Pokernacht (late-night broadcast — burgundy, gold, card-back damask) ----
+   Read off a German poker-show title card: a deep wine ground carrying the card-back
+   ornament faintly, ONE warm gold as the only accent, near-white for the figures.
+   The gold is a gradient on the few big things (wordmark, blinds, level) and flat
+   everywhere else — see the .gilt rules further down; metal on a 12px label just
+   turns into mud at TV distance. */
+:root[data-skin='pokernacht'] {
+  --bg: #140609;
+  --surface: #250c13;
+  --surface-2: #30111a;
+  --surface-3: #3e1722;
+  --line: #56232f;
+  --line-soft: #35141c;
+  --text: #fdf6e6;
+  --text-dim: #c9a49b;
+  --text-faint: #a8837c;
+  --good: #6ecf8d;
+  --bad: #ff6a5b;
+  --info: #a9bce8;
+  --acc: var(--acc-bright);
+  --on-acc: #1a0a05;
+  --acc-wash: color-mix(in srgb, var(--acc) 14%, transparent);
+  --acc-line: color-mix(in srgb, var(--acc) 44%, transparent);
+  /* damask first (it paints on top), wine gradient underneath */
+  --app-bg:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23e8bf72' stroke-opacity='.085' stroke-width='1.1'%3E%3Cpath d='M60 0 120 60 60 120 0 60Z'/%3E%3Cpath d='M60 22 98 60 60 98 22 60Z'/%3E%3Cpath d='M60 45 75 60 60 75 45 60Z'/%3E%3Ccircle cx='60' cy='60' r='3.4'/%3E%3Cpath d='M0 0 22 0 0 22Z'/%3E%3Cpath d='M120 0 98 0 120 22Z'/%3E%3Cpath d='M0 120 22 120 0 98Z'/%3E%3Cpath d='M120 120 98 120 120 98Z'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 96px 96px,
+    radial-gradient(135% 85% at 50% -12%, #4b1321 0%, #26090f 46%, #120508 100%);
+  --font-display: 'Oswald', var(--font);
+  color-scheme: dark;
+}
+/* Oswald is a condensed broadcast face: it wants tighter tracking than the default
+   heading rule gives it, and it only reads as broadcast in capitals. */
+:root[data-skin='pokernacht'] h1,
+:root[data-skin='pokernacht'] h2,
+:root[data-skin='pokernacht'] h3,
+:root[data-skin='pokernacht'] h4 { letter-spacing: 0.02em; font-weight: 600; }
+:root[data-skin='pokernacht'] .app-header .wordmark { text-transform: uppercase; letter-spacing: 0.06em; }
+/* Oswald carries the figures on the phone as well — its digits are even-width, so
+   the running clock does not shuffle sideways between seconds. */
+:root[data-skin='pokernacht'] .big-num,
+:root[data-skin='pokernacht'] .clock-time,
+:root[data-skin='pokernacht'] .clock-blinds { font-family: var(--font-display); letter-spacing: 0; }
+
 /* ---- Reset ---- */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body, #root { height: 100%; margin: 0; }
@@ -1411,6 +1454,94 @@ input[type='color'] { cursor: pointer; }
 .tv[data-tv-skin='scifi'] .tv-time { letter-spacing: 0; }
 .tv[data-tv-skin='scifi'] .tv-time,
 .tv[data-tv-skin='scifi'] .tv-blinds { text-shadow: 0 0 22px color-mix(in srgb, var(--acc) 50%, transparent); }
+.tv[data-tv-skin='pokernacht'] {
+  --tv-bg:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23e8bf72' stroke-opacity='.085' stroke-width='1.1'%3E%3Cpath d='M60 0 120 60 60 120 0 60Z'/%3E%3Cpath d='M60 22 98 60 60 98 22 60Z'/%3E%3Cpath d='M60 45 75 60 60 75 45 60Z'/%3E%3Ccircle cx='60' cy='60' r='3.4'/%3E%3Cpath d='M0 0 22 0 0 22Z'/%3E%3Cpath d='M120 0 98 0 120 22Z'/%3E%3Cpath d='M0 120 22 120 0 98Z'/%3E%3Cpath d='M120 120 98 120 120 98Z'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 210px 210px,
+    radial-gradient(135% 90% at 50% -10%, #4b1321 0%, #26090f 46%, #100407 100%);
+  --tv-bg-base: #1a070c;
+  --tv-fg: #fdf6e6; --tv-dim: #c9a49b; --tv-faint: #9c7770;
+  --tv-panel: rgba(232, 191, 114, 0.06); --tv-line: rgba(232, 191, 114, 0.22);
+  --on-acc: #1a0a05;
+  --font-display: 'Oswald', var(--font);
+  /* One face for all four roles: Oswald has even digit advances, so it can carry
+     the countdown too — which is the reason to pick a condensed grotesk rather
+     than the show's own display lettering. */
+  --tv-head: 'Oswald', var(--font);
+  --tv-body: 'Oswald', var(--font);
+  --tv-num: 'Oswald', var(--mono);
+  --tv-digits: 'Oswald', var(--mono);
+}
+/* Broadcast furniture. All of it is scoped to this skin and touches only paint —
+   no panel changes size or moves, so the TV layout engine and the roster's
+   fit-to-height measurement see exactly what they saw before. */
+.tv[data-tv-skin='pokernacht'] .tv-level {
+  letter-spacing: 0.22em;
+  font-weight: 500;
+}
+.tv[data-tv-skin='pokernacht'] .tv-time { letter-spacing: -0.01em; }
+/* the blinds sit on a lower-third plate: gold rule left, wine wash behind */
+.tv[data-tv-skin='pokernacht'] .tv-blinds {
+  display: inline-block;
+  padding: 0.04em 0.34em 0.1em;
+  border-left: clamp(3px, 0.45vmin, 9px) solid var(--acc);
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--acc) 16%, transparent) 0%,
+    transparent 92%);
+}
+/* the roster reads as a stack of name bars, the way a broadcast keys them in */
+.tv[data-tv-skin='pokernacht'] .tv-players-row {
+  padding: clamp(2px, 0.45vmin, 8px) clamp(6px, 0.9vmin, 14px);
+  border-left: clamp(2px, 0.35vmin, 7px) solid var(--acc);
+  background: linear-gradient(90deg,
+    rgba(255, 255, 255, 0.055) 0%,
+    rgba(255, 255, 255, 0.015) 60%,
+    transparent 100%);
+}
+.tv[data-tv-skin='pokernacht'] .tv-players-row.out { border-left-color: var(--tv-faint); }
+.tv[data-tv-skin='pokernacht'] .tv-players-name {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+}
+.tv[data-tv-skin='pokernacht'] .tv-players-h { letter-spacing: 0.14em; }
+.tv[data-tv-skin='pokernacht'] .tv-stat {
+  border-left: clamp(2px, 0.35vmin, 7px) solid color-mix(in srgb, var(--acc) 55%, transparent);
+  padding-left: clamp(6px, 0.9vmin, 14px);
+}
+.tv[data-tv-skin='pokernacht'] .tv-stat-k { letter-spacing: 0.14em; }
+/* Metal, on the two biggest gold things only. The flat colour is set first and
+   the gradient only replaces it where background-clip:text actually works, so an
+   older TV browser gets solid gold rather than invisible text. */
+.tv[data-tv-skin='pokernacht'] .tv-level,
+.tv[data-tv-skin='pokernacht'] .tv-blinds { color: var(--acc); }
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .tv[data-tv-skin='pokernacht'] .tv-level,
+  .tv[data-tv-skin='pokernacht'] .tv-blinds,
+  :root[data-skin='pokernacht'] .app-header .wordmark {
+    background-image: linear-gradient(180deg,
+      color-mix(in srgb, var(--acc) 45%, #fffaf0) 0%,
+      var(--acc) 44%,
+      color-mix(in srgb, var(--acc) 66%, #6b3a06) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* the blinds plate keeps its own wash: clipping the gilt to the text would
+     otherwise eat the panel background with it */
+  .tv[data-tv-skin='pokernacht'] .tv-blinds {
+    background-image:
+      linear-gradient(180deg,
+        color-mix(in srgb, var(--acc) 45%, #fffaf0) 0%,
+        var(--acc) 44%,
+        color-mix(in srgb, var(--acc) 66%, #6b3a06) 100%),
+      linear-gradient(90deg,
+        color-mix(in srgb, var(--acc) 16%, transparent) 0%,
+        transparent 92%);
+    -webkit-background-clip: text, border-box;
+    background-clip: text, border-box;
+  }
+}
+
 /* The big screen has two layouts.
    `auto` is the one it has always had: three columns that give the leftover height
    to the players roster, tuned around what each panel needs and what a short window

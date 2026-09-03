@@ -30,7 +30,7 @@ const phone: Settings = {
   defaultBigBlind: 20,
   minutesPerLevel: 20,
   skin: 'casino',
-  accents: { minimal: 'amber', casino: 'gold', playful: 'coral', scifi: 'cyan' },
+  accents: { minimal: 'amber', casino: 'gold', playful: 'coral', scifi: 'cyan', pokernacht: 'gold' },
   tvSkin: 'match',
   tvQuips: true,
   tvCustomQuips: ['ours'],

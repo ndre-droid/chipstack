@@ -25,6 +25,7 @@ const STYLES: { id: Skin; name: string; bg: string }[] = [
   { id: 'casino', name: 'Casino', bg: 'radial-gradient(120% 90% at 50% 0%, #275a3d, #0a1c12)' },
   { id: 'playful', name: 'Playful', bg: '#fbe9c8' },
   { id: 'scifi', name: 'Sci-Fi', bg: 'radial-gradient(120% 90% at 50% 0%, #0c1a4c, #05060f)' },
+  { id: 'pokernacht', name: 'Pokernacht', bg: 'radial-gradient(120% 90% at 50% 0%, #4a1220, #140609)' },
 ];
 const ACCENTS: { id: AccentId; color: string }[] = [
   { id: 'amber', color: '#f0b429' }, { id: 'gold', color: '#e6c878' },
@@ -40,6 +41,9 @@ const GROUP_OF_SKIN: Record<Skin, TvBackgroundGroup> = {
   casino: 'table',
   playful: 'playful',
   scifi: 'scifi',
+  // no folder of its own: the skin brings its own damask ground, and the table
+  // photos are the closest match if the user does want a picture behind it
+  pokernacht: 'table',
 };
 
 /**

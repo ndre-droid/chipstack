@@ -21,6 +21,7 @@ const STYLES: { id: Skin; name: string; bg: string; note: string }[] = [
   { id: 'casino', name: 'Casino Felt', bg: 'radial-gradient(120% 90% at 50% 0%, #275a3d, #0a1c12)', note: 'Warm green felt & brass, with a serif touch.' },
   { id: 'playful', name: 'Playful', bg: '#fbe9c8', note: 'Bright, bold and chunky.' },
   { id: 'scifi', name: 'Sci-Fi', bg: 'radial-gradient(120% 90% at 50% 0%, #0c1a4c, #05060f)', note: 'Deep space with a neon glow.' },
+  { id: 'pokernacht', name: 'Pokernacht', bg: 'radial-gradient(120% 90% at 50% 0%, #4a1220, #140609)', note: 'Late-night broadcast: burgundy, gold and card-back damask.' },
 ];
 
 const APPEARANCES: { id: Appearance; name: string }[] = [

@@ -23,7 +23,7 @@ export interface BlindLevel {
 
 export type Appearance = 'system' | 'light' | 'dark';
 export type AccentId = 'amber' | 'gold' | 'emerald' | 'cyan' | 'cobalt' | 'violet' | 'crimson' | 'coral';
-export type Skin = 'minimal' | 'casino' | 'playful' | 'scifi';
+export type Skin = 'minimal' | 'casino' | 'playful' | 'scifi' | 'pokernacht';
 export type ChipArt = 'deco' | 'classic' | 'diamond' | 'sunburst';
 /** How chips are drawn everywhere in the app. See `Settings.chipStyle`. */
 export type ChipStyle = 'vector' | 'render3d';
@@ -52,7 +52,7 @@ export interface Settings {
   defaultSmallBlind: number; // small blind used for new sessions / suggested ladders
   defaultBigBlind: number;
   minutesPerLevel: number;  // blind-timer length per level
-  skin: Skin;               // overall visual style (minimal / casino / playful / scifi)
+  skin: Skin;               // overall visual style (minimal / casino / playful / scifi / pokernacht)
   accents: Record<Skin, AccentId>; // accent colour per style
   tvSkin: Skin | 'match';   // TV-broadcast style; 'match' follows the phone skin
   tvQuips: boolean;         // show the rotating cheeky sayings on the TV
