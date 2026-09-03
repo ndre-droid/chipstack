@@ -1,4 +1,5 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
+import qrcode from 'qrcode-generator';
 import { useStore } from '../store';
 import { IconCheck, IconChevron } from './Icons';
 import { TV_BACKGROUNDS, backgroundFolders, groupOfBackground, type TvBackgroundGroup } from '../lib/tvBackgrounds';
@@ -19,6 +20,10 @@ import {
 } from '../lib/tvLayout';
 
 const WEB_URL = 'https://ndre-droid.github.io/chipstack/';
+/* The same app, told to open AS the big screen. A TV browser, a laptop or an iPad
+   that opens this lands in TV mode directly — no onboarding, no hunting for the
+   "use this device as the TV" pill (see `initialBigScreen` in App.tsx). */
+const TV_URL = `${WEB_URL}?screen=tv`;
 
 const STYLES: { id: Skin; name: string; bg: string }[] = [
   { id: 'minimal', name: 'Minimal', bg: '#16161a' },
@@ -136,9 +141,23 @@ function TvBroadcast() {
   const setAccent = (id: AccentId) =>
     dispatch({ type: 'UPDATE_SETTINGS', patch: { accents: { ...settings.accents, [effTvSkin]: id } } });
 
+  /* A tablet is the one big screen with a camera: point it at this and it opens
+     the big-screen URL itself, which beats typing a github.io path on a TV remote
+     or an on-screen keyboard. Cheap enough to keep next to the link. */
+  const tvQr = useMemo(() => {
+    try {
+      const qr = qrcode(0, 'M');
+      qr.addData(TV_URL);
+      qr.make();
+      return qr.createDataURL(6, 12);
+    } catch {
+      return null;
+    }
+  }, []);
+
   const copyUrl = async () => {
     try {
-      await navigator.clipboard.writeText(WEB_URL);
+      await navigator.clipboard.writeText(TV_URL);
       setUrlCopied(true);
       setTimeout(() => setUrlCopied(false), 1600);
     } catch {
@@ -500,15 +519,22 @@ function TvBroadcast() {
             )}
           </div>
 
-          {/* Show on TV — open this URL in the TV's own browser, then tap
-              "Use this device as the TV". No QR here: the TV already runs this
-              page, and the pairing QR (scan to control) lives on the TV screen. */}
+          {/* Show on TV — open this URL on whatever is playing the big screen: a
+              TV browser typed by hand, or a tablet/laptop that can scan the code.
+              (The pairing QR — scan to CONTROL the screen — is a different one and
+              lives on the TV itself.) */}
           <div className="card">
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{t('table.showOnTvHere')}</div>
             <p className="faint" style={{ fontSize: 12.5, margin: '0 0 10px', lineHeight: 1.6 }}>
               {t('table.castHint')}
             </p>
-            <div className="url-box">{WEB_URL}</div>
+            {tvQr && (
+              <div className="tv-url-qr">
+                <img src={tvQr} alt="" width={132} height={132} />
+                <span className="faint" style={{ fontSize: 12, lineHeight: 1.5 }}>{t('table.castScan')}</span>
+              </div>
+            )}
+            <div className="url-box">{TV_URL}</div>
             <button className="btn btn-ghost btn-block btn-sm mt8" onClick={copyUrl}>
               {urlCopied ? (
                 <>

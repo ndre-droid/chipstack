@@ -66,6 +66,21 @@ const initialTvCode: string | null = (() => {
   }
 })();
 
+/* `?screen=tv` (or a plain `#tv`): THIS device is the big screen.
+   Opening that one URL on an iPad, a laptop or a TV browser boots straight into
+   TV mode — no onboarding wizard first, no three taps through the phone app to
+   find the "Use this device as the TV" pill. Read before React so the very first
+   paint is already the big screen, and adopted into `deviceIsTv` (which persists)
+   so the device stays the TV across reloads. */
+const initialBigScreen: boolean = (() => {
+  try {
+    const u = new URL(window.location.href);
+    return u.searchParams.get('screen') === 'tv' || u.hash === '#tv';
+  } catch {
+    return false;
+  }
+})();
+
 /** The tab this device was last on — unlocking the phone mid-game should not land
  *  on the planning screen two taps away from the table. */
 const storedView = (): Tab | null => {
@@ -100,6 +115,10 @@ function AppShell() {
      game and everybody else is a player, so the code asks which one this phone is —
      otherwise every guest who scanned the TV became a second host. */
   const [pendingCode, setPendingCode] = useState<string | null>(initialTvCode);
+  /* Carries the `?screen=tv` boot until the store has it; cleared by the effect
+     below, so leaving TV mode later is not re-entered on the next render. */
+  const [bootBigScreen, setBootBigScreen] = useState(initialBigScreen);
+  const asTv = deviceIsTv || bootBigScreen;
   const connectAsHost = (code: string) =>
     dispatch({ type: 'UPDATE_SETTINGS', patch: { liveSessionCode: code, liveSessionRole: 'host', deviceIsTv: false } });
   const connectAsGuest = (code: string) =>
@@ -128,6 +147,21 @@ function AppShell() {
     const url = window.location.origin + window.location.pathname + window.location.hash;
     window.history.replaceState(null, '', url);
   }, []);
+
+  /* Adopt `?screen=tv` / `#tv` into the persisted flag, then take it out of the
+     address bar: the device stays the big screen across reloads, and "Exit TV" is
+     not undone by the next refresh re-reading the same URL. `bootBigScreen` is
+     what carries the very first render, before the store has been told. */
+  useEffect(() => {
+    if (!bootBigScreen) return;
+    if (!deviceIsTv) dispatch({ type: 'UPDATE_SETTINGS', patch: { deviceIsTv: true } });
+    setBootBigScreen(false);
+    try {
+      window.history.replaceState(null, '', window.location.origin + window.location.pathname);
+    } catch {
+      /* a browser that refuses the rewrite still has the flag */
+    }
+  }, [bootBigScreen, deviceIsTv, dispatch]);
 
   // apply skin + accent (+ appearance for minimal) to <html>.
   // each skin carries its own accent; 'minimal' also honours light/dark, the other
@@ -259,13 +293,13 @@ function AppShell() {
 
   /* Nothing has ever been set up here: ask the three questions that actually
      determine the answer, instead of opening on a full tournament console. */
-  if (state.settings.onboardedAt === null && !deviceIsTv) {
+  if (state.settings.onboardedAt === null && !asTv) {
     return <Onboarding onDone={() => go(state.ledger.length > 0 ? 'table' : 'plan')} />;
   }
 
   /* This phone belongs to somebody who is just playing: their own read-only view of
      the table, and the one thing they can do — put their name in. */
-  if (liveSessionRole === 'guest' && liveSessionCode && !deviceIsTv) {
+  if (liveSessionRole === 'guest' && liveSessionCode && !asTv) {
     return (
       <GuestView
         onLeave={() =>
@@ -275,7 +309,7 @@ function AppShell() {
     );
   }
 
-  if (pendingCode && liveSessionCode !== pendingCode && !deviceIsTv) {
+  if (pendingCode && liveSessionCode !== pendingCode && !asTv) {
     return (
       <RoleChoice
         code={pendingCode}
@@ -294,7 +328,7 @@ function AppShell() {
 
   // This device is the designated TV: boot straight into the big screen. Exiting
   // clears the flag (and any live session) and returns to the normal phone app.
-  if (deviceIsTv) {
+  if (asTv) {
     return (
       <TvMode
         onClose={() => {

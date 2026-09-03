@@ -22,6 +22,23 @@ export function isTvBrowser(ua = typeof navigator === 'undefined' ? '' : navigat
 }
 
 /**
+ * A touch device standing in for the TV — in practice a tablet propped on the table.
+ *
+ * It matters because the boost below is about VIEWING DISTANCE, not pixels, and a
+ * tablet lies between the two cases the sizing was tuned for: an iPad in landscape
+ * reports a laptop-sized viewport (1180x820, 1366x1024) and was therefore zoomed
+ * like a laptop across the room — while it actually sits an arm's length away, so
+ * the layout came out far too big. A coarse pointer with no hover is every touch
+ * screen and no desktop; a TV browser is asked about first and never reaches here.
+ */
+export function isTouchScreen(): boolean {
+  if (typeof window === 'undefined') return false;
+  const mm = window.matchMedia;
+  if (!mm) return (navigator.maxTouchPoints ?? 0) > 1;
+  return mm('(pointer: coarse)').matches && mm('(hover: none)').matches;
+}
+
+/**
  * Is the panel behind this viewport a 4K one?
  *
  * A TV browser almost never hands out a 3840-wide CSS viewport: it reports a
@@ -83,8 +100,9 @@ export function autoTvScale(): number {
   const long = Math.max(w, h);
   // A phone or tablet previewing TV mode is held at arm's length and gets the
   // layout close to as designed — only a laptop/monitor standing in for the TV is
-  // boosted properly.
-  if (long < 1100 || short < 600) return 1.05;
+  // boosted properly. A big tablet reports a laptop-sized viewport, so the touch
+  // screen itself is the tell (see isTouchScreen).
+  if (long < 1100 || short < 600 || isTouchScreen()) return 1.05;
   return clampTvScale(short >= 950 ? 1.2 : 1.3);
 }
 

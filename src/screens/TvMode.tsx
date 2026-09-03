@@ -39,6 +39,14 @@ import Sparkline from '../components/Sparkline';
 import { useBackHandler } from '../lib/backHandler';
 import { useWakeLock } from '../lib/useWakeLock';
 import { useTvAwake } from '../lib/useTvAwake';
+import {
+  FULLSCREEN_EVENTS,
+  enterFullscreen,
+  exitFullscreen,
+  fullscreenElement,
+  fullscreenSupported,
+  isIosBrowserChrome,
+} from '../lib/fullscreen';
 import { quipsFor, penaltiesFor, houseRulesFor } from '../lib/quips';
 
 // The app is intentionally SILENT: on the TV, any sound the browser makes hijacks
@@ -888,12 +896,11 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   const wantsFull = useRef(true);
 
   useEffect(() => {
-    const root = document.documentElement;
-    if (!root.requestFullscreen) return;
+    if (!fullscreenSupported()) return;
     let armed = true;
     const enter = () => {
-      if (document.fullscreenElement || !wantsFull.current) return;
-      void root.requestFullscreen().catch(() => {});
+      if (fullscreenElement() || !wantsFull.current) return;
+      enterFullscreen();
     };
     const onGesture = (e: Event) => {
       // …except the way out: asking for fullscreen as the screen closes is both
@@ -909,7 +916,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
       document.addEventListener('keydown', onGesture, true);
     };
     const onChange = () => {
-      const on = !!document.fullscreenElement;
+      const on = !!fullscreenElement();
       setIsFull(on);
       if (on) {
         armed = false;
@@ -921,13 +928,13 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     };
     document.addEventListener('pointerdown', onGesture, true);
     document.addEventListener('keydown', onGesture, true);
-    document.addEventListener('fullscreenchange', onChange);
+    FULLSCREEN_EVENTS.forEach((ev) => document.addEventListener(ev, onChange));
     enter(); // free where the browser allows it; harmless where it doesn't
     return () => {
       document.removeEventListener('pointerdown', onGesture, true);
       document.removeEventListener('keydown', onGesture, true);
-      document.removeEventListener('fullscreenchange', onChange);
-      if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+      FULLSCREEN_EVENTS.forEach((ev) => document.removeEventListener(ev, onChange));
+      if (fullscreenElement()) exitFullscreen();
     };
   }, []);
 
@@ -936,16 +943,22 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
      that never went fullscreen by itself, this is the way in. Not offered at all
      where the browser has no fullscreen API — an iOS home-screen app is already
      chromeless, and a button that cannot work is worse than no button. */
-  const canFullscreen = typeof document !== 'undefined' && !!document.documentElement.requestFullscreen;
+  const canFullscreen = fullscreenSupported();
+
+  /* iOS/iPadOS Safari grants no element fullscreen at all, so an iPad standing in
+     for the TV keeps its address bar — unless the page was installed to the home
+     screen, where iOS runs it chromeless. That is a one-time instruction, not a
+     button, so it is said once and only where it applies. */
+  const iosNeedsHomeScreen = !canFullscreen && isIosBrowserChrome();
 
   const toggleFullscreen = () => {
-    if (document.fullscreenElement) {
+    if (fullscreenElement()) {
       wantsFull.current = false;
-      void document.exitFullscreen().catch(() => {});
+      exitFullscreen();
       return;
     }
     wantsFull.current = true;
-    void document.documentElement.requestFullscreen?.().catch(() => {});
+    enterFullscreen();
   };
 
   /* Reload the big screen from the sofa. A TV browser is a machine nobody has a
@@ -2068,6 +2081,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
             {isFull ? `⤡ ${t('tv.exitFullscreen')}` : `⛶ ${t('tv.fullscreen')}`}
           </button>
         )}
+        {iosNeedsHomeScreen && <span className="tv-build">{t('tv.iosFullscreen')}</span>}
         <button className="tv-txt" onClick={reloadTv} aria-label={t('tv.refresh')}>
           ⟳ {t('tv.refresh')}
         </button>
