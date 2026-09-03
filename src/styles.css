@@ -210,6 +210,10 @@
 :root[data-skin='pokernacht'] h3,
 :root[data-skin='pokernacht'] h4 { letter-spacing: 0.02em; font-weight: 600; }
 :root[data-skin='pokernacht'] .app-header .wordmark { text-transform: uppercase; letter-spacing: 0.06em; }
+/* The shared 'gold' swatch is a pale champagne, mixed for green felt; on burgundy it
+   reads grey-beige, so this skin warms it up. Scoped to the skin, so the swatch keeps
+   its own colour everywhere else. */
+:root[data-skin='pokernacht'][data-accent='gold'] { --acc-bright: #f0b62f; --acc-deep: #a9740f; }
 /* Oswald carries the figures on the phone as well — its digits are even-width, so
    the running clock does not shuffle sideways between seconds. */
 :root[data-skin='pokernacht'] .big-num,
@@ -1471,6 +1475,7 @@ input[type='color'] { cursor: pointer; }
   --tv-num: 'Oswald', var(--mono);
   --tv-digits: 'Oswald', var(--mono);
 }
+.tv[data-tv-skin='pokernacht'][data-tv-accent='gold'] { --acc-bright: #f0b62f; --acc-deep: #a9740f; }
 /* Broadcast furniture. All of it is scoped to this skin and touches only paint —
    no panel changes size or moves, so the TV layout engine and the roster's
    fit-to-height measurement see exactly what they saw before. */
@@ -1509,19 +1514,23 @@ input[type='color'] { cursor: pointer; }
   padding-left: clamp(6px, 0.9vmin, 14px);
 }
 .tv[data-tv-skin='pokernacht'] .tv-stat-k { letter-spacing: 0.14em; }
-/* Metal, on the two biggest gold things only. The flat colour is set first and
-   the gradient only replaces it where background-clip:text actually works, so an
-   older TV browser gets solid gold rather than invisible text. */
+/* Metal, on the two biggest gold things only: the blinds and the wordmark. The
+   LEVEL line above them stays flat — a gradient across 20px of condensed capitals
+   is not read as metal, only as a dirty gold. The flat colour is set first and the
+   gradient replaces it only where background-clip:text works, so an older TV
+   browser gets solid gold rather than invisible text. */
 .tv[data-tv-skin='pokernacht'] .tv-level,
 .tv[data-tv-skin='pokernacht'] .tv-blinds { color: var(--acc); }
 @supports ((-webkit-background-clip: text) or (background-clip: text)) {
-  .tv[data-tv-skin='pokernacht'] .tv-level,
   .tv[data-tv-skin='pokernacht'] .tv-blinds,
   :root[data-skin='pokernacht'] .app-header .wordmark {
+    /* A narrow ramp around the accent: the old one washed out to near-white at the
+       top and fell into brown at the bottom, which is what made the gold look
+       dirty rather than lit. */
     background-image: linear-gradient(180deg,
-      color-mix(in srgb, var(--acc) 45%, #fffaf0) 0%,
-      var(--acc) 44%,
-      color-mix(in srgb, var(--acc) 66%, #6b3a06) 100%);
+      color-mix(in srgb, var(--acc) 72%, #fff3cf) 0%,
+      var(--acc) 52%,
+      color-mix(in srgb, var(--acc) 84%, #8a5410) 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -1531,9 +1540,9 @@ input[type='color'] { cursor: pointer; }
   .tv[data-tv-skin='pokernacht'] .tv-blinds {
     background-image:
       linear-gradient(180deg,
-        color-mix(in srgb, var(--acc) 45%, #fffaf0) 0%,
-        var(--acc) 44%,
-        color-mix(in srgb, var(--acc) 66%, #6b3a06) 100%),
+        color-mix(in srgb, var(--acc) 72%, #fff3cf) 0%,
+        var(--acc) 52%,
+        color-mix(in srgb, var(--acc) 84%, #8a5410) 100%),
       linear-gradient(90deg,
         color-mix(in srgb, var(--acc) 16%, transparent) 0%,
         transparent 92%);
