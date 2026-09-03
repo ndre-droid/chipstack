@@ -1226,6 +1226,10 @@ input[type='color'] { cursor: pointer; }
   border-radius: var(--r-sm); padding: 12px 14px; color: var(--text);
 }
 .qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 16px; }
+/* The big-screen link with its scan code beside it — a tablet playing the TV can
+   read the code with its own camera instead of typing the URL. */
+.tv-url-qr { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.tv-url-qr img { width: 132px; height: 132px; flex: 0 0 auto; border-radius: var(--r-sm); background: #fff; padding: 6px; }
 .qr-wrap img { width: 160px; height: 160px; border-radius: var(--r-sm); background: #fff; padding: 8px; }
 .import-box {
   width: 100%; min-height: 64px; resize: vertical;
