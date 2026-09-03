@@ -16,6 +16,7 @@ import { runBackHandlers } from './lib/backHandler';
 import { isNative } from './lib/platform';
 import { warmChip3d } from './lib/chip3d';
 import { useVisualViewportHeight } from './lib/viewport';
+import { useWindowLayout } from './lib/windowLayout';
 import Onboarding from './components/Onboarding';
 import GuestView from './screens/GuestView';
 
@@ -110,6 +111,7 @@ function AppShell() {
   const t = useT();
   useLiveHostSync();
   useVisualViewportHeight();
+  useWindowLayout();
 
   /* A scanned code no longer means "take over the table". One person is running the
      game and everybody else is a player, so the code asks which one this phone is —
