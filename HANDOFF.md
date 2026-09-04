@@ -415,6 +415,78 @@ break length + auto-break every N, blinds (edit/add/remove), players & pool (ren
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
 
+### Recent work 2026-09-04 (the Fold lying down, and the setup moved to a Tuesday) — `63335de`
+
+Six things the user reported after unfolding the phone, plus the two TV-mode bugs found on the
+way. All shipped; `main` + Pages + APK in sync.
+
+1. **Landscape on the opened phone was one column in a very wide window.** Two black gutters
+   and two players visible at a time. `data-panes` is now a second attribute on `<html>` beside
+   `data-layout`, written by the same `apply()` inside the same view transition, so the fold
+   still animates as one movement and every existing wide rule is untouched.
+   - `components/Panes.tsx` — the pane wrappers are `display: contents` at every other size, so
+     the phone flows exactly as before. **The split is CONTIGUOUS by construction**: `left` is
+     the run of sections a screen already showed first, `right` is the rest. Nothing reorders,
+     and there is no second render path to keep in step. Table, Plan, Cash and Settings split;
+     screens without `<Panes>` keep their 720px reading width (`:has(> .panes)`).
+   - **The threshold is ORIENTATION first, width second** — and that is deliberate. Material's
+     840dp boundary lands a few pixels from a Fold's inner screen in PORTRAIT (750–832dp
+     depending on device and system bars), so a width test alone silently decides one column or
+     two. Landscape + 800dp wide + 520dp tall. Portrait never splits, whatever it measures.
+     An S22 on its side (~800x360) and the cover screen (~960x412) are under the height floor.
+
+2. **The setup wizard is no longer a wall you meet on launch.** `App.tsx` no longer gates on
+   `onboardedAt`; it is a **Run** button in a new "Before the night" section at the top of
+   Settings (`BeforeTheNight` in `SettingsScreen.tsx`), portalled to `document.body`.
+   `onboardedAt` now only reports (null = never), and a fresh install lands straight in the app.
+
+3. **New installs default to a cash game** (`defaultSettings.gameMode`). Existing installs keep
+   whatever they have — the user asked for the default only.
+
+4. **Chip-ruler calibration is per screen AND per orientation, and set up in advance.**
+   `zeroPx` is the case lip the phone is STANDING on, and lying down it rests on a different
+   lip; sharing one offset between the two adds a constant to every stack, which is the one
+   error a ruler cannot detect. `screenKeyOf` gained a `:p`/`:l` suffix (`glassKeyOf` is the
+   panel without it); keys from before this are read as the upright one. `rulerSlots()` names
+   the four slots, and the Settings section shows each with its reading, **Again** and
+   **Forget** — the other panel is listed read-only under "Other screens" because it cannot be
+   measured without unfolding. `ChipRuler` takes `calibrateOnly`: no colour, no running total,
+   always starts at step 1, closes when solved.
+   **Only the orientation the phone is held in right now offers a button** — the other row says
+   "turn the phone", because there is no way to drag to the top of a stack beside a screen that
+   is not facing you.
+
+5. **The app carries its own emoji font.** Noto Color Emoji COLRv1, subset by
+   `scripts/build-emoji-font.py` to the 266 codepoints in use → `src/assets/chipstack-emoji.woff2`,
+   **223 KB** (precache 1000 → 1234 KiB). An emoji here is a person — the avatar by a name, the
+   crown on the leader — and the device's own font is not a constant. First in `--font-emoji`,
+   so anything outside the subset falls through to the device as before. Drawn bigger too (an
+   avatar was a 19px glyph in a 34px tile → 25px in 36px), and **61 more emoji** (241 total).
+   Rebuild after adding emoji; needs `fonttools` + `brotli`.
+   **Gotcha (this machine):** fontTools' compiled `.pyd` extensions are blocked by an
+   Application Control policy — `ImportError: DLL load failed while importing iup`. Install
+   into a throwaway venv and rename every `fontTools/**/*.pyd`; the pure-Python fallbacks work.
+
+6. **TV mode on the phone itself** (the user props the opened Fold as its own big screen):
+   - **`20:00` wrapped onto two lines.** The whole big screen is sized in `vmin`, which assumes
+     the window is much wider than it is tall — true of a television, false of a nearly square
+     panel. `.tv-cell` is now a size container and the clock and blinds are capped in `cqw` as
+     well as `vmin`. On a 16:9 panel the cap never binds (measured: 17vmin = 122px vs 27cqw =
+     146px), so **a real television is untouched**.
+   - **Portrait never actually stacked.** Those rules were on `.tv-grid` and lost every time to
+     `.tv-grid[data-mode='auto']`'s own `grid-template-columns` — while the enormous portrait
+     clock size DID apply, inside a third-of-the-screen cell. Now scoped to `[data-mode='auto']`
+     and built as a **flex column**, not a one-column grid: the grid's rows are shares of a fixed
+     height, and `max-height: 100%` against a row sizing itself to its contents is circular
+     (that is what squashed a full roster into one name). `data-mode='grid'` is left alone —
+     those panels are where somebody dragged them.
+   - **The connect pill floated on top of the legend's heading**, at every size including 16:9.
+     It is in the flow now, costing one ~40px row.
+
+Verified in the browser at 412x915, 750x832, 832x750, 933x777, 960x412, 777x933 and 1280x800:
+correct layout/panes at each, no horizontal overflow anywhere, German strings render, the fold
+transition switches cleanly in both directions. 29/29 test files pass.
+
 ### Recent work (2026-08-26 — the big-screen pass, commit `c275092`, SHIPPED)
 The seven things the user asked for after a real night, plus one bug found on the way (5).
 `main` + Pages + APK all at `c275092`.

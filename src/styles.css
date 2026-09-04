@@ -3552,6 +3552,16 @@ input[type='color'] { cursor: pointer; }
 }
 :root[data-panes='2'] .pane { display: block; min-width: 0; }
 
+/* The chip box is a list of nine near-identical cards — the one place a second
+   column is worth having without a `<Panes>` split, because the reading order
+   across a grid of equals is not something anybody depends on. */
+:root[data-panes='2'] .denom-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 14px;
+  align-items: start;
+}
+
 /* The shell stops being a phone-shaped column: the point of two panes is to use
    the width, so the frame widens and the reading-width cap comes off the page
    (each COLUMN is now the thing that has to stay readable, and half of 1240 is
@@ -3561,7 +3571,8 @@ input[type='color'] { cursor: pointer; }
    still one column, and one column 1240px wide is a worse read than one column
    720px wide — so the reading-width cap comes off for the ones that have two
    columns to spend it on and stays on for the rest. */
-:root[data-panes='2'] .screen > div:has(> .panes) { max-width: none; }
+:root[data-panes='2'] .screen > div:has(> .panes),
+:root[data-panes='2'] .screen > div:has(> .denom-list) { max-width: none; }
 
 /* A full-bleed bar — the clock strip — is a property of the PAGE, not of a
    column, so it stays outside the panes and keeps bleeding into the padding. */

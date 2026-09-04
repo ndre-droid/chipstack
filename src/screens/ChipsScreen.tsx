@@ -160,7 +160,12 @@ export default function ChipsScreen() {
         </div>
       </div>
 
-      {sorted.map((d) => {
+      {/* Wrapped, so the list can become two columns on a screen with room for
+          them — nine cards is a long scroll on a panel that is mostly empty to
+          the right. One column everywhere else; see `.denom-list` in
+          styles.css. */}
+      <div className="denom-list">
+        {sorted.map((d) => {
         const chipMoney = d.value * settings.unitValue;
         return (
           <div className={`denom-row ${d.enabled ? '' : 'disabled'}`} key={d.id}>
@@ -237,7 +242,8 @@ export default function ChipsScreen() {
             </div>
           </div>
         );
-      })}
+        })}
+      </div>
 
       <button className="btn btn-ghost btn-block mt8" onClick={() => dispatch({ type: 'ADD_DENOM' })}>
         <IconPlus size={18} /> {t('chips.addDenom')}
