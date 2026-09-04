@@ -253,7 +253,7 @@ export default function PlanScreen() {
           {edited && !tuned && <span className="badge-soft" style={{ marginLeft: 8 }}>{t('plan.edited')}</span>}
         </div>
 
-        <ChipStackViz denoms={heroUsed} counts={heroCounts} surface="plan" />
+        <ChipStackViz denoms={heroUsed} counts={heroCounts} surface="plan" roomyChipSize={104} />
 
         {/* small-chip slider — lives with the visual it controls. It shapes the PLAN,
             so it steps aside while the card is showing some other amount: a mid-game

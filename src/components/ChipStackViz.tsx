@@ -19,6 +19,11 @@ import {
 import Chip from './Chip';
 import { ChipValue } from './Chip3D';
 
+/** How wide the row has to be before a chip is allowed its roomy size. Comfortably
+ *  past any phone in portrait, and comfortably under an unfolded Fold's ~680px of
+ *  card. */
+const ROOMY_FROM = 520;
+
 interface Props {
   denoms: Denomination[];
   counts: Record<string, number>;
@@ -27,6 +32,10 @@ interface Props {
   surface?: ChipAnimSurface;
   /** Biggest a single chip may be drawn. The big screen is metres away, not inches. */
   maxChipSize?: number;
+  /** …and biggest once the spread has real room for it. The starting stack is the
+   *  answer this app exists to give, and on an unfolded phone it should look like
+   *  it. Left off, `maxChipSize` is the cap at every width. */
+  roomyChipSize?: number;
 }
 
 /**
@@ -45,6 +54,7 @@ function ChipStackViz({
   maxDiscs = 11,
   surface = 'table',
   maxChipSize = 58,
+  roomyChipSize,
 }: Props) {
   const t = useT();
   const settings = useStore().state.settings;
@@ -78,21 +88,27 @@ function ChipStackViz({
 
   if (columns.length === 0) return <div className="empty">{t('plan.noChipsYet')}</div>;
 
+  const w = Number.isFinite(width) && width > 0 ? width : 320;
+  /* How big a chip is ALLOWED to be here. It is the plain cap on a phone, where the
+     width runs out long before the cap does anyway, and the roomy one once the row
+     is genuinely wide — an unfolded Fold, a tablet, a desktop window. Measured off
+     the row itself rather than off a layout flag, so a phone opening out re-sizes
+     the chips through the same ResizeObserver that already runs. */
+  const cap = roomyChipSize && w >= ROOMY_FROM ? roomyChipSize : maxChipSize;
   // The gap belongs to the chips, not the screen: bigger chips, bigger gaps. It rides
   // on the columns rather than the row, so a pile folding away takes its gap with it.
-  const gap = Math.round(maxChipSize * 0.21);
+  const gap = Math.round(cap * 0.21);
   const weight = (d: Denomination) => (d.shape === 'plaque' ? 1.5 : 1);
   const totalWeight = columns.reduce((s, c) => s + weight(c.item.d), 0) || 1;
-  const w = Number.isFinite(width) && width > 0 ? width : 320;
   const rawSize = Math.floor((w - columns.length * gap - 2) / totalWeight);
-  const chipSize = Math.max(20, Math.min(maxChipSize, Number.isFinite(rawSize) ? rawSize : 34));
+  const chipSize = Math.max(20, Math.min(cap, Number.isFinite(rawSize) ? rawSize : 34));
   /* …but the 3D piles are RENDERED at one size per surface and scaled to fit. The
      chip size above moves every time a denomination joins or leaves the spread, and
      re-rendering a pile costs ~11 ms per disc — dragging the mix slider used to spend
      seconds redrawing chips that look identical. Rendering at the biggest size this
      surface can ask for means the bitmaps are drawn once and every later spread is a
      cache hit. */
-  const drawnAt = renderSize(maxChipSize);
+  const drawnAt = renderSize(cap);
   // Room above the pile for a chip to fall through, in proportion to the chip.
   const headroom = Math.round(chipSize * 0.95);
 
@@ -159,10 +175,12 @@ interface ColumnProps {
 const StackColumn = memo(function StackColumn({ d, count, frameDiscs, size, drawnAt, animate, use3d, total, visit }: ColumnProps) {
   const tracked = useStackDiscs(count, animate, visit);
   const needed = tracked.reduce((m, x) => Math.max(m, x.i + 1), count);
-  const { layers, failed } = useChipLayers(d.color, d.accent, drawnAt, frameDiscs, use3d);
-  // The bitmaps are drawn once at `drawnAt` and every dimension read off them is
-  // brought down to the size this spread wants — see `drawnAt` in ChipStackViz.
-  const scale = drawnAt > 0 ? size / drawnAt : 1;
+  const { layers, drawnAt: layersAt, failed } = useChipLayers(d.color, d.accent, drawnAt, frameDiscs, use3d);
+  /* The bitmaps are drawn at one size and every dimension read off them is brought
+     to the size this spread wants — see `drawnAt` in ChipStackViz. Scaled by the
+     size the layers on screen were REALLY drawn at, which is briefly the previous
+     one while a wider window's bigger render is still going. */
+  const scale = layersAt > 0 ? size / layersAt : 1;
   // Three.js and the model load on first use. Until the bitmaps this pile needs are
   // there the vector stack stands in — it holds still, so the pile can't play its
   // build twice.
@@ -237,19 +255,35 @@ const StackColumn = memo(function StackColumn({ d, count, frameDiscs, size, draw
  * render at all, which is what puts the drawn stack on screen for good.
  */
 function useChipLayers(color: string, accent: string, size: number, frameDiscs: number, enabled: boolean) {
-  const [layers, setLayers] = useState<ChipRender[] | null>(() =>
-    enabled ? cachedLayers(color, accent, size, frameDiscs) : null,
+  /* The size the held layers were DRAWN at travels with them, because it stops
+     matching `size` the moment a phone is opened out: the pile is allowed to get
+     bigger there, which is a different render, and every dimension read off a
+     bitmap has to be scaled by the size that bitmap actually is. */
+  const [held, setHeld] = useState<Held>(() =>
+    enabled ? { layers: cachedLayers(color, accent, size, frameDiscs), at: size } : EMPTY,
   );
   /* Told apart from "not there yet" on purpose: a pile still waiting shows a dimmed
      placeholder, but a pile that can never be rendered has to fall back to the drawn
      chip — a placeholder that never resolves is worse than the other chip design. */
   const [failed, setFailed] = useState(false);
 
+  /* Which pile this is, as opposed to how big it is drawn. A new colour must throw
+     the old bitmaps away — showing the previous chip's colour for a second is the
+     app appearing to change its mind. A new SIZE must not: the old bitmaps are the
+     same chips, and holding them (scaled up, soft for a moment) beats dropping the
+     whole spread to grey shadows the instant a phone is unfolded. */
+  const identity = `${color}|${accent}|${frameDiscs}`;
+  const lastIdentity = useRef(identity);
+  if (lastIdentity.current !== identity) {
+    lastIdentity.current = identity;
+    if (held.layers) setHeld(EMPTY);
+  }
+
   useEffect(() => {
     if (!enabled || frameDiscs <= 0) return;
     const ready = cachedLayers(color, accent, size, frameDiscs);
     if (ready) {
-      setLayers(ready);
+      setHeld({ layers: ready, at: size });
       return;
     }
     let alive = true;
@@ -260,13 +294,15 @@ function useChipLayers(color: string, accent: string, size: number, frameDiscs: 
         /* The renderer takes its own turn and hands the thread back between discs
            (see `renderChip`), so nothing needs to be yielded here. What IS wanted here
            is showing the discs that are finished, so the pile builds instead of
-           appearing all at once at the end — in batches, not one commit per disc. */
-        if (i % 4 === 3) setLayers([...out]);
+           appearing all at once at the end — in batches, not one commit per disc.
+           Only while there is nothing to show, though: publishing a half-built pile
+           over a complete one at another size replaces chips with shadows. */
+        if (i % 4 === 3) setHeld((prev) => (prev.layers ? prev : { layers: [...out], at: size }));
       }
-      if (alive) setLayers(out);
+      if (alive) setHeld({ layers: out, at: size });
     })().catch(() => {
       if (!alive) return;
-      setLayers(null);
+      setHeld(EMPTY);
       setFailed(true);
     });
     return () => {
@@ -274,8 +310,11 @@ function useChipLayers(color: string, accent: string, size: number, frameDiscs: 
     };
   }, [color, accent, size, frameDiscs, enabled]);
 
-  return { layers, failed };
+  return { layers: held.layers, drawnAt: held.at, failed };
 }
+
+type Held = { layers: ChipRender[] | null; at: number };
+const EMPTY: Held = { layers: null, at: 0 };
 
 /** Every layer of this pile that has already been rendered — null if any is missing. */
 function cachedLayers(color: string, accent: string, size: number, frameDiscs: number): ChipRender[] | null {
