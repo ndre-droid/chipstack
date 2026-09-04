@@ -18,7 +18,14 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-09-04 from `main` @ `2456796`**, 4.71 MB (4,941,262 B),
+  (**CURRENT — rebuilt 2026-09-04 from `main` @ `f049e4b`**, 4.71 MB (4,943,904 B),
+  run `33845204867`: the chip ruler works on BOTH of a Fold's screens (per-screen
+  calibration, ladder full-bleed at every width), two taps to reach it, the TV code
+  folded away, and a first run that asks which chips are on the table. Pages run
+  `33845199945` green from the same commit, so **APK / `main` / Pages are IN SYNC**.
+  Download verified: `200`, `application/vnd.android.package-archive`, 4,943,904 B.
+  **NOT SEEN ON THE PHYSICAL FOLD YET** — neither this pass nor the one below it.
+  Previous build: 2026-09-04 from `main` @ `2456796`, 4,941,262 B,
   run `33840776716`: the Galaxy Fold pass — a navigation rail with the mark at its head
   and the gear at its foot, one wider column, the starting stack drawn big, and the fold
   itself animated (see "Recent work 2026-09-03/04 (the Fold)"). Pages run `33840772692`
@@ -1222,9 +1229,13 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 
 ### STATE RIGHT NOW (2026-09-04, second pass — the ruler on two screens)
 
-Local branch **`feat/chip-3d-render`**. Working tree has the pass below **uncommitted**;
-`main` and the APK are still at `2456796` / `02dc5f9`. `npm test` 29 files green,
-`npx tsc -b` clean, `npm run build` clean, `npm run lint` no errors.
+Local branch **`feat/chip-3d-render`**, tip **`f049e4b`** = `main`. Working tree clean.
+`npm test` 29 files green, `npx tsc -b` clean, `npm run build` clean, `npm run lint`
+no errors. **Shipped**: pushed to `main`, Pages run `33845199945` green, APK run
+`33845204867` green — APK / `main` / Pages all built from `f049e4b`.
+
+**Rollback point for THIS pass:** `02dc5f9` (everything before the ruler work).
+`git push origin 02dc5f9:main --force` rolls the web app back; rebuild the APK after.
 
 **Still unseen on the physical Fold**: everything from the first Fold pass (below), plus
 all of this. Nothing here has been on hardware.
