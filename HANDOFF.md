@@ -18,7 +18,16 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-09-04 from `main` @ `aedcbf8`**, 4.72 MB (4,944,768 B),
+  (**CURRENT — rebuilt 2026-09-04 from `main` @ `0959dd9`**, 4.94 MB (5,176,500 B),
+  run `33893679601`: the Fold lying down — two columns in landscape, the setup wizard
+  and the chip-ruler calibration moved into Settings, a cash-game default, the app's own
+  emoji font, and TV mode fixed on a phone-shaped screen (see
+  "Recent work 2026-09-04"). Pages run `33893676564` green from the same commit, so
+  **APK / `main` / Pages are IN SYNC**. Download verified: `200`,
+  `application/vnd.android.package-archive`, 5,176,500 B.
+  The +232 KB over the previous build is the bundled emoji subset; precache 1000 -> 1234 KiB.
+  **NOT SEEN ON THE PHYSICAL FOLD YET.**
+  Previous build: 2026-09-04 from `main` @ `aedcbf8`, 4.72 MB (4,944,768 B),
   run `33849418802`: the bundle pass — Firebase out of the precache, the QR generator
   and the whole big screen off the boot path (main chunk 193 -> 173 kB gzip, precache
   1109 -> 1000 KiB). Pages run `33849419513` green from the same commit, so
