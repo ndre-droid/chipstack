@@ -18,15 +18,20 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-09-04 from `main` @ `0959dd9`**, 4.94 MB (5,176,500 B),
-  run `33893679601`: the Fold lying down — two columns in landscape, the setup wizard
+  (**CURRENT — rebuilt 2026-09-04 from `main` @ `c9f8540`**, 4.94 MB (5,176,591 B),
+  run `33905927951`: the persistence pass — the webview origin pinned so an update can
+  never move the user's data, and `migrate()` no longer lets one malformed record
+  black-screen the app (see "Recent work 2026-09-04 (what the user has entered...)").
+  On top of `0959dd9`: the Fold lying down — two columns in landscape, the setup wizard
   and the chip-ruler calibration moved into Settings, a cash-game default, the app's own
-  emoji font, and TV mode fixed on a phone-shaped screen (see
-  "Recent work 2026-09-04"). Pages run `33893676564` green from the same commit, so
+  emoji font, and TV mode fixed on a phone-shaped screen.
+  Pages run `33905928816` green from the same commit, so
   **APK / `main` / Pages are IN SYNC**. Download verified: `200`,
-  `application/vnd.android.package-archive`, 5,176,500 B.
-  The +232 KB over the previous build is the bundled emoji subset; precache 1000 -> 1234 KiB.
+  `application/vnd.android.package-archive`, 5,176,591 B.
+  The +232 KB over the pre-emoji builds is the bundled emoji subset; precache 1000 -> 1234 KiB.
   **NOT SEEN ON THE PHYSICAL FOLD YET.**
+  Previous build: 2026-09-04 from `main` @ `0959dd9`, 5,176,500 B, run `33893679601`:
+  the Fold pass, before the persistence fixes.
   Previous build: 2026-09-04 from `main` @ `aedcbf8`, 4.72 MB (4,944,768 B),
   run `33849418802`: the bundle pass — Firebase out of the precache, the QR generator
   and the whole big screen off the boot path (main chunk 193 -> 173 kB gzip, precache
@@ -423,6 +428,82 @@ RemoteControl (host, Table tab) still covers: clock, level length (±1/±10 + Tu
 break length + auto-break every N, blinds (edit/add/remove), players & pool (rename, buy-in, Rebuy,
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
+
+### Recent work 2026-09-04 (what the user has entered must survive an update) — `c9f8540`
+
+The user asked to make sure their own data — chip box, saved setups, people, the season
+league, tonight's ledger, ruler calibrations — persists across app updates. Audited the
+whole path, found one real crash, and hardened two things.
+
+**Where the data lives.** All of it is one `localStorage` key, `chipstack.state.v1`
+(`src/store.tsx`), written on a 250 ms debounce plus an idle callback plus a `pagehide`
+flush. TV background photos live separately in IndexedDB (`lib/photoStore.ts`) and are
+carried by the backup file. Nothing in the app ever calls `localStorage.clear()`; the only
+wipe is Settings → Reset, which deliberately keeps `people`, `lastLineup` and `carry`.
+
+**THE ORIGIN IS THE IDENTITY OF THE DATA — the most dangerous lines in the repo.**
+`localStorage` is keyed by origin. Inside the APK the origin is whatever Capacitor's
+`server.androidScheme` + `server.hostname` produce (`https://localhost`). Those were on
+Capacitor's defaults, and a default is not a promise — Capacitor moved Android from `http`
+to `https` in v4. A future major moving it again would not migrate anything: the next
+update would just start with an empty store. **Both are now pinned in
+`capacitor.config.ts`**, matching what Capacitor 6 already does, so nothing changed today.
+Verified against `node_modules/@capacitor/android/.../CapConfig.java` before pinning —
+`androidScheme` defaults to `CAPACITOR_HTTPS_SCHEME`, `hostname` to `"localhost"` — because
+pinning the WRONG value is the exact disaster being prevented. **Never change either
+without shipping an export/import step for the user first.**
+
+**One bad record used to kill the app, permanently.** `migrate()` checked that `league`,
+`ledger` and `people` were arrays and cast them. Every screen that draws a night or a
+player then walks them without asking (`for (const p of g.players)`, `ledger.map(p =>
+p.name)`), so an entry of the wrong shape throws during render — and since the state it
+came from is already in `localStorage`, it throws again at every launch after that. A black
+screen on every start, with the season sitting there unreachable and no way back except
+clearing storage. Reproduced by restoring a backup whose nights carried `results` instead
+of `players`: `TypeError: t.players is not iterable`. Those three lists are now filtered at
+the boundary the way `chipSets` and `carry` already were. **Rule: any list `migrate()` lets
+through is walked unguarded by the UI — validate per entry, not just `Array.isArray`.**
+
+**Verified end to end against the production build** (not dev), twice:
+- A saved state in the pre-2026-09-04 shape — tournament mode, `onboardedAt: 0`, presets,
+  ledger, season league, people, carry, timeline, custom quips, house rules, per-skin
+  accents, custom accent, TV scale, roster sort, and an orientation-less ruler calibration
+  — loads with **nothing lost**, and the calibration key is migrated to `...:c:p`. The only
+  two fields that changed did so on purpose: `session.playerCount` follows the roster, and
+  an invalid `countMode` was repaired to its default.
+- The same state with a broken league night and `null` entries mixed in now **boots**, keeps
+  every good record and drops only the bad ones.
+
+**Signing is already safe and has been since 2026-07-24.** `keystore/chipstack.jks` is
+committed and `android/app/build.gradle` points BOTH the debug and release variants at it,
+so every APK since then installs in place over the previous one without touching app data.
+(The keystore was generated twice that day — `20a9599`, then `44c108e` removed a broken
+PKCS12 one, then `2699856`. Anything installed from before that day would have needed an
+uninstall. Nothing since.) `android:allowBackup="true"` is on, so Android's auto-backup can
+also restore the WebView data onto a new phone.
+
+**`versionCode` is deliberately left at 1.** Wiring it to the CI run number was considered
+and rejected: a local or fallback build that produced a LOWER number would be a blocked
+downgrade, which is exactly the situation that makes a user uninstall — and uninstalling is
+the one thing that loses everything. A same-`versionCode` reinstall with a matching
+signature already updates in place, and the app has its own build stamp in the TV controls.
+
+**THE APK AND THE WEB APP ARE TWO SEPARATE DATA STORES**, and this is very likely what the
+user has been running into. `https://localhost` (APK) and `https://ndre-droid.github.io`
+(Pages) are different origins, so a setup entered in one is invisible in the other — which
+looks exactly like "my changes did not persist". There is no sync between them and building
+one is not planned. The bridge is Settings → Backup: export a JSON on one, import it on the
+other (it carries the whole state plus the TV photos, and the import goes through `migrate`,
+so an old file is upgraded on the way in). **Advice to the user: pick ONE for game night.**
+
+**Service workers serve the old bundle until they update.** Hit again while testing: after a
+rebuild, the page kept running the previous chunk hash until the SW was unregistered and the
+caches cleared. On a phone this means a Pages push is not instantly live — see
+"ask for the build stamp first" in `memory/chipstack-ship-and-apk-gotchas.md`.
+
+**Not done, worth considering next:** a React error boundary around the app shell. It would
+turn any future data-shaped crash from a black screen into a screen that still offers
+"export a backup" and "reset" — the general version of the league fix above.
 
 ### Recent work 2026-09-04 (the Fold lying down, and the setup moved to a Tuesday) — `63335de`
 
