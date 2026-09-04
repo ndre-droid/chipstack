@@ -993,9 +993,28 @@ function migrate(raw: string | null): AppState {
     session.blindLevels = defaultBlinds(settings.defaultSmallBlind, settings.defaultBigBlind);
 
   const presets = Array.isArray(parsed.presets) ? (parsed.presets as Preset[]) : [];
-  const ledger = Array.isArray(parsed.ledger) ? (parsed.ledger as LedgerPlayer[]) : [];
-  const league = Array.isArray(parsed.league) ? (parsed.league as LeagueGame[]) : [];
   const moments = Array.isArray(parsed.moments) ? (parsed.moments as Moment[]) : [];
+
+  /* The three lists that are walked without asking, all over the app: every screen
+     that draws a night, a player or a name does `for (const p of g.players)` and
+     `ledger.map(p => p.name)`. An entry that is not the shape they expect does not
+     produce a wrong number — it throws during render, and because the state it came
+     from is already in `localStorage`, it throws again at the next launch and the
+     one after that. A black screen, on every start, with the season still sitting
+     there unreachable.
+     Found by restoring a backup whose league entries carried `results` instead of
+     `players`: `TypeError: t.players is not iterable`, and the app was dead.
+     So the boundary drops what it cannot use. Losing one unreadable night is a
+     smaller loss than losing the app that holds the other fifty, and it is the same
+     rule `chipSets` and `carry` above already follow. */
+  const ledger = Array.isArray(parsed.ledger)
+    ? (parsed.ledger as LedgerPlayer[]).filter((p) => p && typeof p.id === 'string')
+    : [];
+  const league = Array.isArray(parsed.league)
+    ? (parsed.league as LeagueGame[]).filter(
+        (g) => g && typeof g.id === 'string' && Array.isArray(g.players),
+      )
+    : [];
 
   // A saved state from before the roster drove the player count can hold both a
   // roster of six and a planning count of four. The roster is the truth.
@@ -1015,7 +1034,9 @@ function migrate(raw: string | null): AppState {
   const activeSet = chipSets.find((c) => c.id === activeChipSetId)!;
   activeSet.denominations = denominations;
 
-  const people = Array.isArray(parsed.people) ? (parsed.people as Person[]) : [];
+  const people = Array.isArray(parsed.people)
+    ? (parsed.people as Person[]).filter((p) => p && typeof p.id === 'string' && typeof p.name === 'string')
+    : [];
   const lastLineup = Array.isArray(parsed.lastLineup) ? (parsed.lastLineup as AppState['lastLineup']) : [];
   const timeline = Array.isArray(parsed.timeline) ? (parsed.timeline as TimelineEvent[]).slice(-TIMELINE_MAX) : [];
   const carry = Array.isArray(parsed.carry)
