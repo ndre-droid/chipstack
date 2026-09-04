@@ -17,7 +17,9 @@ import {
   teach,
   calibrationFor,
   forgetCalibration,
+  glassKeyOf,
   normalizeCalibrations,
+  rulerSlots,
   screenKeyOf,
   withCalibration,
 } from './chipRuler.ts';
@@ -228,21 +230,33 @@ console.log('\na corrected stack teaches the ruler, and a lone one only slides i
 console.log('');
 console.log('one device, two pieces of glass');
 {
-  const cover = screenKeyOf({ width: 412, height: 960, dpr: 2.625, wide: false });
-  const inner = screenKeyOf({ width: 832, height: 750, dpr: 2.4, wide: true });
+  const cover = screenKeyOf({ width: 412, height: 960, dpr: 2.625, wide: false, portrait: true });
+  const inner = screenKeyOf({ width: 832, height: 750, dpr: 2.4, wide: true, portrait: true });
   check('the two panels are told apart', cover !== inner, cover + ' / ' + inner);
 
   check(
-    'turning the device does not invent a third screen',
-    screenKeyOf({ width: 960, height: 412, dpr: 2.625, wide: false }) === cover,
+    'the same panel reported the other way round is still that panel',
+    screenKeyOf({ width: 960, height: 412, dpr: 2.625, wide: false, portrait: true }) === cover,
   );
   check(
     'and neither does a fractional dpr wobble',
-    screenKeyOf({ width: 412, height: 960, dpr: 2.6251, wide: false }) === cover,
+    screenKeyOf({ width: 412, height: 960, dpr: 2.6251, wide: false, portrait: true }) === cover,
   );
   check(
     'a webview reporting the window is still caught by the layout class',
-    screenKeyOf({ width: 412, height: 960, dpr: 2.625, wide: true }) !== cover,
+    screenKeyOf({ width: 412, height: 960, dpr: 2.625, wide: true, portrait: true }) !== cover,
+  );
+
+  /* Standing the phone on its long edge is a different measurement of the same
+     glass: the case lip it rests on is a different lip, and `zeroPx` is that lip.
+     Sharing one offset between the two adds a constant to every stack, which is
+     the one error a ruler cannot detect. */
+  const coverSide = screenKeyOf({ width: 412, height: 960, dpr: 2.625, wide: false, portrait: false });
+  check('upright and on its side are separate calibrations', coverSide !== cover);
+  check(
+    '...of the same piece of glass',
+    glassKeyOf({ width: 412, height: 960, dpr: 2.625, wide: false, portrait: false }) ===
+      glassKeyOf({ width: 960, height: 412, dpr: 2.625, wide: false, portrait: true }),
   );
 
   const cals = withCalibration(withCalibration({}, cover, good!), inner, { px: 17.3, zeroPx: 40 });
@@ -265,13 +279,45 @@ console.log('one device, two pieces of glass');
     nonsense: 'twenty',
     '': good,
   });
-  check('a believable calibration survives the trip', !!dirty.ok);
-  check('an impossible chip height does not', !dirty.absurd);
-  check('nor a table above the screen', !dirty.negative);
-  check('nor a string', !dirty.nonsense);
-  check('nor a nameless screen', !dirty['']);
+  check('a believable calibration survives the trip', !!dirty['ok:p']);
+  check('an impossible chip height does not', !dirty['absurd:p']);
+  check('nor a table above the screen', !dirty['negative:p']);
+  check('nor a string', !dirty['nonsense:p']);
+  check('nor a nameless screen', !dirty[':p'] && !dirty['']);
   check('a junk field is an empty map, not a crash', Object.keys(normalizeCalibrations(null)).length === 0);
   check('an array is not a map of screens', Object.keys(normalizeCalibrations([good])).length === 0);
+
+  /* A calibration stored before the ruler knew about orientation has no suffix.
+     It is read as the upright one — the way a phone stands for a count unless
+     somebody deliberately turns it — rather than being thrown away. */
+  const legacy = normalizeCalibrations({ '412x960@2.625:c': good });
+  check('an orientation-less calibration is adopted as the upright one', !!legacy['412x960@2.625:c:p']);
+  check('...and not as the one on its side', !legacy['412x960@2.625:c:l']);
+}
+
+/**
+ * Settings has to be able to set all of this up on a quiet Tuesday, which means
+ * naming the slots before any of them has been measured.
+ */
+console.log('');
+console.log('the slots Settings offers');
+{
+  const here = { width: 412, height: 960, dpr: 2.625, wide: false, portrait: true };
+  const empty = rulerSlots({}, here);
+  check('a fresh phone is offered exactly its two', empty.length === 2);
+  check('upright first', empty[0]!.portrait && !empty[1]!.portrait);
+  check('both of them are this screen', empty.every((s) => s.here));
+  check('and neither is measured yet', empty.every((s) => s.cal === null));
+
+  const cals = withCalibration({ '832x750@2.4:w:l': { px: 17, zeroPx: 30 } }, screenKeyOf(here), good!);
+  const slots = rulerSlots(cals, here);
+  check('the other panel is listed too', slots.length === 3);
+  check('...as somewhere else', slots[2]!.here === false && slots[2]!.portrait === false);
+  check('the measured slot carries its calibration', slots[0]!.cal?.px === good!.px);
+  check(
+    'turning the phone over asks for the other slot',
+    rulerSlots(cals, { ...here, portrait: false })[1]!.cal === null,
+  );
 }
 
 /**

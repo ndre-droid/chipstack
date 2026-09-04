@@ -289,10 +289,36 @@ export interface ScreenShape {
   dpr: number;
   /** is the app drawing its wide (rail + one pane) layout on this screen? */
   wide: boolean;
+  /** is the phone being held upright right now? */
+  portrait: boolean;
 }
 
-/** The identity of one piece of glass. */
+/**
+ * The identity of one piece of glass, HELD ONE WAY.
+ *
+ * The dimensions are normalised smallest-side-first so that turning the device
+ * does not invent a second screen — and then the orientation is put back on the
+ * end as its own letter, because standing the phone up on its short edge and
+ * standing it on its long edge are two different measurements of the same glass:
+ *
+ *   - `px` is very nearly the same either way (it is the density, and that does
+ *     not rotate), but not exactly: a browser rounds the viewport differently in
+ *     each direction, and a percent is a chip on a twenty-stack.
+ *   - `zeroPx` is not remotely the same. It is the case bottom and the bezel
+ *     BELOW the lowest pixel, and a phone lying on its side is resting on a
+ *     different edge of the case — a different lip, a different bezel, often a
+ *     camera bump. Sharing one offset between the two is the one error the ruler
+ *     cannot detect, because it is a constant added to every stack.
+ *
+ * So a folding phone has four: two panels, upright and on their side. Each is
+ * measured once, kept for good, and picked automatically.
+ */
 export function screenKeyOf(s: ScreenShape): string {
+  return `${glassKeyOf(s)}${s.portrait ? ':p' : ':l'}`;
+}
+
+/** The piece of glass alone, without which way up it is. */
+export function glassKeyOf(s: ScreenShape): string {
   const w = Math.max(0, Math.round(s.width));
   const h = Math.max(0, Math.round(s.height));
   const dpr = Math.round((s.dpr > 0 ? s.dpr : 1) * 100) / 100;
@@ -301,13 +327,24 @@ export function screenKeyOf(s: ScreenShape): string {
 
 /** What this browser is showing the app on, right now. */
 export function readScreenShape(): ScreenShape {
-  if (typeof window === 'undefined') return { width: 0, height: 0, dpr: 1, wide: false };
+  if (typeof window === 'undefined') {
+    return { width: 0, height: 0, dpr: 1, wide: false, portrait: true };
+  }
   const s = window.screen;
+  /* The WINDOW decides which way up we are, not the screen object. What is being
+     asked is which edge the phone is standing on, and that is the shape the app
+     is currently drawn in — a screen object that reports its panel's native
+     orientation regardless of rotation (some webviews do) would answer a
+     different question. */
+  const portrait = window.matchMedia
+    ? window.matchMedia('(orientation: portrait)').matches
+    : window.innerHeight >= window.innerWidth;
   return {
     width: s?.width || window.innerWidth || 0,
     height: s?.height || window.innerHeight || 0,
     dpr: window.devicePixelRatio || 1,
     wide: typeof document !== 'undefined' && document.documentElement.dataset.layout === 'wide',
+    portrait,
   };
 }
 
@@ -342,13 +379,23 @@ export function forgetCalibration(
   return next;
 }
 
-/** Drop anything that is not a believable calibration — a hand-edited backup, an
- *  older shape of the field, a screen key that is not a string. */
+/**
+ * Drop anything that is not a believable calibration — a hand-edited backup, an
+ * older shape of the field, a screen key that is not a string.
+ *
+ * Keys from before the ruler knew about orientation have no `:p`/`:l` on the end.
+ * Those are read as PORTRAIT rather than thrown away: the phone stands on its
+ * short edge for a count unless somebody deliberately turns it, so that is the
+ * one orientation the old number can honestly be claimed to describe — and if
+ * the guess is wrong the very first stack says so out loud.
+ */
 export function normalizeCalibrations(raw: unknown): RulerCalibrations {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const out: RulerCalibrations = {};
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof key !== 'string' || !key) continue;
+  for (const [rawKey, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof rawKey !== 'string' || !rawKey) continue;
+    const key = rawKey.endsWith(':p') || rawKey.endsWith(':l') ? rawKey : `${rawKey}:p`;
+    if (out[key]) continue;
     const cal = value as RulerCalibration | undefined;
     if (!isCalibrated(cal)) continue;
     const samples = Array.isArray(cal.samples)
@@ -359,4 +406,55 @@ export function normalizeCalibrations(raw: unknown): RulerCalibrations {
     out[key] = samples?.length ? { px: cal.px, zeroPx: cal.zeroPx, samples } : { px: cal.px, zeroPx: cal.zeroPx };
   }
   return out;
+}
+
+/**
+ * The calibration slots to offer in Settings, so the whole thing can be set up on
+ * the Tuesday rather than discovered at the table on the Friday.
+ *
+ * The two slots for the glass the app is on RIGHT NOW come first and are the only
+ * ones that can be measured from here — the other panel of a folding phone cannot
+ * be calibrated without unfolding it, so it is listed as what it is: a screen this
+ * device has measured before, with a name and a "forget" and nothing else.
+ */
+export interface RulerSlot {
+  /** the key the calibration is stored under */
+  key: string;
+  /** the piece of glass, without which way up */
+  glass: string;
+  portrait: boolean;
+  /** null when this one has never been measured */
+  cal: RulerCalibration | null;
+  /** is this the screen the app is being drawn on at this moment? */
+  here: boolean;
+}
+
+/**
+ * Every slot worth showing: the current screen's two, then anything else stored.
+ *
+ * Stored keys are the source of truth for the "other" screens rather than any
+ * guess about what a device has — a Fold that has only ever been counted with
+ * shut has one other slot, not three empty ones, and a plain phone has none.
+ */
+export function rulerSlots(
+  cals: RulerCalibrations | null | undefined,
+  shape: ScreenShape,
+): RulerSlot[] {
+  const glass = glassKeyOf(shape);
+  const slots: RulerSlot[] = [true, false].map((portrait) => {
+    const key = `${glass}${portrait ? ':p' : ':l'}`;
+    return { key, glass, portrait, cal: calibrationFor(cals, key), here: true };
+  });
+  for (const key of Object.keys(cals ?? {})) {
+    if (slots.some((s) => s.key === key)) continue;
+    const portrait = key.endsWith(':p');
+    slots.push({
+      key,
+      glass: key.slice(0, -2),
+      portrait,
+      cal: calibrationFor(cals, key),
+      here: false,
+    });
+  }
+  return slots;
 }

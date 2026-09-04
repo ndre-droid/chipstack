@@ -5,6 +5,29 @@
    ============================================================ */
 
 /* ---- Accent hues (independent of theme) ---- */
+/* ---- The app's own emoji ----
+   Google's Noto Color Emoji, COLRv1 (vector, not a bitmap sheet), subset by
+   scripts/build-emoji-font.py to the ~260 codepoints this app can show.
+
+   It is shipped rather than borrowed because an emoji here is a person — the
+   avatar next to a name, the crown on the leader, the row on the big screen —
+   and the device's own font is not a constant: an older Android draws flat
+   two-tone shapes where a current one draws a modelled glyph, and a TV browser
+   often has no colour emoji at all, so the same table looked different on the
+   phone and on the screen behind it.
+
+   `swap` on purpose. These are decorative next to a name that is already
+   readable; blocking the first paint of a roster on a 220 KB download to avoid
+   one frame of the system emoji would be the wrong trade. Anything outside the
+   subset simply falls through to the rest of the stack, as it always did. */
+@font-face {
+  font-family: 'ChipStack Emoji';
+  src: url('./assets/chipstack-emoji.woff2') format('woff2');
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
 :root { --acc-bright: #f0b429; --acc-deep: #a86a08; }           /* amber (default) */
 :root[data-accent='amber'],   .tv[data-tv-accent='amber']   { --acc-bright: #f0b429; --acc-deep: #a86a08; }
 :root[data-accent='gold'],    .tv[data-tv-accent='gold']    { --acc-bright: #e6c878; --acc-deep: #9a7b1e; }
@@ -56,8 +79,8 @@
      on a flat monochrome outline instead of the full-colour one the device ships.
      Naming the colour fonts first, plus `font-variant-emoji: emoji`, asks for the
      detailed version explicitly. */
-  --font-emoji: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla',
-    'Android Emoji', 'EmojiOne Color', 'Segoe UI Symbol', sans-serif;
+  --font-emoji: 'ChipStack Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji',
+    'Twemoji Mozilla', 'Android Emoji', 'EmojiOne Color', 'Segoe UI Symbol', sans-serif;
   --app-bg: var(--bg);
 
   color-scheme: light;
@@ -1602,6 +1625,13 @@ input[type='color'] { cursor: pointer; }
   position: relative;
   display: flex; flex-direction: column;
   min-width: 0; min-height: 0;
+  /* Each panel is a size container, so what is inside it can be sized against
+     the PANEL and not only against the window. The whole big screen is tuned in
+     `vmin`, which assumes the window is much wider than it is tall — true of a
+     television and false of a phone standing in for one, where vmin and vmax are
+     nearly the same number and a clock sized for a 16:9 wall is wider than the
+     third of the screen it was given. See the `cqw` caps below. */
+  container-type: inline-size;
 }
 /* The panel fills the cell it was placed in, and gives way inside itself (its own
    list scrolls) rather than spilling out of it. */
@@ -1756,9 +1786,14 @@ input[type='color'] { cursor: pointer; }
   font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--acc); font-size: clamp(13px, 1.8vmin, 42px); font-weight: 700;
 }
+/* The `cqw` halves of the two `min()`s below are the panel-relative caps. On a
+   16:9 television the clock panel is over half the width and the cap lands well
+   above the vmin figure, so nothing about a real big screen changes; on a nearly
+   square panel — a Fold used as its own TV — the cap is what stops 20:00 from
+   wrapping onto two lines. */
 .tv-clock { text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .tv-level { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.18em; color: var(--tv-dim); font-size: calc(clamp(15px, 2vmin, 38px) * var(--tv-fs-level, 1)); }
-.tv-blinds { font-family: var(--font-display); font-weight: 700; color: var(--acc); font-size: calc(clamp(28px, 5.2vmin, 116px) * var(--tv-fs-blinds, 1)); letter-spacing: -0.01em; margin-top: clamp(2px, 0.6vmin, 8px); font-variant-numeric: tabular-nums; }
+.tv-blinds { font-family: var(--font-display); font-weight: 700; color: var(--acc); font-size: calc(min(clamp(28px, 5.2vmin, 116px), 16cqw) * var(--tv-fs-blinds, 1)); letter-spacing: -0.01em; margin-top: clamp(2px, 0.6vmin, 8px); font-variant-numeric: tabular-nums; }
 .tv-ante { color: var(--tv-dim); font-size: 0.48em; }
 /* line-height 1 packs the line box tighter than the faces' own ascent+descent, so
    the glyphs paint OUTSIDE the box and the countdown sat on top of the progress
@@ -1767,7 +1802,7 @@ input[type='color'] { cursor: pointer; }
    neither the clock nor the bar may be shrunk by the flex column when the panel is
    short — a shrunken box with full-size digits is the same overlap by another
    route. */
-.tv-time { font-family: var(--tv-digits); font-weight: 700; font-size: calc(clamp(68px, 17vmin, 380px) * var(--tv-fs-clock, 1)); line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; margin: clamp(2px, 0.5vmin, 8px) 0; padding-bottom: 0.07em; flex-shrink: 0; }
+.tv-time { font-family: var(--tv-digits); font-weight: 700; font-size: calc(min(clamp(68px, 17vmin, 380px), 27cqw) * var(--tv-fs-clock, 1)); line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; margin: clamp(2px, 0.5vmin, 8px) 0; padding-bottom: 0.07em; flex-shrink: 0; white-space: nowrap; }
 /* Fixed-advance digit cell for the numbers that repaint every second (the level
    countdown, the shot clock). `font-variant-numeric: tabular-nums` only helps when
    the face actually ships tabular figures — the casino serif does not — so each
@@ -1782,7 +1817,7 @@ input[type='color'] { cursor: pointer; }
 .tv-progress i { display: block; width: 100%; height: 100%; background: var(--acc); border-radius: 999px; transform-origin: left; transition: transform 1s linear; }
 .tv-next { font-family: var(--tv-body); color: var(--tv-faint); font-size: calc(clamp(14px, 1.7vmin, 34px) * var(--tv-fs-level, 1)); margin-top: clamp(6px, 1.2vmin, 16px); }
 /* Cash game, timer off: no countdown — make the fixed blinds the hero instead. */
-.tv-clock-static .tv-blinds { font-size: calc(clamp(52px, 13vmin, 280px) * var(--tv-fs-blinds, 1)); margin-top: clamp(6px, 1.4vmin, 20px); }
+.tv-clock-static .tv-blinds { font-size: calc(min(clamp(52px, 13vmin, 280px), 30cqw) * var(--tv-fs-blinds, 1)); margin-top: clamp(6px, 1.4vmin, 20px); }
 
 .tv-legend-h { font-family: var(--tv-head); text-transform: uppercase; letter-spacing: 0.08em; color: var(--tv-dim); font-size: calc(clamp(11px, 1.35vmin, 22px) * var(--tv-fs-legend, 1)); margin-bottom: 6px; }
 .tv-legend-row { display: flex; align-items: center; gap: clamp(7px, 1.3vmin, 22px); padding: clamp(3px, 0.7vmin, 12px) 0; }
@@ -1961,7 +1996,7 @@ input[type='color'] { cursor: pointer; }
 
 /* ---- live-session connect pill + join keypad ---- */
 .tv-connect-pill {
-  position: absolute; top: clamp(10px, 2vmin, 28px); right: clamp(10px, 2vmin, 28px); z-index: 3;
+  z-index: 3;
   font-family: var(--tv-head); font-size: clamp(11px, 1.4vmin, 20px); font-weight: 600;
   color: var(--tv-dim); background: var(--tv-panel); border: 1px solid var(--tv-line);
   padding: clamp(6px, 1vmin, 12px) clamp(12px, 1.6vmin, 20px); border-radius: 999px;
@@ -1971,6 +2006,17 @@ input[type='color'] { cursor: pointer; }
 /* the session listener dropped and is re-opening — the screen is showing the last
    thing it received, so say so rather than letting it pass for live */
 .tv-connect-pill.lost { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+
+/* The pill sits in the flow, not over the picture. Floating it in the top-right
+   corner put it on top of whichever panel is up there — on the default
+   arrangement that is the chip legend, and what it covered was the legend's own
+   heading. It costs one row of about forty pixels, at every screen shape,
+   including a 16:9 wall where the overlap was just as real and easier to miss. */
+.tv-connect-pill {
+  position: static;
+  align-self: flex-end;
+  margin-bottom: clamp(4px, 0.8vmin, 12px);
+}
 .tv-join-hint { color: var(--tv-dim); font-size: clamp(12px, 1.6vmin, 22px); margin: 6px 0 0; text-align: center; max-width: 60vmin; }
 .tv-join-display {
   font-family: var(--tv-num); font-weight: 700; letter-spacing: 0.3em;
@@ -2087,11 +2133,54 @@ input[type='color'] { cursor: pointer; }
 }
 .code-cell:focus { outline: none; border-color: var(--acc); }
 
-/* portrait (un-rotated phone): stack the panels, clock first */
+/* ---- Portrait: stack the panels, clock first ----
+   Taller than it is wide is a phone held upright and standing in for the big
+   screen, and three columns across it give a clock a third of a phone's width.
+
+   Both selectors are on `[data-mode='auto']`, and that is a fix rather than a
+   flourish: the plain `.tv-grid` these rules used to carry lost every time to
+   `.tv-grid[data-mode='auto']`'s own `grid-template-columns`, so the columns
+   never actually collapsed — while the enormous portrait clock size DID apply,
+   inside a third-of-the-screen cell. That is the two-line 20:00.
+
+   `data-mode='grid'` is deliberately left alone: those panels are where somebody
+   dragged them, and rearranging them because the phone was turned would throw
+   away the arrangement. */
 @media (max-aspect-ratio: 1 / 1) {
-  .tv-grid { grid-template-columns: 1fr; align-content: start; gap: clamp(10px, 2vmin, 22px); overflow-y: auto; }
-  .tv-clock { order: -1; }
-  .tv-time { font-size: clamp(64px, 24vmin, 180px); }
+  /* A flex column, not a one-column grid. The grid's rows are shares of a fixed
+     height — which is exactly right lying down and unworkable standing up, where
+     each panel wants the height its own contents need and the PAGE is what
+     scrolls. Asking the grid for content-sized rows means every rule that caps a
+     panel against its row (`max-height: 100%`) becomes circular; a flex column
+     has none of that. */
+  .tv-grid[data-mode='auto'] {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(10px, 2vmin, 22px);
+    overflow-y: auto;
+  }
+  .tv-grid[data-mode='auto'] > * { flex: 0 0 auto; }
+  /* the clock is the reason the screen is on; it goes above the lists */
+  .tv-grid[data-mode='auto'] > .tv-cell-clock { order: -1; }
+  /* Stacked, every panel is as tall as what is in it — so nothing may clip. The
+     clock cell clips by design when it owns a fixed share of the screen (see
+     .tv-cell-clock), and that same rule in a content-sized row cuts the blinds
+     off the top of their own panel. */
+  .tv-grid[data-mode='auto'] > .tv-cell,
+  .tv-grid[data-mode='auto'] .tv-side > .tv-cell { overflow: visible; }
+  /* A side column caps itself at its grid row's height and scrolls inside — the
+     right answer when the row is a fixed share of a landscape screen, and the
+     wrong one here: a `max-height: 100%` against a row that is sizing ITSELF to
+     its contents is circular, and the browser breaks the circle by giving all
+     three rows an equal share. That is what squashed a full roster into one
+     name. Stacked, the page is the thing that scrolls. */
+  .tv-grid[data-mode='auto'] .tv-side { max-height: none; overflow: visible; }
+  /* …and the roster's share of the screen was a percentage of a row height that
+     no longer exists, which collapsed it to a single name. */
+  .tv-grid[data-mode='auto'] .tv-side > .tv-cell-roster { min-height: clamp(140px, 30vh, 380px); }
+  /* …and the panel is now the full width, so the clock may have the size the
+     portrait layout always intended for it */
+  .tv-time { font-size: calc(min(clamp(64px, 24vmin, 180px), 27cqw) * var(--tv-fs-clock, 1)); }
 }
 
 /* Live Session code shown on the Table tab */
@@ -2286,13 +2375,13 @@ input[type='color'] { cursor: pointer; }
 
 /* --- player emoji picker (remote) --- */
 .emoji-btn {
-  width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; font-size: 22px;
+  width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; font-size: 27px;
   background: var(--surface-2); border: 1px solid var(--line); display: grid; place-items: center;
 }
 /* A few hundred emojis in labelled groups: the SCROLLER is the whole picker now, so
    a group heading scrolls with its own grid instead of every grid scrolling alone. */
 .emoji-picker {
-  margin: 8px 0 4px; max-height: 240px; overflow-y: auto; padding-right: 2px;
+  margin: 8px 0 4px; max-height: 288px; overflow-y: auto; padding-right: 2px;
   overscroll-behavior: contain;
 }
 .emoji-group-label {
@@ -2301,11 +2390,11 @@ input[type='color'] { cursor: pointer; }
   color: var(--text-faint);
 }
 .emoji-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 6px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap: 6px;
   margin-bottom: 8px;
 }
 .emoji-opt {
-  width: 100%; aspect-ratio: 1; border-radius: 9px; font-size: 22px; background: var(--surface-2);
+  width: 100%; aspect-ratio: 1; border-radius: 9px; font-size: 26px; background: var(--surface-2);
   border: 1px solid var(--line); display: grid; place-items: center;
 }
 .emoji-opt.active { border-color: var(--acc); background: var(--acc-wash); }
@@ -2374,7 +2463,8 @@ input[type='color'] { cursor: pointer; }
 /* Every emoji in the app, drawn from the colour-emoji stack at a size that survives
    the far side of the room — see --font-emoji. */
 .emoji-opt, .emoji-btn, .pr-emoji, .pp-emoji, .tt-emoji, .guest-me-emoji, .guest-row-emoji,
-.join-emoji, .tv-players-emoji, .tv-emoji, .tv-champ-cup {
+.join-emoji, .tv-players-emoji, .tv-emoji, .tv-champ-cup, .csr-emoji, .pass-card-emoji,
+.pass-emoji, .role-opt-ic {
   font-family: var(--font-emoji);
   font-variant-emoji: emoji;
   -webkit-font-smoothing: auto;
@@ -2438,7 +2528,7 @@ input[type='color'] { cursor: pointer; }
 .pr-row:first-child { border-top: 0; padding-top: 2px; }
 .pr-row.is-out { opacity: .58; }
 .pr-top { display: flex; align-items: center; gap: 8px; }
-.pr-emoji { width: 34px; height: 34px; flex: none; border-radius: 10px; font-size: 19px; line-height: 1;
+.pr-emoji { width: 36px; height: 36px; flex: none; border-radius: 10px; font-size: 25px; line-height: 1;
   background: var(--surface-2); border: 1px solid var(--line); color: inherit; }
 .pr-name { flex: 1; min-width: 0; font-weight: 600; }
 .pr-more { width: 32px; height: 32px; flex: none; font-size: 18px; }
@@ -2656,7 +2746,7 @@ input[type='color'] { cursor: pointer; }
 .csr-name { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 0;
   background: none; border: 0; color: inherit; font: inherit; text-align: left; }
 .csr-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.csr-emoji { font-size: 17px; }
+.csr-emoji { font-size: 20px; }
 .csr-crown { font-size: 14px; }
 /* Not a label: the field the exact count is typed in, sitting next to the name */
 .csr-val { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: var(--r-sm);
@@ -2692,7 +2782,7 @@ input[type='color'] { cursor: pointer; }
   padding: 14px 10px; border-radius: var(--r); background: var(--surface-2);
   border: 1px solid var(--line); color: inherit; font: inherit; }
 .pass-card b { font-size: 16px; }
-.pass-card-emoji { font-size: 30px; line-height: 1; }
+.pass-card-emoji { font-size: 34px; line-height: 1; }
 .pass-card-state { font-size: 11.5px; color: var(--good); font-variant-numeric: tabular-nums; }
 /* counted, but still tappable: the wrong name gets picked, and that has to be undoable */
 .pass-card.done { background: var(--surface); border-color: var(--good); opacity: .75; }
@@ -2709,7 +2799,7 @@ input[type='color'] { cursor: pointer; }
 
 /* One player, the whole screen */
 .pass-who { display: flex; align-items: center; gap: 8px; font-size: 26px; }
-.pass-emoji { font-size: 28px; }
+.pass-emoji { font-size: 32px; }
 /* The one instrument on the screen sits in the middle of it, where a thumb is */
 .pass-body { display: flex; flex-direction: column; justify-content: center; }
 .pass-amount { margin: 0 0 18px; text-align: center; font-family: var(--font-display);
@@ -2961,7 +3051,7 @@ input[type='color'] { cursor: pointer; }
 .pp-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
 .pp-row.is-seated { opacity: .5; }
-.pp-emoji { font-size: 22px; line-height: 1; background: none; border: none; padding: 2px; }
+.pp-emoji { font-size: 26px; line-height: 1; background: none; border: none; padding: 2px; }
 .pp-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
   background: none; border: none; padding: 6px 0; font: inherit; color: inherit; text-align: left; }
 .pp-name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3025,7 +3115,7 @@ input[type='color'] { cursor: pointer; }
 /* --- Table tools: side pots + colouring up --- */
 .tt-row { display: flex; align-items: center; gap: 9px; padding: 7px 0;
   border-bottom: 1px solid var(--line-soft); }
-.tt-emoji { font-size: 19px; line-height: 1; }
+.tt-emoji { font-size: 22px; line-height: 1; }
 .tt-name { flex: 1; min-width: 0; font-weight: 600; font-size: 14px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tt-fold { padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
@@ -3163,7 +3253,7 @@ input[type='color'] { cursor: pointer; }
 /* --- A guest's own phone --- */
 .guest .screen { padding-bottom: calc(var(--safe-b) + 24px); }
 .guest-me { display: flex; align-items: center; gap: 12px; }
-.guest-me-emoji { font-size: 30px; line-height: 1; }
+.guest-me-emoji { font-size: 34px; line-height: 1; }
 .guest-me-name { font-weight: 700; font-size: 17px; }
 .guest-me-stack { text-align: right; }
 .guest-me-stack .k { display: block; font-size: 10.5px; letter-spacing: .05em;
@@ -3179,7 +3269,7 @@ input[type='color'] { cursor: pointer; }
   border-bottom: 1px solid var(--line-soft); }
 .guest-row:last-child { border-bottom: none; }
 .guest-row.is-out { opacity: .45; text-decoration: line-through; }
-.guest-row-emoji { font-size: 18px; }
+.guest-row-emoji { font-size: 21px; }
 .guest-row-name { flex: 1; min-width: 0; font-weight: 600; font-size: 14px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .guest-row-stack { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 14px; }
@@ -3189,7 +3279,7 @@ input[type='color'] { cursor: pointer; }
 .join-row { display: flex; align-items: center; gap: 9px; padding: 7px 0;
   border-bottom: 1px solid var(--line-soft); }
 .join-row:last-child { border-bottom: none; }
-.join-emoji { font-size: 20px; line-height: 1; }
+.join-emoji { font-size: 23px; line-height: 1; }
 .join-name { flex: 1; min-width: 0; font-weight: 600; font-size: 14.5px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .join-tag { font-size: 11.5px; color: var(--text-faint); }
@@ -3417,6 +3507,78 @@ input[type='color'] { cursor: pointer; }
 :root[data-layout='wide'] .theme-grid { grid-template-columns: repeat(4, 1fr); }
 :root[data-layout='wide'] .bg-preset-grid { grid-template-columns: repeat(4, 1fr); }
 :root[data-layout='wide'] .seat-grid { grid-template-columns: repeat(3, 1fr); }
+
+/* --- Settings: the calibration slots, one row per screen and per way up --- */
+.ruler-slot { display: flex; align-items: center; gap: 12px; padding: 9px 0; }
+.ruler-slot + .ruler-slot { border-top: 1px solid var(--line); }
+.ruler-slot-txt { min-width: 0; flex: 1; }
+.ruler-slot-name { font-weight: 700; font-size: 14px; display: flex; align-items: baseline; gap: 7px; }
+/* which way the phone is being held at this moment — the only row with a button */
+.ruler-slot-now { font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--acc); background: var(--acc-wash); border-radius: 999px; padding: 1px 7px; }
+.ruler-slot-glass { font-weight: 400; font-size: 11.5px; color: var(--text-faint);
+  font-variant-numeric: tabular-nums; }
+.ruler-slot-glass::before { content: ' · '; }
+.ruler-slot-actions { display: flex; gap: 6px; flex: none; }
+.ruler-slot-turn { font-size: 12px; text-align: right; flex: none; max-width: 40%; }
+.ruler-slot-head { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-faint); margin-bottom: 4px; }
+
+/* ============================================================
+   Two columns — the Fold opened out and turned on its side
+   ============================================================
+   The medium rules above are for the panel STANDING UP (777dp wide), where one
+   column is right. Lying down the same panel is ~933dp — Material's expanded
+   class — and a single 720px column centred in it leaves two black gutters and
+   shows two players at a time, which is the shape this pass was reported for.
+
+   The mechanism is one rule: the pane wrappers are `display: contents` at every
+   other size, so they are not in the layout at all and every screen flows as the
+   phone's single column. Only here do they become real boxes. See
+   components/Panes.tsx — the split is contiguous, so nothing reorders.
+
+   `align-items: start` matters: without it both columns stretch to the taller
+   one and a short left column grows a long grey tail. `min-width: 0` is the
+   usual grid-child escape hatch — a wide chip row inside a card would otherwise
+   refuse to let its column shrink. */
+.panes, .pane { display: contents; }
+
+:root[data-panes='2'] .panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  column-gap: 22px;
+}
+:root[data-panes='2'] .pane { display: block; min-width: 0; }
+
+/* The shell stops being a phone-shaped column: the point of two panes is to use
+   the width, so the frame widens and the reading-width cap comes off the page
+   (each COLUMN is now the thing that has to stay readable, and half of 1240 is
+   about the width the cards were drawn for). */
+:root[data-panes='2'] .app { max-width: 1240px; }
+/* …but only the screens that actually split. A screen with no `<Panes>` in it is
+   still one column, and one column 1240px wide is a worse read than one column
+   720px wide — so the reading-width cap comes off for the ones that have two
+   columns to spend it on and stays on for the rest. */
+:root[data-panes='2'] .screen > div:has(> .panes) { max-width: none; }
+
+/* A full-bleed bar — the clock strip — is a property of the PAGE, not of a
+   column, so it stays outside the panes and keeps bleeding into the padding. */
+:root[data-panes='2'] .table-sticky { margin-inline: -24px; }
+
+/* The first card in each column starts at the same height. A section label
+   carries a top margin that the first one in a column must not add to, or the
+   two columns start a few pixels apart and look like a mistake. */
+:root[data-panes='2'] .pane > :first-child { margin-top: 0; }
+
+/* The choice grids opened out once already for the medium layout; inside a
+   half-width column they are back to roughly phone width, so they go back to
+   what they were rather than keeping a desktop's worth of columns in 500px. */
+:root[data-panes='2'] .pane .style-grid { grid-template-columns: repeat(2, 1fr); }
+:root[data-panes='2'] .pane .accent-grid { grid-template-columns: repeat(4, 1fr); }
+:root[data-panes='2'] .pane .chip-art-grid,
+:root[data-panes='2'] .pane .theme-grid,
+:root[data-panes='2'] .pane .bg-preset-grid { grid-template-columns: repeat(2, 1fr); }
 
 /* ---- Opening and shutting the phone ----
    The tab bar does not travel to the left edge: it stops existing and a rail

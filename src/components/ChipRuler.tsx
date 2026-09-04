@@ -87,11 +87,23 @@ export default function ChipRuler({
   denom,
   onResult,
   onClose,
+  calibrateOnly = false,
 }: {
-  denom: Denomination;
+  /** the colour being counted — absent when the sheet was opened only to calibrate */
+  denom?: Denomination;
   /** the counted chips for this colour, handed back to the row that opened us */
-  onResult: (chips: number) => void;
+  onResult?: (chips: number) => void;
   onClose: () => void;
+  /**
+   * Opened from Settings to measure this screen and nothing else.
+   *
+   * Calibration used to be something you met for the first time at the table,
+   * mid-count, with four people waiting — and again on the other panel, and again
+   * lying down. This is the same two drags done on a Tuesday: it always starts on
+   * step one, there is no colour and no running total, and solving it closes the
+   * sheet rather than dropping into a count nobody asked for.
+   */
+  calibrateOnly?: boolean;
 }) {
   const { state, dispatch } = useStore();
   const t = useT();
@@ -190,7 +202,7 @@ export default function ChipRuler({
   const [typed, setTyped] = useState('');
 
   /** calibration: null when measuring, otherwise which of CALIBRATION_STEPS we are on */
-  const [calStep, setCalStep] = useState<number | null>(isCalibrated(cal) ? null : 0);
+  const [calStep, setCalStep] = useState<number | null>(calibrateOnly || !isCalibrated(cal) ? 0 : null);
   const [calFirst, setCalFirst] = useState<{ y: number; chips: number } | null>(null);
   const [calError, setCalError] = useState(false);
   /** the stack that was too tall for the ladder to have measured honestly */
@@ -212,7 +224,7 @@ export default function ChipRuler({
      that are what the keypad beside it is for. */
   const tiny: number[] = [];
   for (let n = 1; n <= Math.min(TINY_MAX, Math.max(TINY_MIN, horizon)); n++) tiny.push(n);
-  const total = stacksTotal(stacks, measured, denom.count);
+  const total = stacksTotal(stacks, measured, denom?.count ?? 0);
   /** a measurement is on the bar, so a typed number can mean "no, it was this many" */
   const canCorrect = !calibrating && touched && measured > 0;
 
@@ -342,6 +354,7 @@ export default function ChipRuler({
     setDragPx(0);
     setTouched(false);
     haptic([12, 60, 12]);
+    if (calibrateOnly) onClose();
   };
 
   /* The phone was folded open (or shut) with the sheet on screen. That is a
@@ -360,8 +373,8 @@ export default function ChipRuler({
     setCalError(false);
     setCalTooTall(false);
     setLearn(null);
-    setCalStep(isCalibrated(calibrationFor(cals, screen)) ? null : 0);
-  }, [screen, cals]);
+    setCalStep(calibrateOnly || !isCalibrated(calibrationFor(cals, screen)) ? 0 : null);
+  }, [screen, cals, calibrateOnly]);
 
   const restartCalibration = () => {
     setCalStep(0);
@@ -378,7 +391,8 @@ export default function ChipRuler({
   const ticks: number[] = [];
   for (let n = Math.max(1, minMeasurable(cal, belowPx)); n <= capacity; n++) ticks.push(n);
 
-  const priceOf = (chips: number) => money(chips * denom.value * unitValue, currency);
+  const priceOf = (chips: number) =>
+    denom ? money(chips * denom.value * unitValue, currency) : '';
 
   /* Where an untouched bar waits. Not zero: the ladder now ends ON the glass edge, so
      a bar parked at zero has half its grip off the screen and nothing obvious to
@@ -391,8 +405,14 @@ export default function ChipRuler({
       <div className="cr-head ruler-head">
         <div className="ruler-head-txt">
           <div className="cr-title">
-            <span className="cr-swatch" style={{ background: denom.color, borderColor: denom.accent }} />
-            {num(denom.value)}
+            {denom ? (
+              <>
+                <span className="cr-swatch" style={{ background: denom.color, borderColor: denom.accent }} />
+                {num(denom.value)}
+              </>
+            ) : (
+              t('ruler.calibrateTitle')
+            )}
           </div>
           <div className="cr-prev">
             {calibrating
@@ -415,7 +435,7 @@ export default function ChipRuler({
             <button
               className="btn btn-primary ruler-go"
               disabled={total <= 0}
-              onClick={() => { onResult(total); onClose(); }}
+              onClick={() => { onResult?.(total); onClose(); }}
               aria-label={t('ruler.use', { n: total })}
             >
               ✓ {total}

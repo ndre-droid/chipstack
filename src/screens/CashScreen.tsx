@@ -8,6 +8,7 @@ import PayoutCard from '../components/PayoutCard';
 import CarryCard from '../components/CarryCard';
 import Timeline from '../components/Timeline';
 import NightAwards from '../components/NightAwards';
+import Panes from '../components/Panes';
 import { useConfirm } from '../components/Confirm';
 
 /**
@@ -139,167 +140,179 @@ export default function CashScreen() {
 
   return (
     <div>
-      <div className="section-label">
-        {t('cash.moneyInPlay')}
-        <span className="hint">{ledger.length} {t('cash.players').toLowerCase()}</span>
-      </div>
-      <div className="card">
-        <div className="stat-row">
-          <div className="stat">
-            <div className="k">{t('cash.boughtIn')}</div>
-            <div className="v">{fmtMoney(totalIn, cur)}</div>
-          </div>
-          <div className="stat">
-            <div className="k">{t('cash.cashedOut')}</div>
-            <div className="v">{fmtMoney(totalOut, cur)}</div>
-          </div>
-          <div className="stat">
-            <div className="k">{t('cash.onTable')}</div>
-            <div className="v" style={{ color: 'var(--acc)' }}>{fmtMoney(totalIn - totalOut, cur)}</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="section-label">
-        {t('cash.perPlayer')}
-        <span className="hint">{t('cash.manageOnTable')}</span>
-      </div>
-      <div className="card ledger-card">
-        {ledger.map((p, i) => {
-          const n = nets[i];
-          return (
-            <div className="cash-row" key={p.id}>
-              <span className="cash-name">{p.emoji ? `${p.emoji} ` : ''}{p.name || 'Player'}</span>
-              <span className="cash-fig">
-                <label>{t('cash.boughtIn')}</label>
-                {fmtMoney(p.buyIn || 0, cur)}
-              </span>
-              <span className="cash-fig">
-                <label>{n.settled ? t('cash.cashedOut') : t('cash.stillIn')}</label>
-                {n.settled ? fmtMoney(p.cashOut || 0, cur) : fmtMoney(n.onTable, cur)}
-              </span>
-              <span className="cash-fig">
-                <label>{t('cash.net')}</label>
-                <b className={n.net >= 0 ? 'pos' : 'neg'}>{n.net >= 0 ? '+' : ''}{fmtMoney(n.net, cur)}</b>
-              </span>
-              {n.carried !== 0 && (
-                <span className="cash-carried">
-                  {t('debts.hint')}: {n.carried >= 0 ? '+' : ''}{fmtMoney(n.carried, cur)}
-                </span>
-              )}
-            </div>
-          );
-        })}
-        <div className="row mt12">
-          <div className="spacer" />
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => {
-              confirm.ask({
-                text: t('cash.newGameConfirm'),
-                confirmLabel: t('cash.newGame'),
-                danger: true,
-                onYes: () => dispatch({ type: 'LEDGER_CLEAR' }),
-              });
-            }}
-          >
-            {t('cash.newGame')}
-          </button>
-        </div>
-      </div>
-
-      {!provisional && drift !== 0 && (
-        <div className="feas warn" style={{ fontSize: 12.5 }}>
-          {t('cash.offBy', { out: fmtMoney(totalOut, cur), in: fmtMoney(totalIn, cur), diff: fmtMoney(Math.abs(drift), cur) })}
-        </div>
-      )}
-
-      {!isCash && pool > 0 && <PayoutCard pool={pool} entrants={ledger.length} />}
-
-      <div className="section-label">
-        {t('cash.whoPays')}
-        <span className="hint">{provisional ? t('cash.provisional') : t('cash.final')}</span>
-      </div>
-      <div className="card">
-        {!anyMoney ? (
-          <div className="empty">{t('cash.nothingYet')}</div>
-        ) : transfers.length === 0 ? (
-          <div className="empty">{t('cash.allEven')}</div>
-        ) : (
-          transfers.map((tr, i) => {
-            const pay = paymentFor(tr.to);
-            return (
-              <div className="transfer-row" key={i}>
-                <span className="t-from">{tr.from}</span>
-                <span className="t-arrow">{t('cash.pays')}</span>
-                <span className="t-to">{tr.to}</span>
-                <span className="t-amt">{fmtMoney(tr.amount, cur)}</span>
-                {pay && (
-                  <button
-                    className="t-pay"
-                    onClick={() => {
-                      const text = `${t('settle.owes', { from: tr.from, to: tr.to, amount: fmtMoney(tr.amount, cur) })} — ${pay}`;
-                      void navigator.clipboard?.writeText(text).then(
-                        () => {
-                          setShareMsg(t('settle.copied'));
-                          setTimeout(() => setShareMsg(null), 1600);
-                        },
-                        () => undefined,
-                      );
-                    }}
-                  >
-                    {t('settle.payLink')}
-                  </button>
-                )}
-              </div>
-            );
-          })
-        )}
-
-        {/* The nets no longer add up: a carried balance was paid off outside the app.
-            Say so rather than printing a payment list that cannot settle everyone. */}
-        {imbalance !== 0 && anyMoney && (
-          <p className="tt-note" style={{ color: 'var(--bad)' }}>
-            {t('cash.offBy', { out: fmtMoney(totalOut, cur), in: fmtMoney(totalIn, cur), diff: fmtMoney(Math.abs(imbalance), cur) })}
-          </p>
-        )}
-
-        {provisional && anyMoney && (
+      {/* Money in and who has it on the left; the settle-up and the night's
+          record on the right. Contiguous, so a phone sees the same order. */}
+      <Panes
+        left={
           <>
-            <p className="faint settle-note">{t('cash.provisionalHint')}</p>
-            <button
-              className="btn btn-ghost btn-block btn-sm"
-              onClick={() =>
-                confirm.ask({
-                  text: t('cash.settleNowConfirm'),
-                  confirmLabel: t('cash.settleNow'),
-                  onYes: () => dispatch({ type: 'LEDGER_SETTLE_ALL' }),
-                })
-              }
-            >
-              {t('cash.settleNow')}
-            </button>
-            <p className="faint settle-note center">{t('cash.settleNowHint')}</p>
-          </>
-        )}
-
-        {anyMoney && (
-          <div className="row" style={{ gap: 8, marginTop: 10 }}>
-            <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => void shareSettlement()}>
-              ↗ {t('settle.share')}
-            </button>
-            <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={carryOver} title={t('debts.carryHint')}>
-              {t('debts.carry')}
-            </button>
+          <div className="section-label">
+            {t('cash.moneyInPlay')}
+            <span className="hint">{ledger.length} {t('cash.players').toLowerCase()}</span>
           </div>
-        )}
-        {shareMsg && <p className="faint settle-note center">{shareMsg}</p>}
-      </div>
+          <div className="card">
+            <div className="stat-row">
+              <div className="stat">
+                <div className="k">{t('cash.boughtIn')}</div>
+                <div className="v">{fmtMoney(totalIn, cur)}</div>
+              </div>
+              <div className="stat">
+                <div className="k">{t('cash.cashedOut')}</div>
+                <div className="v">{fmtMoney(totalOut, cur)}</div>
+              </div>
+              <div className="stat">
+                <div className="k">{t('cash.onTable')}</div>
+                <div className="v" style={{ color: 'var(--acc)' }}>{fmtMoney(totalIn - totalOut, cur)}</div>
+              </div>
+            </div>
+          </div>
 
-      <NightAwards />
-      <Timeline />
-      <CarryCard />
-      <SeasonLeague />
+          <div className="section-label">
+            {t('cash.perPlayer')}
+            <span className="hint">{t('cash.manageOnTable')}</span>
+          </div>
+          <div className="card ledger-card">
+            {ledger.map((p, i) => {
+              const n = nets[i];
+              return (
+                <div className="cash-row" key={p.id}>
+                  <span className="cash-name">{p.emoji ? `${p.emoji} ` : ''}{p.name || 'Player'}</span>
+                  <span className="cash-fig">
+                    <label>{t('cash.boughtIn')}</label>
+                    {fmtMoney(p.buyIn || 0, cur)}
+                  </span>
+                  <span className="cash-fig">
+                    <label>{n.settled ? t('cash.cashedOut') : t('cash.stillIn')}</label>
+                    {n.settled ? fmtMoney(p.cashOut || 0, cur) : fmtMoney(n.onTable, cur)}
+                  </span>
+                  <span className="cash-fig">
+                    <label>{t('cash.net')}</label>
+                    <b className={n.net >= 0 ? 'pos' : 'neg'}>{n.net >= 0 ? '+' : ''}{fmtMoney(n.net, cur)}</b>
+                  </span>
+                  {n.carried !== 0 && (
+                    <span className="cash-carried">
+                      {t('debts.hint')}: {n.carried >= 0 ? '+' : ''}{fmtMoney(n.carried, cur)}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+            <div className="row mt12">
+              <div className="spacer" />
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  confirm.ask({
+                    text: t('cash.newGameConfirm'),
+                    confirmLabel: t('cash.newGame'),
+                    danger: true,
+                    onYes: () => dispatch({ type: 'LEDGER_CLEAR' }),
+                  });
+                }}
+              >
+                {t('cash.newGame')}
+              </button>
+            </div>
+          </div>
+
+          {!provisional && drift !== 0 && (
+            <div className="feas warn" style={{ fontSize: 12.5 }}>
+              {t('cash.offBy', { out: fmtMoney(totalOut, cur), in: fmtMoney(totalIn, cur), diff: fmtMoney(Math.abs(drift), cur) })}
+            </div>
+          )}
+
+          {!isCash && pool > 0 && <PayoutCard pool={pool} entrants={ledger.length} />}
+
+          </>
+        }
+        right={
+          <>
+          <div className="section-label">
+            {t('cash.whoPays')}
+            <span className="hint">{provisional ? t('cash.provisional') : t('cash.final')}</span>
+          </div>
+          <div className="card">
+            {!anyMoney ? (
+              <div className="empty">{t('cash.nothingYet')}</div>
+            ) : transfers.length === 0 ? (
+              <div className="empty">{t('cash.allEven')}</div>
+            ) : (
+              transfers.map((tr, i) => {
+                const pay = paymentFor(tr.to);
+                return (
+                  <div className="transfer-row" key={i}>
+                    <span className="t-from">{tr.from}</span>
+                    <span className="t-arrow">{t('cash.pays')}</span>
+                    <span className="t-to">{tr.to}</span>
+                    <span className="t-amt">{fmtMoney(tr.amount, cur)}</span>
+                    {pay && (
+                      <button
+                        className="t-pay"
+                        onClick={() => {
+                          const text = `${t('settle.owes', { from: tr.from, to: tr.to, amount: fmtMoney(tr.amount, cur) })} — ${pay}`;
+                          void navigator.clipboard?.writeText(text).then(
+                            () => {
+                              setShareMsg(t('settle.copied'));
+                              setTimeout(() => setShareMsg(null), 1600);
+                            },
+                            () => undefined,
+                          );
+                        }}
+                      >
+                        {t('settle.payLink')}
+                      </button>
+                    )}
+                  </div>
+                );
+              })
+            )}
+
+            {/* The nets no longer add up: a carried balance was paid off outside the app.
+                Say so rather than printing a payment list that cannot settle everyone. */}
+            {imbalance !== 0 && anyMoney && (
+              <p className="tt-note" style={{ color: 'var(--bad)' }}>
+                {t('cash.offBy', { out: fmtMoney(totalOut, cur), in: fmtMoney(totalIn, cur), diff: fmtMoney(Math.abs(imbalance), cur) })}
+              </p>
+            )}
+
+            {provisional && anyMoney && (
+              <>
+                <p className="faint settle-note">{t('cash.provisionalHint')}</p>
+                <button
+                  className="btn btn-ghost btn-block btn-sm"
+                  onClick={() =>
+                    confirm.ask({
+                      text: t('cash.settleNowConfirm'),
+                      confirmLabel: t('cash.settleNow'),
+                      onYes: () => dispatch({ type: 'LEDGER_SETTLE_ALL' }),
+                    })
+                  }
+                >
+                  {t('cash.settleNow')}
+                </button>
+                <p className="faint settle-note center">{t('cash.settleNowHint')}</p>
+              </>
+            )}
+
+            {anyMoney && (
+              <div className="row" style={{ gap: 8, marginTop: 10 }}>
+                <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => void shareSettlement()}>
+                  ↗ {t('settle.share')}
+                </button>
+                <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={carryOver} title={t('debts.carryHint')}>
+                  {t('debts.carry')}
+                </button>
+              </div>
+            )}
+            {shareMsg && <p className="faint settle-note center">{shareMsg}</p>}
+          </div>
+
+          <NightAwards />
+          <Timeline />
+          <CarryCard />
+          <SeasonLeague />
+          </>
+        }
+      />
       {confirm.node}
     </div>
   );

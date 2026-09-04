@@ -71,7 +71,7 @@ const defaultSettings: Settings = {
   chipStyle: 'render3d',
   chipAnim: 'plan',
   language: 'en',
-  gameMode: 'tournament',
+  gameMode: 'cash',
   cashUseTimer: false,
   countMode: 'money',
   tvShowStartStack: false,
@@ -889,9 +889,14 @@ function migrate(raw: string | null): AppState {
   if (typeof settings.tvShowPlayers !== 'boolean') settings.tvShowPlayers = true;
   if (!['seat', 'chips', 'profit'].includes(settings.tvRosterSort)) settings.tvRosterSort = 'seat';
   if (!['seat', 'chips', 'profit'].includes(settings.rosterSort)) settings.rosterSort = 'seat';
-  // An existing install has already made all these decisions — never greet it with
-  // the first-run wizard just because the field is new.
-  if (typeof settings.onboardedAt !== 'number') settings.onboardedAt = 0;
+  /* When the setup wizard was last completed, or null for never. It used to be a
+     gate — a null meant "show the wizard" — so anything unrecognised was coerced
+     to 0 to keep an existing install from being greeted by it. The wizard is a
+     button in Settings now (see BeforeTheNight), so this field only reports; a
+     null is allowed to stay null and mean what it says. */
+  if (settings.onboardedAt !== null && typeof settings.onboardedAt !== 'number') {
+    settings.onboardedAt = null;
+  }
   /* The chip ruler measures against ONE piece of glass, so its calibrations are a
      map keyed by screen. Anything in there that is not a believable calibration is
      dropped rather than carried: a ruler that trusts a hand-edited backup is
@@ -911,7 +916,7 @@ function migrate(raw: string | null): AppState {
   }
   if (typeof settings.tvBackgroundTone !== 'number') settings.tvBackgroundTone = null;
   if (settings.language !== 'en' && settings.language !== 'de') settings.language = 'en';
-  if (settings.gameMode !== 'tournament' && settings.gameMode !== 'cash') settings.gameMode = 'tournament';
+  if (settings.gameMode !== 'tournament' && settings.gameMode !== 'cash') settings.gameMode = defaultSettings.gameMode;
   if (typeof settings.cashUseTimer !== 'boolean') settings.cashUseTimer = false;
   if (settings.countMode !== 'money' && settings.countMode !== 'colours') settings.countMode = 'money';
   if (typeof settings.tvShowStartStack !== 'boolean') settings.tvShowStartStack = false;

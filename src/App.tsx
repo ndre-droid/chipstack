@@ -17,7 +17,6 @@ import { isNative } from './lib/platform';
 import { warmChip3d } from './lib/chip3d';
 import { useVisualViewportHeight } from './lib/viewport';
 import { useWindowLayout } from './lib/windowLayout';
-import Onboarding from './components/Onboarding';
 import GuestView from './screens/GuestView';
 
 type Tab = 'plan' | 'chips' | 'table' | 'cash';
@@ -292,12 +291,6 @@ function AppShell() {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
-
-  /* Nothing has ever been set up here: ask the three questions that actually
-     determine the answer, instead of opening on a full tournament console. */
-  if (state.settings.onboardedAt === null && !asTv) {
-    return <Onboarding onDone={() => go(state.ledger.length > 0 ? 'table' : 'plan')} />;
-  }
 
   /* This phone belongs to somebody who is just playing: their own read-only view of
      the table, and the one thing they can do — put their name in. */

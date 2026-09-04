@@ -10,6 +10,7 @@ import Chip from '../components/Chip';
 import ChipStackViz from '../components/ChipStackViz';
 import { IconPlus, IconTrash, IconCheck, IconAlert, IconSpark, IconChevron, IconLock, IconShare } from '../components/Icons';
 import ShareSheet from '../components/ShareSheet';
+import Panes from '../components/Panes';
 import { useT, useFmt } from '../lib/i18n';
 import { Toggle } from '../components/Toggle';
 import MoneyInput from '../components/MoneyInput';
@@ -211,559 +212,573 @@ export default function PlanScreen() {
 
   return (
     <div>
-      {/* ---------------- Top bar: save / share / presets ---------------- */}
-      <div className="preset-bar">
-        <button className="preset-save" onClick={savePreset}>
-          <IconSpark size={14} /> {t('plan.save')}
-        </button>
-        <button className="preset-save" onClick={() => setShareOpen(true)}>
-          <IconShare size={14} /> {t('plan.share')}
-        </button>
-        <div className="preset-list">
-          {presets.length === 0 && <span className="faint" style={{ fontSize: 12, fontWeight: 500 }}>{t('plan.noSavedSetups')}</span>}
-          {presets.map((p) => (
-            <div className="preset-chip" key={p.id}>
-              <button onClick={() => dispatch({ type: 'LOAD_PRESET', id: p.id })}>{p.name}</button>
-              <button className="preset-x" onClick={() => dispatch({ type: 'DELETE_PRESET', id: p.id })} aria-label={t('plan.deletePreset')}>×</button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ================ RESULT HERO — the answer ================ */}
-      <div className="result-hero">
-        <div className="hero-eyebrow">
-          {tuned ? t('table.handoutTitle') : t('plan.eachPlayer')}
-        </div>
-        <div className="flex-between" style={{ alignItems: 'flex-end' }}>
-          <div className="big-num">
-            {heroChips} <small>{t('plan.chips')}</small>
-          </div>
-          <div className="hero-depth">
-            <div className="n">
-              {bbCount}
-              <span> BB</span>
-            </div>
-            <div className="l">{t('plan.bbDeep')}</div>
-          </div>
-        </div>
-        <div className="hero-sub">
-          {fmtMoney(heroTotal * unit, cur)} · {num(heroTotal)} pts · {heroUsed.length}{' '}
-          {t(heroUsed.length === 1 ? 'plan.denomOne' : 'plan.denomMany')}
-          {edited && !tuned && <span className="badge-soft" style={{ marginLeft: 8 }}>{t('plan.edited')}</span>}
-        </div>
-
-        <ChipStackViz denoms={heroUsed} counts={heroCounts} surface="plan" roomyChipSize={104} />
-
-        {/* small-chip slider — lives with the visual it controls. It shapes the PLAN,
-            so it steps aside while the card is showing some other amount: a mid-game
-            handout is deliberately built with the fewest chips, not with this. */}
-        {!tuned && <ChipMixSlider value={smallBias} onChange={moveBias} />}
-
-        {heroUsed.length > 0 && heroTotal > 0 && (
-          <div className="valbar" aria-hidden>
-            {heroUsed.map((d) => (
-              <i
-                key={d.id}
-                style={{ flexGrow: ((heroCounts[d.id] ?? 0) * d.value) / heroTotal, background: d.color }}
-                title={`${d.value}: ${fmtMoney((heroCounts[d.id] ?? 0) * d.value * unit, cur)}`}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* How much, and for which blinds — the same control the Table tab carries. */}
-        <StackTuner />
-
-        {heroBlind && (
-          <div className={`blind-check ${heroBlindOk ? 'ok' : 'bad'}`}>
-            {baseDenom && <Chip value={baseDenom.value} color={baseDenom.color} accent={baseDenom.accent} size={30} shape={baseDenom.shape} />}
-            <div>
-              <b>{t('plan.smallestChip', { v: heroBaseValue })}</b>
-              <span>
-                {t(heroBlindOk ? 'plan.blindOk' : 'plan.blindBad', {
-                  sb: heroBlind.smallBlind,
-                  bb: heroBlind.bigBlind,
-                })}
-              </span>
-            </div>
-            {heroBlindOk ? <IconCheck size={18} /> : <IconAlert size={18} />}
-          </div>
-        )}
-      </div>
-
-      {/* The card is showing something other than the plan's own stack: say so once,
-          and keep the plan's analysis out of the way until it comes back. */}
-      {tuned && (
-        <div className="tuned-note">
-          {t('plan.tunedNote', { amount: fmtMoney(tunedAmount, cur), n: tunedLevelIdx + 1 })}
-        </div>
-      )}
-
-      {/* Plan-only from here down: it all describes the buy-in stack at the starting
-          blinds, so a card tuned to a €45 top-up folds it away rather than pairing a
-          €45 picture with a €20 analysis. */}
-      {!tuned && (
-        <>
-      {/* feasibility */}
-      {/* Not "you can't do this" but "here is the shopping list" — the number of
-          chips to buy is a question the app can answer and the user cannot. */}
-      {!starting.feasible && starting.shortfall.length > 0 && (
-        <div className="card missing-card">
-          <div className="section-label" style={{ margin: '0 0 8px' }}>
-            {t('plan.missing')}
-            <span className="hint">{t('plan.missingHint', { n: startingStacks })}</span>
-          </div>
-          {starting.shortfall.map((sf) => {
-            const d = denominations.find((x) => x.id === sf.denomId);
-            return (
-              <div className="missing-row" key={sf.denomId}>
-                {d && <Chip value={d.value} color={d.color} accent={d.accent} shape={d.shape} size={26} />}
-                <span className="missing-txt">{t('plan.missingRow', { n: sf.missing, value: num(sf.value) })}</span>
-                <span className="missing-have">{sf.have} / {sf.needed}</span>
-              </div>
-            );
-          })}
-          <p className="faint" style={{ fontSize: 12, margin: '10px 2px 0' }}>
-            {t('plan.missingBuy', { n: starting.shortfall.reduce((s2, sf) => s2 + sf.missing, 0) })}
-          </p>
-        </div>
-      )}
-
-      {starting.feasible ? (
-        <div className="feas ok">
-          <IconCheck size={18} /> {t('plan.enoughChips', { n: startingStacks })}
-        </div>
-      ) : (
-        <div className="feas warn">
-          <IconAlert size={18} /> {t('plan.notEnoughChips', { n: startingStacks })}
-        </div>
-      )}
-      {starting.warnings.length > 0 && (
-        <ul className="warn-list">
-          {starting.warnings.map((w, i) => (
-            <li key={i}>{w}</li>
-          ))}
-        </ul>
-      )}
-      {starting.notes.length > 0 && (
-        <ul className="note-list">
-          {starting.notes.map((n, i) => (
-            <li key={i}>{n}</li>
-          ))}
-        </ul>
-      )}
-
-      {/* live-adjust editor */}
-      <div className="section-label">
-        {t('plan.fineTune')}
-        <span className="hint">{t('plan.fineTuneHint')}</span>
-      </div>
-      <div className="card adjust-card">
-        {editorDenoms.map((d) => {
-          const c = displayCounts[d.id] ?? 0;
-          const isLocked = locked.has(d.id);
-          return (
-            <div className={`adjust-row ${isLocked ? 'locked' : ''} ${c === 0 ? 'zero' : ''}`} key={d.id}>
-              <button className={`lock-btn ${isLocked ? 'on' : ''}`} onClick={() => toggleLock(d.id)} aria-label={t('plan.pinCount')}>
-                <IconLock size={14} />
-              </button>
-              <Chip value={d.value} color={d.color} accent={d.accent} size={28} shape={d.shape} />
-              <span className="adjust-val">{d.value}</span>
-              <div className="spacer" />
-              <div className="stepper sm">
-                <button onClick={() => stepDenom(d.id, -1)}>−</button>
-                <span className="val">{c}</span>
-                <button onClick={() => stepDenom(d.id, 1)}>+</button>
-              </div>
-            </div>
-          );
-        })}
-        <div className="adjust-foot">
-          <span className={effTotal === buyInUnits ? 'bal-ok' : 'bal-bad'}>
-            {effTotal === buyInUnits
-              ? t('plan.balances')
-              : `${effTotal > buyInUnits ? '+' : ''}${num(effTotal - buyInUnits)} pts vs buy-in`}
-          </span>
-          {edited && (
-            <button className="link-btn" onClick={() => setOverride(null)}>
-              {t('plan.resetToAuto')}
+      {/* The answer on the left, the questions on the right — a plan and the
+          inputs that made it, side by side once there is room. Contiguous, so
+          a phone still reads result-then-inputs top to bottom. */}
+      <Panes
+        left={
+          <>
+          {/* ---------------- Top bar: save / share / presets ---------------- */}
+          <div className="preset-bar">
+            <button className="preset-save" onClick={savePreset}>
+              <IconSpark size={14} /> {t('plan.save')}
             </button>
-          )}
-        </div>
-      </div>
-
-      {/* breakdown table */}
-      <div className="card mt12">
-        <StackTable
-          stack={{ ...starting, counts: displayCounts, denomsUsed: effUsed, chipCount: effChips, totalValue: effTotal }}
-          stacks={startingStacks}
-          unit={unit}
-          cur={cur}
-        />
-      </div>
-
-      {/* later levels & colour-up — collapsed by default (secondary to the starting stack) */}
-      {!isCash && (laterStages.length > 0 || colorUps.length > 0) && (
-        <>
-          <button className="section-label collapsible-head" onClick={() => setShowLater((v) => !v)}>
-            {t('plan.laterColorUp')}
-            <span className="hint">{laterStages.length === 1 ? t('plan.laterLevel') : t('plan.laterLevels', { n: laterStages.length })}</span>
-            <span className={`chevron ${showLater ? 'rot90' : ''}`} style={{ marginLeft: 8 }}>
-              <IconChevron size={16} />
-            </span>
-          </button>
-          {showLater && (
-            <>
-              {laterStages.length > 0 && (
-                <>
-                  <div className="stage-scroll">
-                    {laterStages.map((s) => (
-                      <StageCard key={s.blind.id} blind={s.blind} level={startIdx + s.offset + 1} stack={s.stack} />
-                    ))}
-                  </div>
-                  <p className="faint" style={{ fontSize: 12, textAlign: 'center', margin: '6px 8px 0' }}>
-                    Rebuys at higher blinds use fewer little chips and more high-value chips.
-                  </p>
-                </>
-              )}
-              {colorUps.length > 0 && (
-                <>
-                  <div className="section-label">
-                    {t('plan.colorUpGuide')}
-                    <span className="hint">{t('plan.racingOff')}</span>
-                  </div>
-                  {colorUps.map((e) => (
-            <div className="card colorup-card" key={e.blind.id}>
-              <div className="colorup-head">
-                <span className="lvl">Level {e.levelIndex + 1}</span>
-                <span className="blinds">blinds reach {e.blind.smallBlind}/{e.blind.bigBlind}</span>
-              </div>
-              {e.retirements.map((r) => {
-                const fromD = denominations.find((d) => d.id === r.fromId);
-                const toD = r.toId ? denominations.find((d) => d.id === r.toId) : undefined;
-                return (
-                  <div className="retire-row" key={r.fromId}>
-                    <div className="retire-trade">
-                      {fromD && <Chip value={fromD.value} color={fromD.color} accent={fromD.accent} size={30} shape={fromD.shape} />}
-                      <IconChevron size={16} />
-                      {toD && <Chip value={toD.value} color={toD.color} accent={toD.accent} size={30} shape={toD.shape} />}
-                    </div>
-                    <div className="retire-text">
-                      <b>Retire the {r.fromValue}s</b>
-                      <span>
-                        {r.ratioClean
-                          ? `trade every ${r.ratio} × ${r.fromValue} for one ${r.toValue}`
-                          : `exchange for ${r.toValue} chips`}
-                      </span>
-                      <div className="retire-nums">
-                        {r.tableCount} × {r.fromValue} → <b>{r.bigOut} × {r.toValue}</b>
-                        {r.raceChips > 0 && <span className="race-tag">race {r.raceChips} odd</span>}
-                      </div>
-                      {!r.feasible && r.toId && (
-                        <div className="race-warn">You own only {r.bankHave} × {r.toValue} — may fall short.</div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-                  ))}
-                  <p className="faint" style={{ fontSize: 12, textAlign: 'center', margin: '6px 8px 0', lineHeight: 1.5 }}>
-                    The race: deal one card per leftover chip; the highest card rounds up to the next chip.
-                  </p>
-                </>
-              )}
-            </>
-          )}
-        </>
-      )}
-        </>
-      )}
-
-      {/* ================ SESSION SETUP — the inputs ================ */}
-      <div className="section-label" style={{ marginTop: 26 }}>
-        {t('plan.sessionSetup')}
-        <span className="hint">{t('plan.updatesLive')}</span>
-      </div>
-
-      {/* Players */}
-      <div className="card">
-        <div className="row">
-          <div>
-            <div style={{ fontWeight: 600 }}>{t('plan.playersAtTable')}</div>
-            <div className="faint" style={{ fontSize: 12.5 }}>
-              {rosterSeated ? t('plan.playersFromRoster') : t('plan.playersDesc')}
-            </div>
-          </div>
-          <div className="spacer" />
-          {/* Once people are actually seated the roster owns this number — two places
-              to edit it meant planning chips for four while six played. */}
-          {rosterSeated ? (
-            <div className="plan-count-locked">
-              <b>{numPlayers}</b>
-              <span>{t('plan.atTable')}</span>
-            </div>
-          ) : (
-            <div className="stepper">
-              <button onClick={() => dispatch({ type: 'SET_PLAYER_COUNT', n: numPlayers - 1 })}>−</button>
-              <span className="val">{numPlayers}</span>
-              <button onClick={() => dispatch({ type: 'SET_PLAYER_COUNT', n: numPlayers + 1 })}>+</button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Buy-in & rebuys */}
-      <div className="card">
-        <div className="row">
-          <div className="field">
-            <label>{t('plan.buyIn')}</label>
-            <div className="input-affix">
-              <span className="affix">{cur}</span>
-              <MoneyInput
-                value={buyIn || 0}
-                ariaLabel={t('plan.buyIn')}
-                onCommit={(v) => dispatch({ type: 'UPDATE_SESSION', patch: { buyIn: Math.max(0, v) } })}
-              />
-            </div>
-          </div>
-          <div className="field">
-            <label>{t('plan.laterRebuy')}</label>
-            <div className="input-affix">
-              <span className="affix">{cur}</span>
-              <MoneyInput
-                value={lateRebuyAmount || 0}
-                ariaLabel={t('plan.laterRebuy')}
-                onCommit={(v) => dispatch({ type: 'UPDATE_SESSION', patch: { lateRebuyAmount: Math.max(0, v) } })}
-              />
-            </div>
-          </div>
-        </div>
-        <div className="row mt12">
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{t('plan.earlyRebuys')}</div>
-            <div className="faint" style={{ fontSize: 12 }}>{t('plan.earlyRebuysHint', { amount: fmtMoney(buyIn, cur) })}</div>
-          </div>
-          <div className="spacer" />
-          <div className="stepper">
-            <button onClick={() => dispatch({ type: 'UPDATE_SESSION', patch: { earlyRebuys: Math.max(0, earlyRebuys - 1) } })}>−</button>
-            <span className="val">{earlyRebuys}</span>
-            <button onClick={() => dispatch({ type: 'UPDATE_SESSION', patch: { earlyRebuys: earlyRebuys + 1 } })}>+</button>
-          </div>
-        </div>
-        <p className="faint" style={{ fontSize: 12, margin: '12px 2px 0' }}>
-          {t('plan.buyInSummary', {
-            amount: fmtMoney(buyIn, cur),
-            units: num(buyInUnits),
-            rebuy: num(lateRebuyUnits),
-            stacks: startingStacks,
-          })}
-        </p>
-      </div>
-
-      {/* Blinds */}
-      <div className="section-label">
-        {t('plan.blindLevels')}
-        <span className="hint">{t('plan.tapToStart')}</span>
-      </div>
-      <div className="card">
-        {blindLevels.map((b, i) => (
-          <div
-            className={`blind-row ${i === startIdx ? 'start' : ''}`}
-            key={b.id}
-            style={{ opacity: i < startIdx ? 0.4 : 1 }}
-            onClick={() => setStartIdx(i)}
-          >
-            <div className="lvl-badge">{i + 1}</div>
-            <div className="blind-inputs" onClick={(e) => e.stopPropagation()}>
-              <input
-                className="mini-input"
-                type="number"
-                value={b.smallBlind || ''}
-                onChange={(e) => dispatch({ type: 'UPDATE_BLIND', id: b.id, patch: { smallBlind: Math.max(0, +e.target.value) } })}
-              />
-              <span className="x">/</span>
-              <input
-                className="mini-input"
-                type="number"
-                value={b.bigBlind || ''}
-                onChange={(e) => dispatch({ type: 'UPDATE_BLIND', id: b.id, patch: { bigBlind: Math.max(0, +e.target.value) } })}
-              />
-              {i === startIdx && <span className="badge-soft" style={{ marginLeft: 6 }}>{t('plan.startBadge')}</span>}
-            </div>
-            <button
-              className="icon-btn danger"
-              style={{ width: 32, height: 32 }}
-              onClick={(e) => {
-                e.stopPropagation();
-                dispatch({ type: 'REMOVE_BLIND', id: b.id });
-              }}
-            >
-              <IconTrash size={15} />
+            <button className="preset-save" onClick={() => setShareOpen(true)}>
+              <IconShare size={14} /> {t('plan.share')}
             </button>
-          </div>
-        ))}
-        {/* Length-first: the question a host actually has an answer to. */}
-        {!isCash && (
-          <div className="dur-row">
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{t('plan.forDuration')}</div>
-              <div className="faint" style={{ fontSize: 12 }}>
-                {durationPick
-                  ? t('plan.durationResult', {
-                      levels: blindLevels.length,
-                      mins: settings.minutesPerLevel,
-                      total: t('onboard.hours', { n: durationPick }),
-                    })
-                  : t('plan.forDurationHint')}
-              </div>
-            </div>
-            <div className="spacer" />
-            <div className="dur-picks">
-              {[2, 3, 4, 5].map((h) => (
-                <button
-                  key={h}
-                  className={`dur-pick ${durationPick === h ? 'active' : ''}`}
-                  onClick={() => applyDuration(h)}
-                >
-                  {t('onboard.hours', { n: h })}
-                </button>
+            <div className="preset-list">
+              {presets.length === 0 && <span className="faint" style={{ fontSize: 12, fontWeight: 500 }}>{t('plan.noSavedSetups')}</span>}
+              {presets.map((p) => (
+                <div className="preset-chip" key={p.id}>
+                  <button onClick={() => dispatch({ type: 'LOAD_PRESET', id: p.id })}>{p.name}</button>
+                  <button className="preset-x" onClick={() => dispatch({ type: 'DELETE_PRESET', id: p.id })} aria-label={t('plan.deletePreset')}>×</button>
+                </div>
               ))}
             </div>
           </div>
-        )}
-        <div className="row mt8" style={{ gap: 8 }}>
-          <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={applySuggestedLadder}>
-            <IconSpark size={15} /> {t('plan.suggest')}
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => dispatch({ type: 'ADD_BLIND' })}>
-            <IconPlus size={16} /> {t('plan.level')}
-          </button>
-        </div>
-      </div>
 
-      {/* Distribution options */}
-      <div className="section-label">
-        <IconSpark size={14} /> {t('plan.distOptions')}
-      </div>
-      <div className="card">
-        <button className="mins-toggle" onClick={() => setShowChips((v) => !v)}>
-          <span>
-            {t('plan.chipsToUse')}{' '}
-            <span className="faint" style={{ fontWeight: 500 }}>· {t('plan.active', { n: enabledDenoms.length - excluded.size })}</span>
-          </span>
-          <span className={`chevron ${showChips ? 'rot90' : ''}`}>
-            <IconChevron size={16} />
-          </span>
-        </button>
-        {showChips && (
-          <div className="chip-toggle-row mt8">
-            {enabledDenoms.map((d) => (
-              <button
-                key={d.id}
-                className={`chip-toggle ${excluded.has(d.id) ? 'off' : ''}`}
-                onClick={() => toggleExcluded(d.id)}
-              >
-                <Chip value={d.value} color={d.color} accent={d.accent} size={26} shape={d.shape} />
-                {d.value}
-              </button>
-            ))}
-          </div>
-        )}
+          {/* ================ RESULT HERO — the answer ================ */}
+          <div className="result-hero">
+            <div className="hero-eyebrow">
+              {tuned ? t('table.handoutTitle') : t('plan.eachPlayer')}
+            </div>
+            <div className="flex-between" style={{ alignItems: 'flex-end' }}>
+              <div className="big-num">
+                {heroChips} <small>{t('plan.chips')}</small>
+              </div>
+              <div className="hero-depth">
+                <div className="n">
+                  {bbCount}
+                  <span> BB</span>
+                </div>
+                <div className="l">{t('plan.bbDeep')}</div>
+              </div>
+            </div>
+            <div className="hero-sub">
+              {fmtMoney(heroTotal * unit, cur)} · {num(heroTotal)} pts · {heroUsed.length}{' '}
+              {t(heroUsed.length === 1 ? 'plan.denomOne' : 'plan.denomMany')}
+              {edited && !tuned && <span className="badge-soft" style={{ marginLeft: 8 }}>{t('plan.edited')}</span>}
+            </div>
 
-        <div className="divider" />
-        <div className="row">
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{t('plan.useAllChips')}</div>
-            <div className="faint" style={{ fontSize: 12 }}>{t('plan.useAllDesc')}</div>
-          </div>
-          <div className="spacer" />
-          <Toggle
-            on={useAllChips}
-            label={t('plan.useAllChips')}
-            onChange={() => dispatch({ type: 'UPDATE_SESSION', patch: { useAllChips: !useAllChips } })}
-          />
-        </div>
+            <ChipStackViz denoms={heroUsed} counts={heroCounts} surface="plan" roomyChipSize={104} />
 
-        <div className="divider" />
-        <div className="flex-between">
-          <div>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>{t('plan.upToTypes')}</label>
-            <div className="faint" style={{ fontSize: 12 }}>{t('plan.upToDesc')}</div>
-          </div>
-          <div className="stepper">
-            <button
-              onClick={() =>
-                dispatch({
-                  type: 'UPDATE_SESSION',
-                  patch: { maxDenoms: maxDenoms === 0 ? Math.max(2, enabledDenoms.length - 1) : Math.max(2, maxDenoms - 1) },
-                })
-              }
-            >
-              −
-            </button>
-            <span className="val" style={{ fontSize: 15, minWidth: 46 }}>{maxDenoms === 0 ? 'All' : maxDenoms}</span>
-            <button
-              onClick={() =>
-                dispatch({
-                  type: 'UPDATE_SESSION',
-                  patch: { maxDenoms: maxDenoms === 0 || maxDenoms >= enabledDenoms.length - 1 ? 0 : maxDenoms + 1 },
-                })
-              }
-            >
-              +
-            </button>
-          </div>
-        </div>
+            {/* small-chip slider — lives with the visual it controls. It shapes the PLAN,
+                so it steps aside while the card is showing some other amount: a mid-game
+                handout is deliberately built with the fewest chips, not with this. */}
+            {!tuned && <ChipMixSlider value={smallBias} onChange={moveBias} />}
 
-        <div className="divider" />
-        <button className="mins-toggle" onClick={() => setShowMins((v) => !v)}>
-          <span>{t('plan.perChipLimits')}</span>
-          <span className={`chevron ${showMins ? 'rot90' : ''}`}>
-            <IconChevron size={16} />
-          </span>
-        </button>
-        {showMins && (
-          <div className="limits-list">
-            {enabledDenoms.map((d) => {
-              const min = d.minPerPlayer ?? 0;
-              const max = d.maxPerPlayer; // undefined = unlimited
-              const inStack = displayCounts[d.id] ?? 0;
-              const invCap = Math.floor(d.count / Math.max(1, startingStacks));
-              const setMax = (nv: number | undefined) =>
-                dispatch({ type: 'UPDATE_DENOM', id: d.id, patch: { maxPerPlayer: nv, minPerPlayer: nv === undefined ? min : Math.min(min, nv) } });
+            {heroUsed.length > 0 && heroTotal > 0 && (
+              <div className="valbar" aria-hidden>
+                {heroUsed.map((d) => (
+                  <i
+                    key={d.id}
+                    style={{ flexGrow: ((heroCounts[d.id] ?? 0) * d.value) / heroTotal, background: d.color }}
+                    title={`${d.value}: ${fmtMoney((heroCounts[d.id] ?? 0) * d.value * unit, cur)}`}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* How much, and for which blinds — the same control the Table tab carries. */}
+            <StackTuner />
+
+            {heroBlind && (
+              <div className={`blind-check ${heroBlindOk ? 'ok' : 'bad'}`}>
+                {baseDenom && <Chip value={baseDenom.value} color={baseDenom.color} accent={baseDenom.accent} size={30} shape={baseDenom.shape} />}
+                <div>
+                  <b>{t('plan.smallestChip', { v: heroBaseValue })}</b>
+                  <span>
+                    {t(heroBlindOk ? 'plan.blindOk' : 'plan.blindBad', {
+                      sb: heroBlind.smallBlind,
+                      bb: heroBlind.bigBlind,
+                    })}
+                  </span>
+                </div>
+                {heroBlindOk ? <IconCheck size={18} /> : <IconAlert size={18} />}
+              </div>
+            )}
+          </div>
+
+          {/* The card is showing something other than the plan's own stack: say so once,
+              and keep the plan's analysis out of the way until it comes back. */}
+          {tuned && (
+            <div className="tuned-note">
+              {t('plan.tunedNote', { amount: fmtMoney(tunedAmount, cur), n: tunedLevelIdx + 1 })}
+            </div>
+          )}
+
+          {/* Plan-only from here down: it all describes the buy-in stack at the starting
+              blinds, so a card tuned to a €45 top-up folds it away rather than pairing a
+              €45 picture with a €20 analysis. */}
+          {!tuned && (
+            <>
+          {/* feasibility */}
+          {/* Not "you can't do this" but "here is the shopping list" — the number of
+              chips to buy is a question the app can answer and the user cannot. */}
+          {!starting.feasible && starting.shortfall.length > 0 && (
+            <div className="card missing-card">
+              <div className="section-label" style={{ margin: '0 0 8px' }}>
+                {t('plan.missing')}
+                <span className="hint">{t('plan.missingHint', { n: startingStacks })}</span>
+              </div>
+              {starting.shortfall.map((sf) => {
+                const d = denominations.find((x) => x.id === sf.denomId);
+                return (
+                  <div className="missing-row" key={sf.denomId}>
+                    {d && <Chip value={d.value} color={d.color} accent={d.accent} shape={d.shape} size={26} />}
+                    <span className="missing-txt">{t('plan.missingRow', { n: sf.missing, value: num(sf.value) })}</span>
+                    <span className="missing-have">{sf.have} / {sf.needed}</span>
+                  </div>
+                );
+              })}
+              <p className="faint" style={{ fontSize: 12, margin: '10px 2px 0' }}>
+                {t('plan.missingBuy', { n: starting.shortfall.reduce((s2, sf) => s2 + sf.missing, 0) })}
+              </p>
+            </div>
+          )}
+
+          {starting.feasible ? (
+            <div className="feas ok">
+              <IconCheck size={18} /> {t('plan.enoughChips', { n: startingStacks })}
+            </div>
+          ) : (
+            <div className="feas warn">
+              <IconAlert size={18} /> {t('plan.notEnoughChips', { n: startingStacks })}
+            </div>
+          )}
+          {starting.warnings.length > 0 && (
+            <ul className="warn-list">
+              {starting.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          )}
+          {starting.notes.length > 0 && (
+            <ul className="note-list">
+              {starting.notes.map((n, i) => (
+                <li key={i}>{n}</li>
+              ))}
+            </ul>
+          )}
+
+          {/* live-adjust editor */}
+          <div className="section-label">
+            {t('plan.fineTune')}
+            <span className="hint">{t('plan.fineTuneHint')}</span>
+          </div>
+          <div className="card adjust-card">
+            {editorDenoms.map((d) => {
+              const c = displayCounts[d.id] ?? 0;
+              const isLocked = locked.has(d.id);
               return (
-                <div className="limit-row" key={d.id}>
-                  <Chip value={d.value} color={d.color} accent={d.accent} size={26} shape={d.shape} />
-                  <div className="limit-name">
-                    <b>{d.value}</b>
-                    <small>in stack: {inStack}</small>
-                  </div>
+                <div className={`adjust-row ${isLocked ? 'locked' : ''} ${c === 0 ? 'zero' : ''}`} key={d.id}>
+                  <button className={`lock-btn ${isLocked ? 'on' : ''}`} onClick={() => toggleLock(d.id)} aria-label={t('plan.pinCount')}>
+                    <IconLock size={14} />
+                  </button>
+                  <Chip value={d.value} color={d.color} accent={d.accent} size={28} shape={d.shape} />
+                  <span className="adjust-val">{d.value}</span>
                   <div className="spacer" />
-                  <div className="limit-ctl">
-                    <label>min</label>
-                    <div className="min-stepper">
-                      <button onClick={() => dispatch({ type: 'UPDATE_DENOM', id: d.id, patch: { minPerPlayer: Math.max(0, min - 1) } })}>−</button>
-                      <span>{min}</span>
-                      <button onClick={() => dispatch({ type: 'UPDATE_DENOM', id: d.id, patch: { minPerPlayer: Math.min(min + 1, max ?? Infinity) } })}>+</button>
-                    </div>
-                  </div>
-                  <div className="limit-ctl">
-                    <label>max</label>
-                    <div className="min-stepper">
-                      <button onClick={() => setMax(max === undefined ? inStack : Math.max(0, max - 1))}>−</button>
-                      <span>{max === undefined ? '∞' : max}</span>
-                      <button onClick={() => setMax(max === undefined ? undefined : max + 1 >= invCap ? undefined : max + 1)}>+</button>
-                    </div>
+                  <div className="stepper sm">
+                    <button onClick={() => stepDenom(d.id, -1)}>−</button>
+                    <span className="val">{c}</span>
+                    <button onClick={() => stepDenom(d.id, 1)}>+</button>
                   </div>
                 </div>
               );
             })}
+            <div className="adjust-foot">
+              <span className={effTotal === buyInUnits ? 'bal-ok' : 'bal-bad'}>
+                {effTotal === buyInUnits
+                  ? t('plan.balances')
+                  : `${effTotal > buyInUnits ? '+' : ''}${num(effTotal - buyInUnits)} pts vs buy-in`}
+              </span>
+              {edited && (
+                <button className="link-btn" onClick={() => setOverride(null)}>
+                  {t('plan.resetToAuto')}
+                </button>
+              )}
+            </div>
           </div>
-        )}
 
-      </div>
+          {/* breakdown table */}
+          <div className="card mt12">
+            <StackTable
+              stack={{ ...starting, counts: displayCounts, denomsUsed: effUsed, chipCount: effChips, totalValue: effTotal }}
+              stacks={startingStacks}
+              unit={unit}
+              cur={cur}
+            />
+          </div>
+
+          {/* later levels & colour-up — collapsed by default (secondary to the starting stack) */}
+          {!isCash && (laterStages.length > 0 || colorUps.length > 0) && (
+            <>
+              <button className="section-label collapsible-head" onClick={() => setShowLater((v) => !v)}>
+                {t('plan.laterColorUp')}
+                <span className="hint">{laterStages.length === 1 ? t('plan.laterLevel') : t('plan.laterLevels', { n: laterStages.length })}</span>
+                <span className={`chevron ${showLater ? 'rot90' : ''}`} style={{ marginLeft: 8 }}>
+                  <IconChevron size={16} />
+                </span>
+              </button>
+              {showLater && (
+                <>
+                  {laterStages.length > 0 && (
+                    <>
+                      <div className="stage-scroll">
+                        {laterStages.map((s) => (
+                          <StageCard key={s.blind.id} blind={s.blind} level={startIdx + s.offset + 1} stack={s.stack} />
+                        ))}
+                      </div>
+                      <p className="faint" style={{ fontSize: 12, textAlign: 'center', margin: '6px 8px 0' }}>
+                        Rebuys at higher blinds use fewer little chips and more high-value chips.
+                      </p>
+                    </>
+                  )}
+                  {colorUps.length > 0 && (
+                    <>
+                      <div className="section-label">
+                        {t('plan.colorUpGuide')}
+                        <span className="hint">{t('plan.racingOff')}</span>
+                      </div>
+                      {colorUps.map((e) => (
+                <div className="card colorup-card" key={e.blind.id}>
+                  <div className="colorup-head">
+                    <span className="lvl">Level {e.levelIndex + 1}</span>
+                    <span className="blinds">blinds reach {e.blind.smallBlind}/{e.blind.bigBlind}</span>
+                  </div>
+                  {e.retirements.map((r) => {
+                    const fromD = denominations.find((d) => d.id === r.fromId);
+                    const toD = r.toId ? denominations.find((d) => d.id === r.toId) : undefined;
+                    return (
+                      <div className="retire-row" key={r.fromId}>
+                        <div className="retire-trade">
+                          {fromD && <Chip value={fromD.value} color={fromD.color} accent={fromD.accent} size={30} shape={fromD.shape} />}
+                          <IconChevron size={16} />
+                          {toD && <Chip value={toD.value} color={toD.color} accent={toD.accent} size={30} shape={toD.shape} />}
+                        </div>
+                        <div className="retire-text">
+                          <b>Retire the {r.fromValue}s</b>
+                          <span>
+                            {r.ratioClean
+                              ? `trade every ${r.ratio} × ${r.fromValue} for one ${r.toValue}`
+                              : `exchange for ${r.toValue} chips`}
+                          </span>
+                          <div className="retire-nums">
+                            {r.tableCount} × {r.fromValue} → <b>{r.bigOut} × {r.toValue}</b>
+                            {r.raceChips > 0 && <span className="race-tag">race {r.raceChips} odd</span>}
+                          </div>
+                          {!r.feasible && r.toId && (
+                            <div className="race-warn">You own only {r.bankHave} × {r.toValue} — may fall short.</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                      ))}
+                      <p className="faint" style={{ fontSize: 12, textAlign: 'center', margin: '6px 8px 0', lineHeight: 1.5 }}>
+                        The race: deal one card per leftover chip; the highest card rounds up to the next chip.
+                      </p>
+                    </>
+                  )}
+                </>
+              )}
+            </>
+          )}
+            </>
+          )}
+
+          </>
+        }
+        right={
+          <>
+          {/* ================ SESSION SETUP — the inputs ================ */}
+          <div className="section-label" style={{ marginTop: 26 }}>
+            {t('plan.sessionSetup')}
+            <span className="hint">{t('plan.updatesLive')}</span>
+          </div>
+
+          {/* Players */}
+          <div className="card">
+            <div className="row">
+              <div>
+                <div style={{ fontWeight: 600 }}>{t('plan.playersAtTable')}</div>
+                <div className="faint" style={{ fontSize: 12.5 }}>
+                  {rosterSeated ? t('plan.playersFromRoster') : t('plan.playersDesc')}
+                </div>
+              </div>
+              <div className="spacer" />
+              {/* Once people are actually seated the roster owns this number — two places
+                  to edit it meant planning chips for four while six played. */}
+              {rosterSeated ? (
+                <div className="plan-count-locked">
+                  <b>{numPlayers}</b>
+                  <span>{t('plan.atTable')}</span>
+                </div>
+              ) : (
+                <div className="stepper">
+                  <button onClick={() => dispatch({ type: 'SET_PLAYER_COUNT', n: numPlayers - 1 })}>−</button>
+                  <span className="val">{numPlayers}</span>
+                  <button onClick={() => dispatch({ type: 'SET_PLAYER_COUNT', n: numPlayers + 1 })}>+</button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Buy-in & rebuys */}
+          <div className="card">
+            <div className="row">
+              <div className="field">
+                <label>{t('plan.buyIn')}</label>
+                <div className="input-affix">
+                  <span className="affix">{cur}</span>
+                  <MoneyInput
+                    value={buyIn || 0}
+                    ariaLabel={t('plan.buyIn')}
+                    onCommit={(v) => dispatch({ type: 'UPDATE_SESSION', patch: { buyIn: Math.max(0, v) } })}
+                  />
+                </div>
+              </div>
+              <div className="field">
+                <label>{t('plan.laterRebuy')}</label>
+                <div className="input-affix">
+                  <span className="affix">{cur}</span>
+                  <MoneyInput
+                    value={lateRebuyAmount || 0}
+                    ariaLabel={t('plan.laterRebuy')}
+                    onCommit={(v) => dispatch({ type: 'UPDATE_SESSION', patch: { lateRebuyAmount: Math.max(0, v) } })}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="row mt12">
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{t('plan.earlyRebuys')}</div>
+                <div className="faint" style={{ fontSize: 12 }}>{t('plan.earlyRebuysHint', { amount: fmtMoney(buyIn, cur) })}</div>
+              </div>
+              <div className="spacer" />
+              <div className="stepper">
+                <button onClick={() => dispatch({ type: 'UPDATE_SESSION', patch: { earlyRebuys: Math.max(0, earlyRebuys - 1) } })}>−</button>
+                <span className="val">{earlyRebuys}</span>
+                <button onClick={() => dispatch({ type: 'UPDATE_SESSION', patch: { earlyRebuys: earlyRebuys + 1 } })}>+</button>
+              </div>
+            </div>
+            <p className="faint" style={{ fontSize: 12, margin: '12px 2px 0' }}>
+              {t('plan.buyInSummary', {
+                amount: fmtMoney(buyIn, cur),
+                units: num(buyInUnits),
+                rebuy: num(lateRebuyUnits),
+                stacks: startingStacks,
+              })}
+            </p>
+          </div>
+
+          {/* Blinds */}
+          <div className="section-label">
+            {t('plan.blindLevels')}
+            <span className="hint">{t('plan.tapToStart')}</span>
+          </div>
+          <div className="card">
+            {blindLevels.map((b, i) => (
+              <div
+                className={`blind-row ${i === startIdx ? 'start' : ''}`}
+                key={b.id}
+                style={{ opacity: i < startIdx ? 0.4 : 1 }}
+                onClick={() => setStartIdx(i)}
+              >
+                <div className="lvl-badge">{i + 1}</div>
+                <div className="blind-inputs" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    className="mini-input"
+                    type="number"
+                    value={b.smallBlind || ''}
+                    onChange={(e) => dispatch({ type: 'UPDATE_BLIND', id: b.id, patch: { smallBlind: Math.max(0, +e.target.value) } })}
+                  />
+                  <span className="x">/</span>
+                  <input
+                    className="mini-input"
+                    type="number"
+                    value={b.bigBlind || ''}
+                    onChange={(e) => dispatch({ type: 'UPDATE_BLIND', id: b.id, patch: { bigBlind: Math.max(0, +e.target.value) } })}
+                  />
+                  {i === startIdx && <span className="badge-soft" style={{ marginLeft: 6 }}>{t('plan.startBadge')}</span>}
+                </div>
+                <button
+                  className="icon-btn danger"
+                  style={{ width: 32, height: 32 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dispatch({ type: 'REMOVE_BLIND', id: b.id });
+                  }}
+                >
+                  <IconTrash size={15} />
+                </button>
+              </div>
+            ))}
+            {/* Length-first: the question a host actually has an answer to. */}
+            {!isCash && (
+              <div className="dur-row">
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{t('plan.forDuration')}</div>
+                  <div className="faint" style={{ fontSize: 12 }}>
+                    {durationPick
+                      ? t('plan.durationResult', {
+                          levels: blindLevels.length,
+                          mins: settings.minutesPerLevel,
+                          total: t('onboard.hours', { n: durationPick }),
+                        })
+                      : t('plan.forDurationHint')}
+                  </div>
+                </div>
+                <div className="spacer" />
+                <div className="dur-picks">
+                  {[2, 3, 4, 5].map((h) => (
+                    <button
+                      key={h}
+                      className={`dur-pick ${durationPick === h ? 'active' : ''}`}
+                      onClick={() => applyDuration(h)}
+                    >
+                      {t('onboard.hours', { n: h })}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="row mt8" style={{ gap: 8 }}>
+              <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={applySuggestedLadder}>
+                <IconSpark size={15} /> {t('plan.suggest')}
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => dispatch({ type: 'ADD_BLIND' })}>
+                <IconPlus size={16} /> {t('plan.level')}
+              </button>
+            </div>
+          </div>
+
+          {/* Distribution options */}
+          <div className="section-label">
+            <IconSpark size={14} /> {t('plan.distOptions')}
+          </div>
+          <div className="card">
+            <button className="mins-toggle" onClick={() => setShowChips((v) => !v)}>
+              <span>
+                {t('plan.chipsToUse')}{' '}
+                <span className="faint" style={{ fontWeight: 500 }}>· {t('plan.active', { n: enabledDenoms.length - excluded.size })}</span>
+              </span>
+              <span className={`chevron ${showChips ? 'rot90' : ''}`}>
+                <IconChevron size={16} />
+              </span>
+            </button>
+            {showChips && (
+              <div className="chip-toggle-row mt8">
+                {enabledDenoms.map((d) => (
+                  <button
+                    key={d.id}
+                    className={`chip-toggle ${excluded.has(d.id) ? 'off' : ''}`}
+                    onClick={() => toggleExcluded(d.id)}
+                  >
+                    <Chip value={d.value} color={d.color} accent={d.accent} size={26} shape={d.shape} />
+                    {d.value}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="divider" />
+            <div className="row">
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{t('plan.useAllChips')}</div>
+                <div className="faint" style={{ fontSize: 12 }}>{t('plan.useAllDesc')}</div>
+              </div>
+              <div className="spacer" />
+              <Toggle
+                on={useAllChips}
+                label={t('plan.useAllChips')}
+                onChange={() => dispatch({ type: 'UPDATE_SESSION', patch: { useAllChips: !useAllChips } })}
+              />
+            </div>
+
+            <div className="divider" />
+            <div className="flex-between">
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600 }}>{t('plan.upToTypes')}</label>
+                <div className="faint" style={{ fontSize: 12 }}>{t('plan.upToDesc')}</div>
+              </div>
+              <div className="stepper">
+                <button
+                  onClick={() =>
+                    dispatch({
+                      type: 'UPDATE_SESSION',
+                      patch: { maxDenoms: maxDenoms === 0 ? Math.max(2, enabledDenoms.length - 1) : Math.max(2, maxDenoms - 1) },
+                    })
+                  }
+                >
+                  −
+                </button>
+                <span className="val" style={{ fontSize: 15, minWidth: 46 }}>{maxDenoms === 0 ? 'All' : maxDenoms}</span>
+                <button
+                  onClick={() =>
+                    dispatch({
+                      type: 'UPDATE_SESSION',
+                      patch: { maxDenoms: maxDenoms === 0 || maxDenoms >= enabledDenoms.length - 1 ? 0 : maxDenoms + 1 },
+                    })
+                  }
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div className="divider" />
+            <button className="mins-toggle" onClick={() => setShowMins((v) => !v)}>
+              <span>{t('plan.perChipLimits')}</span>
+              <span className={`chevron ${showMins ? 'rot90' : ''}`}>
+                <IconChevron size={16} />
+              </span>
+            </button>
+            {showMins && (
+              <div className="limits-list">
+                {enabledDenoms.map((d) => {
+                  const min = d.minPerPlayer ?? 0;
+                  const max = d.maxPerPlayer; // undefined = unlimited
+                  const inStack = displayCounts[d.id] ?? 0;
+                  const invCap = Math.floor(d.count / Math.max(1, startingStacks));
+                  const setMax = (nv: number | undefined) =>
+                    dispatch({ type: 'UPDATE_DENOM', id: d.id, patch: { maxPerPlayer: nv, minPerPlayer: nv === undefined ? min : Math.min(min, nv) } });
+                  return (
+                    <div className="limit-row" key={d.id}>
+                      <Chip value={d.value} color={d.color} accent={d.accent} size={26} shape={d.shape} />
+                      <div className="limit-name">
+                        <b>{d.value}</b>
+                        <small>in stack: {inStack}</small>
+                      </div>
+                      <div className="spacer" />
+                      <div className="limit-ctl">
+                        <label>min</label>
+                        <div className="min-stepper">
+                          <button onClick={() => dispatch({ type: 'UPDATE_DENOM', id: d.id, patch: { minPerPlayer: Math.max(0, min - 1) } })}>−</button>
+                          <span>{min}</span>
+                          <button onClick={() => dispatch({ type: 'UPDATE_DENOM', id: d.id, patch: { minPerPlayer: Math.min(min + 1, max ?? Infinity) } })}>+</button>
+                        </div>
+                      </div>
+                      <div className="limit-ctl">
+                        <label>max</label>
+                        <div className="min-stepper">
+                          <button onClick={() => setMax(max === undefined ? inStack : Math.max(0, max - 1))}>−</button>
+                          <span>{max === undefined ? '∞' : max}</span>
+                          <button onClick={() => setMax(max === undefined ? undefined : max + 1 >= invCap ? undefined : max + 1)}>+</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+          </div>
+          </>
+        }
+      />
+
 
       {shareOpen && (
         <ShareSheet

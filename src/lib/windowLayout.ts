@@ -13,31 +13,72 @@ import { useEffect } from 'react';
  * Fold's COVER screen is ~412x960 — wider than an S22 but no taller, so it is
  * still a phone. Opened out, the same Fold reports ~832x750 and crosses over.
  *
- * Note what is deliberately NOT here: a second, two-pane layout. 832dp is the
- * MEDIUM class, where the guidance is a navigation rail and a single pane —
- * two panes start at 840dp, and forcing them onto a Fold gives two columns
- * narrower than the phone the app was designed for.
+ * Crossing this line buys the rail and a wider column, and nothing else: 832dp
+ * standing up is the MEDIUM class, where the guidance is a navigation rail and
+ * ONE pane, and forcing two columns on it gives two columns narrower than the
+ * phone the app was designed for. Two panes are a separate question with a
+ * separate threshold — see `PaneCount` below.
  */
 export type WindowLayout = 'compact' | 'wide';
 
+/**
+ * ...and, separately, whether there is room for TWO columns of cards.
+ *
+ * A second attribute rather than a third value of the first one, deliberately.
+ * Every wide rule in the stylesheet — the rail, the header, the grids that open
+ * out — is true of both shapes, and a third value would mean rewriting all of
+ * them to match two things instead of one. `data-panes` is written by the same
+ * `apply()` inside the same view transition, so the two never disagree and the
+ * fold still animates as one movement.
+ *
+ * 840dp is Material's EXPANDED boundary, and it is exactly where a Fold's inner
+ * screen lands when it is turned on its side: about 933x777dp open and
+ * landscape, 777x933 open and portrait. So the same panel gets two columns lying
+ * down and one standing up, which is the point — the earlier attempt at two
+ * columns was in PORTRAIT at 832dp, where both columns came out narrower than
+ * the phone the cards were drawn for.
+ *
+ * The height floor is what keeps a phone in landscape out: an S22 lying down is
+ * ~800x360, under the width bar anyway, and anything that clears 840 wide on 400
+ * of height is a screen with no room for two stacks of cards.
+ */
+export type PaneCount = 1 | 2;
+
+export interface WindowShape {
+  layout: WindowLayout;
+  panes: PaneCount;
+}
+
 const WIDE = '(min-width: 600px) and (min-height: 600px)';
+const TWO_PANE = '(min-width: 840px) and (min-height: 520px)';
 const CALM = '(prefers-reduced-motion: reduce)';
 
 /** What the window is now. */
-function measure(): WindowLayout {
-  if (typeof window === 'undefined' || !window.matchMedia) return 'compact';
-  return window.matchMedia(WIDE).matches ? 'wide' : 'compact';
+function measure(): WindowShape {
+  if (typeof window === 'undefined' || !window.matchMedia) return { layout: 'compact', panes: 1 };
+  return {
+    layout: window.matchMedia(WIDE).matches ? 'wide' : 'compact',
+    panes: window.matchMedia(TWO_PANE).matches ? 2 : 1,
+  };
 }
 
 /** What the page is currently drawn as. Read back from the DOM rather than kept
  *  in a variable beside it: the two can only disagree if one of them lies, and
  *  the attribute is the one the stylesheet actually obeys. */
-function drawn(): WindowLayout {
-  return document.documentElement.dataset.layout === 'wide' ? 'wide' : 'compact';
+function drawn(): WindowShape {
+  const d = document.documentElement.dataset;
+  return {
+    layout: d.layout === 'wide' ? 'wide' : 'compact',
+    panes: d.panes === '2' ? 2 : 1,
+  };
 }
 
-function apply(layout: WindowLayout) {
-  document.documentElement.dataset.layout = layout;
+const same = (a: WindowShape, b: WindowShape) => a.layout === b.layout && a.panes === b.panes;
+
+function apply(shape: WindowShape) {
+  const d = document.documentElement.dataset;
+  d.layout = shape.layout;
+  d.panes = String(shape.panes);
 }
 
 /* Written at import time, before React renders anything: the first paint is
@@ -71,7 +112,7 @@ if (typeof document !== 'undefined') apply(measure());
  */
 function sync() {
   const next = measure();
-  if (next === drawn()) return;
+  if (same(next, drawn())) return;
 
   const start = document.startViewTransition?.bind(document);
   if (!start || window.matchMedia(CALM).matches) {
@@ -93,14 +134,14 @@ function sync() {
      the attribute the blunt way. */
   setTimeout(() => {
     const now = measure();
-    if (now !== drawn()) apply(now);
+    if (!same(now, drawn())) apply(now);
   }, 500);
 }
 
 /** Call once, high in the tree. */
 export function useWindowLayout() {
   useEffect(() => {
-    const mq = window.matchMedia(WIDE);
+    const queries = [window.matchMedia(WIDE), window.matchMedia(TWO_PANE)];
     const onChange = () => sync();
 
     /* Two ways in, because neither one is enough on its own.
@@ -119,16 +160,20 @@ export function useWindowLayout() {
       timer = setTimeout(sync, 150);
     };
 
-    if (mq.addEventListener) mq.addEventListener('change', onChange);
-    else mq.addListener(onChange);
+    for (const mq of queries) {
+      if (mq.addEventListener) mq.addEventListener('change', onChange);
+      else mq.addListener(onChange);
+    }
     window.addEventListener('resize', onResize);
     // The window can have changed shape between module load and this effect.
     sync();
 
     return () => {
       clearTimeout(timer);
-      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
-      else mq.removeListener(onChange);
+      for (const mq of queries) {
+        if (mq.removeEventListener) mq.removeEventListener('change', onChange);
+        else mq.removeListener(onChange);
+      }
       window.removeEventListener('resize', onResize);
     };
   }, []);

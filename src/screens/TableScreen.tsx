@@ -21,6 +21,7 @@ import { useBackHandler } from '../lib/backHandler';
 import ClockFocus from '../components/ClockFocus';
 import TableTools from '../components/TableTools';
 import JoinRequests from '../components/JoinRequests';
+import Panes from '../components/Panes';
 import BreakAt from '../components/BreakAt';
 import { haptic } from '../lib/platform';
 import { cancelLevelAlert, levelAlertsAvailable, requestLevelAlerts, scheduleLevelAlert } from '../lib/levelAlert';
@@ -200,126 +201,138 @@ export default function TableScreen() {
         </div>
       )}
 
-      {/* Connect to the TV — type the code the TV shows, right here on the Table tab */}
-      <ConnectToTv />
+      {/* Two columns once the panel is wide enough to hold them — the reference
+          picture on the left, the night on the right. The split is contiguous, so
+          on a phone this is the same order it has always been; see Panes.tsx. */}
+      <Panes
+        left={
+          <>
+            {/* Connect to the TV — type the code the TV shows, right here on the Table tab */}
+            <ConnectToTv />
 
-      {/* The stack everyone gets for the buy-in */}
-      <StartingStack levelIdx={levelIdx} />
+            {/* The stack everyone gets for the buy-in */}
+            <StartingStack levelIdx={levelIdx} />
+          </>
+        }
+        right={
+          <>
+            {/* Anybody who scanned the code on the TV and typed their own name. */}
+            <JoinRequests />
 
-      {/* Anybody who scanned the code on the TV and typed their own name. */}
-      <JoinRequests />
+            {/* Everyone at the table: joining, rebuys, stack counts, cash-outs — one card. */}
+            <PlayerRoster levelIdx={levelIdx} />
 
-      {/* Everyone at the table: joining, rebuys, stack counts, cash-outs — one card. */}
-      <PlayerRoster levelIdx={levelIdx} />
+            {/* Side pots and colouring up — the two calculations the table argues about. */}
+            <button className="btn btn-ghost btn-block btn-sm tools-btn" onClick={() => setTools(true)}>
+              🃏 {t('tools.open')}
+            </button>
 
-      {/* Side pots and colouring up — the two calculations the table argues about. */}
-      <button className="btn btn-ghost btn-block btn-sm tools-btn" onClick={() => setTools(true)}>
-        🃏 {t('tools.open')}
-      </button>
-
-      {showClock && (
-        <>
-          <div className="section-label">
-            {t('table.blindClock')}
-            <span className="hint">{t('table.perLevel', { n: mins })}</span>
-          </div>
-
-          <div className="card clock-card">
-            {clockFace}
-            <div className="clock-controls">
-              <button className="icon-btn" onClick={() => goLevel(levelIdx - 1)} aria-label={t('table.prevLevel')}>
-                <span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}>
-                  <IconChevron size={20} />
-                </span>
-              </button>
-              <button className="clock-play" onClick={() => send(togglePlayPause(clock))}>
-                {running ? <IconPause size={26} /> : <IconPlay size={26} />}
-              </button>
-              <button className="icon-btn" onClick={resetPeriod} aria-label={t('table.resetTimer')}>
-                <IconReset size={19} />
-              </button>
-              <button className="icon-btn" onClick={() => goLevel(levelIdx + 1)} aria-label={t('table.nextLevelBtn')}>
-                <IconChevron size={20} />
-              </button>
-              <button className="icon-btn" onClick={() => setTv(true)} aria-label={t('table.bigScreenShort')}>
-                <IconExpand size={18} />
-              </button>
-            </div>
-
-            {/* Native only — the browser has no way to wake a closed tab at a
-                deadline, so offering the switch there would be a promise the app
-                cannot keep. */}
-            {levelAlertsAvailable() && (
-            <div className="row break-at">
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.levelAlert')}</div>
-                <div className="faint" style={{ fontSize: 12 }}>
-                  {alertDenied ? t('table.levelAlertDenied') : t('table.levelAlertHint')}
+            {showClock && (
+              <>
+                <div className="section-label">
+                  {t('table.blindClock')}
+                  <span className="hint">{t('table.perLevel', { n: mins })}</span>
                 </div>
-              </div>
-              <div className="spacer" />
-              <Toggle
-                on={alerts}
-                label={t('table.levelAlert')}
-                onChange={async () => {
-                  if (alerts) {
-                    dispatch({ type: 'UPDATE_SETTINGS', patch: { levelAlerts: false } });
-                    void cancelLevelAlert();
-                    return;
-                  }
-                  const ok = await requestLevelAlerts();
-                  setAlertDenied(!ok);
-                  if (ok) dispatch({ type: 'UPDATE_SETTINGS', patch: { levelAlerts: true } });
-                }}
-              />
-            </div>
+
+                <div className="card clock-card">
+                  {clockFace}
+                  <div className="clock-controls">
+                    <button className="icon-btn" onClick={() => goLevel(levelIdx - 1)} aria-label={t('table.prevLevel')}>
+                      <span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}>
+                        <IconChevron size={20} />
+                      </span>
+                    </button>
+                    <button className="clock-play" onClick={() => send(togglePlayPause(clock))}>
+                      {running ? <IconPause size={26} /> : <IconPlay size={26} />}
+                    </button>
+                    <button className="icon-btn" onClick={resetPeriod} aria-label={t('table.resetTimer')}>
+                      <IconReset size={19} />
+                    </button>
+                    <button className="icon-btn" onClick={() => goLevel(levelIdx + 1)} aria-label={t('table.nextLevelBtn')}>
+                      <IconChevron size={20} />
+                    </button>
+                    <button className="icon-btn" onClick={() => setTv(true)} aria-label={t('table.bigScreenShort')}>
+                      <IconExpand size={18} />
+                    </button>
+                  </div>
+
+                  {/* Native only — the browser has no way to wake a closed tab at a
+                      deadline, so offering the switch there would be a promise the app
+                      cannot keep. */}
+                  {levelAlertsAvailable() && (
+                  <div className="row break-at">
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.levelAlert')}</div>
+                      <div className="faint" style={{ fontSize: 12 }}>
+                        {alertDenied ? t('table.levelAlertDenied') : t('table.levelAlertHint')}
+                      </div>
+                    </div>
+                    <div className="spacer" />
+                    <Toggle
+                      on={alerts}
+                      label={t('table.levelAlert')}
+                      onChange={async () => {
+                        if (alerts) {
+                          dispatch({ type: 'UPDATE_SETTINGS', patch: { levelAlerts: false } });
+                          void cancelLevelAlert();
+                          return;
+                        }
+                        const ok = await requestLevelAlerts();
+                        setAlertDenied(!ok);
+                        if (ok) dispatch({ type: 'UPDATE_SETTINGS', patch: { levelAlerts: true } });
+                      }}
+                    />
+                  </div>
+                  )}
+
+                  <BreakAt clock={clock} send={send} />
+
+                  <div className="clock-adjust">
+                    <button className="adj10" onClick={() => setMins(mins - 10)}>−10</button>
+                    <button className="adj1" onClick={() => setMins(mins - 1)}>−1</button>
+                    <div className="mpl-center">
+                      <b>{mins}</b>
+                      <small>{t('table.minPerLevel')}</small>
+                    </div>
+                    <button className="adj1" onClick={() => setMins(mins + 1)}>+1</button>
+                    <button className="adj10" onClick={() => setMins(mins + 10)}>+10</button>
+                  </div>
+                </div>
+              </>
             )}
 
-            <BreakAt clock={clock} send={send} />
+            {manualBlinds && <BlindStepper levels={blindLevels} levelIdx={levelIdx} onStep={(d) => goLevel(levelIdx + d)} />}
 
-            <div className="clock-adjust">
-              <button className="adj10" onClick={() => setMins(mins - 10)}>−10</button>
-              <button className="adj1" onClick={() => setMins(mins - 1)}>−1</button>
-              <div className="mpl-center">
-                <b>{mins}</b>
-                <small>{t('table.minPerLevel')}</small>
-              </div>
-              <button className="adj1" onClick={() => setMins(mins + 1)}>+1</button>
-              <button className="adj10" onClick={() => setMins(mins + 10)}>+10</button>
-            </div>
-          </div>
-        </>
-      )}
+            {/* Hosting a Live Session: this panel drives the TV's clock, blinds and moments. */}
+            <RemoteControl clock={host.clock} send={host.send} />
 
-      {manualBlinds && <BlindStepper levels={blindLevels} levelIdx={levelIdx} onStep={(d) => goLevel(levelIdx + d)} />}
+            <button className="btn btn-primary btn-block" style={{ marginTop: isHost ? 14 : 0 }} onClick={() => setTv(true)}>
+              <IconExpand size={18} /> {t('table.bigScreen')}
+            </button>
+            <p className="faint" style={{ fontSize: 12, textAlign: 'center', margin: '8px 8px 0' }}>
+              {isHost ? t('table.hostHint') : t('table.castHint')}
+            </p>
 
-      {/* Hosting a Live Session: this panel drives the TV's clock, blinds and moments. */}
-      <RemoteControl clock={host.clock} send={host.send} />
+            {/* The big screen's own settings sit at the top level, not inside the setup
+                fold: they are the one thing here you reach for DURING a night (the text is
+                too small, the panels want moving), and two taps to get at them is one too
+                many. */}
+            <TvBroadcast />
 
-      <button className="btn btn-primary btn-block" style={{ marginTop: isHost ? 14 : 0 }} onClick={() => setTv(true)}>
-        <IconExpand size={18} /> {t('table.bigScreen')}
-      </button>
-      <p className="faint" style={{ fontSize: 12, textAlign: 'center', margin: '8px 8px 0' }}>
-        {isHost ? t('table.hostHint') : t('table.castHint')}
-      </p>
-
-      {/* The big screen's own settings sit at the top level, not inside the setup
-          fold: they are the one thing here you reach for DURING a night (the text is
-          too small, the panels want moving), and two taps to get at them is one too
-          many. */}
-      <TvBroadcast />
-
-      {/* Everything you set once and stop touching, folded away so the running game
-          is what fills the screen. Open by default until anybody has sat down. */}
-      <SetupSection open={setupOpen || state.ledger.length === 0} onToggle={() => setSetupOpen((v) => !v)}>
-        <GameModeCard />
-        <DealerAndSeats />
-        {!isCash && (
-          <p className="faint" style={{ fontSize: 12, textAlign: 'center', marginTop: 6 }}>
-            {t('table.ladderHint')}
-          </p>
-        )}
-      </SetupSection>
+            {/* Everything you set once and stop touching, folded away so the running game
+                is what fills the screen. Open by default until anybody has sat down. */}
+            <SetupSection open={setupOpen || state.ledger.length === 0} onToggle={() => setSetupOpen((v) => !v)}>
+              <GameModeCard />
+              <DealerAndSeats />
+              {!isCash && (
+                <p className="faint" style={{ fontSize: 12, textAlign: 'center', marginTop: 6 }}>
+                  {t('table.ladderHint')}
+                </p>
+              )}
+            </SetupSection>
+          </>
+        }
+      />
 
       {tools && <TableTools onClose={() => setTools(false)} />}
 
