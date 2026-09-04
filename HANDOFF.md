@@ -18,7 +18,13 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-09-04 from `main` @ `f049e4b`**, 4.71 MB (4,943,904 B),
+  (**CURRENT — rebuilt 2026-09-04 from `main` @ `aedcbf8`**, 4.72 MB (4,944,768 B),
+  run `33849418802`: the bundle pass — Firebase out of the precache, the QR generator
+  and the whole big screen off the boot path (main chunk 193 -> 173 kB gzip, precache
+  1109 -> 1000 KiB). Pages run `33849419513` green from the same commit, so
+  **APK / `main` / Pages are IN SYNC**. Download verified: `200`,
+  `application/vnd.android.package-archive`, 4,944,768 B.
+  Previous build: 2026-09-04 from `main` @ `f049e4b`, 4,943,904 B,
   run `33845204867`: the chip ruler works on BOTH of a Fold's screens (per-screen
   calibration, ladder full-bleed at every width), two taps to reach it, the TV code
   folded away, and a first run that asks which chips are on the table. Pages run
@@ -1303,7 +1309,9 @@ real images (`data:image/gif`, 636px). Console clean.
 
 ### STATE RIGHT NOW (2026-09-04, second pass — the ruler on two screens)
 
-Local branch **`feat/chip-3d-render`**, tip **`f049e4b`** = `main`. Working tree clean.
+Local branch **`feat/chip-3d-render`**, tip **`aedcbf8`** = `main`. Working tree clean.
+(The bundle pass on top of this is written up under "Recent work 2026-09-04 (third
+pass)" above; everything below still describes the ruler/onboarding pass.)
 `npm test` 29 files green, `npx tsc -b` clean, `npm run build` clean, `npm run lint`
 no errors. **Shipped**: pushed to `main`, Pages run `33845199945` green, APK run
 `33845204867` green — APK / `main` / Pages all built from `f049e4b`.
