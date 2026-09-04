@@ -3527,10 +3527,11 @@ input[type='color'] { cursor: pointer; }
 /* ============================================================
    Two columns — the Fold opened out and turned on its side
    ============================================================
-   The medium rules above are for the panel STANDING UP (777dp wide), where one
-   column is right. Lying down the same panel is ~933dp — Material's expanded
-   class — and a single 720px column centred in it leaves two black gutters and
-   shows two players at a time, which is the shape this pass was reported for.
+   The medium rules above are for the panel STANDING UP, where one column is
+   right. Lying down the same panel is around 933dp — Material's expanded class —
+   and a single 720px column centred in it leaves two black gutters and shows two
+   players at a time, which is the shape this pass was reported for. Which way up
+   decides it, not the width alone; lib/windowLayout.ts says why.
 
    The mechanism is one rule: the pane wrappers are `display: contents` at every
    other size, so they are not in the layout at all and every screen flows as the

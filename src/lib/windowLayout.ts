@@ -31,16 +31,21 @@ export type WindowLayout = 'compact' | 'wide';
  * `apply()` inside the same view transition, so the two never disagree and the
  * fold still animates as one movement.
  *
- * 840dp is Material's EXPANDED boundary, and it is exactly where a Fold's inner
- * screen lands when it is turned on its side: about 933x777dp open and
- * landscape, 777x933 open and portrait. So the same panel gets two columns lying
- * down and one standing up, which is the point — the earlier attempt at two
- * columns was in PORTRAIT at 832dp, where both columns came out narrower than
- * the phone the cards were drawn for.
+ * The test is ORIENTATION first and width second, which is not the obvious way
+ * round. Material's expanded boundary is 840dp, and keying off that alone puts
+ * the decision a few pixels from a Fold's inner screen in PORTRAIT — reported
+ * anywhere from 750 to 832dp depending on the device and the system bars — so a
+ * hair either way silently decides whether the cards are drawn in one column or
+ * two. Which way up the panel is held is not marginal: lying down it is around
+ * 933dp and standing up it is not, on every folding phone there is.
  *
- * The height floor is what keeps a phone in landscape out: an S22 lying down is
- * ~800x360, under the width bar anyway, and anything that clears 840 wide on 400
- * of height is a screen with no room for two stacks of cards.
+ * So: landscape, at least 800dp of width, at least 520dp of height. Portrait
+ * never splits, whatever it measures — that was the earlier attempt at two
+ * columns, and at 832dp both of them came out narrower than the phone the cards
+ * were drawn for. The height floor is what keeps ordinary phones out: an S22 on
+ * its side is ~800x360 and a Fold's COVER screen is ~960x412, both well under
+ * it, and a screen with 500dp of height has no room for two stacks of cards
+ * however wide it is.
  */
 export type PaneCount = 1 | 2;
 
@@ -50,7 +55,7 @@ export interface WindowShape {
 }
 
 const WIDE = '(min-width: 600px) and (min-height: 600px)';
-const TWO_PANE = '(min-width: 840px) and (min-height: 520px)';
+const TWO_PANE = '(min-aspect-ratio: 1 / 1) and (min-width: 800px) and (min-height: 520px)';
 const CALM = '(prefers-reduced-motion: reduce)';
 
 /** What the window is now. */
