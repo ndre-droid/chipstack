@@ -18,7 +18,19 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-08-30 from `main` @ `e1c830d`**, 4.60 MB (4,820,613 B),
+  (**CURRENT — rebuilt 2026-09-04 from `main` @ `2456796`**, 4.71 MB (4,941,262 B),
+  run `33840776716`: the Galaxy Fold pass — a navigation rail with the mark at its head
+  and the gear at its foot, one wider column, the starting stack drawn big, and the fold
+  itself animated (see "Recent work 2026-09-03/04 (the Fold)"). Pages run `33840772692`
+  green from the same commit, so **APK / `main` / Pages are IN SYNC**. Download verified:
+  `200`, `application/vnd.android.package-archive`, 4,941,262 B.
+  **NOTHING IN THIS PASS HAS BEEN SEEN ON THE PHYSICAL FOLD YET** — the user asked to
+  leave it all alone until they can test it. Do not build on top of it before they report.
+  Previous build: 2026-09-03 from `main` @ `5e2b174`, 4,940,782 B, run `33784698873`:
+  one column instead of two, plus the view-transition fold animation.
+  Previous build: 2026-09-03 from `main` @ `8ca4bf7`, 4,940,390 B, run `33778066508`:
+  the first Fold pass (rail + two columns — the two columns were wrong, see below).
+  Previous build: 2026-08-30 from `main` @ `e1c830d`, 4.60 MB (4,820,613 B),
   run `33302460810`: the phone goes round the table — pick your own name, count your own
   pile, one difference card at the end; plus the numpad/colour-strip rework (see
   "Recent work 2026-08-30 (pass-the-phone)").
@@ -176,6 +188,8 @@ src/
                      hues (data-accent), all TV-mode CSS (.tv*, per-tv-skin themed via --tv-*
                      tokens + data-tv-skin), pairing card (.tv-pair) + connect pill + phone
                      code boxes (.code-box). Skins drive --acc/--app-bg/--font-display/etc.
+                     THE LAST BLOCK is the wide-window layout (rail + one wider pane), keyed
+                     off :root[data-layout='wide'] — see lib/windowLayout.ts.
   lib/
     distribution.ts  THE engine: computeStack() [smooth slider = max-chip fill then a colour-up
                      DESCENT via gentlestColorUp()/gcd — smallest value-preserving swap each step],
@@ -185,6 +199,10 @@ src/
     planning.ts      suggestBlindLadder(), colorUpEvents()
     settle.ts        settleUp() minimal-transfer
     share.ts         encode/decodeSetup (CS1: code), renderStackImage
+    windowLayout.ts  is this window a phone or something roomier? Writes data-layout on <html>
+                     (threshold: width AND height >= 600px) and animates the swap with a view
+                     transition. The whole wide layout is CSS hanging off that attribute, so a
+                     Fold opening costs zero React renders. Read its header before touching it.
     money.ts, i18n.ts (t() hook + en/de dict), clockLogic.ts (pure ClockState transitions),
     firebaseConfig.ts (the pasted chipstack-live web config), firebase.ts (lazy Firestore via
       initializeFirestore with ignoreUndefinedProperties:true — LOAD-BEARING, see gotchas;
@@ -1202,38 +1220,142 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 
 ## ⚠️ Open items / next steps
 
-### STATE RIGHT NOW (2026-08-30)
-Local branch **`feat/chip-3d-render`**, whose tip is `main` == **`1b98f94`**. Working tree
-**clean** — the in-flight chip-trail WIP that this section used to warn about was finished,
-tested and committed as `1e70549`.
+### STATE RIGHT NOW (2026-09-04)
 
-Three commits went out since `6ff3845`:
+Local branch **`feat/chip-3d-render`**, whose tip is `main` == **`2456796`**. Working tree
+**clean**. APK, `main` and Pages all built from that commit.
 
-- `1e70549` — the stack trail spans the whole night (thinned, not truncated), and the
-  sparkline buckets points to fit its width keeping the extremes.
-- `34be0a0` — small change folds away; the chip ruler, first version (phone flat on the
-  glass, one-point calibration).
-- `1b98f94` — the ruler REDESIGNED for a phone standing on the table: two-point
-  calibration, a list of stacks, tap-in for tiny piles, per-chip haptics.
+**THE USER HAS NOT TESTED ANY OF IT YET.** Their words: *"lass es erstmal alles so wie es
+ist, bis ich es testen kann."* Everything below is verified in a browser at Fold
+proportions and verified NOT AT ALL on the physical device. Do not extend, tune or
+"improve" the Fold work until they come back with what they actually saw. What to ask them
+is under "Waiting on the phone" below.
 
-**Rollback point:** tag **`pre-count-slider`** → `d8266f1`, still on the remote.
-`git push origin pre-count-slider:main --force` rolls the web app back.
+Four commits went out for the Fold pass, in this order — the second corrects the first,
+and the reasoning matters more than the diff:
 
-**STILL UNRESOLVED from 2026-08-29, waiting on the user:** they looked at the counting
-round and said *"it still looks like before"*, and never said on what surface. The live
-bundle genuinely contains the new screen, so the candidates remain (a) they tapped a
-player's `Stack €x ✎` chip — the OLD money prompt, deliberately unchanged — rather than
-the `🧮 Counting round` button, or (b) a stale cached build. **Ask which surface, and
-whether the sheet says "ON THE TABLE €120" or "Player 1 of 4".**
+- `8ca4bf7` — first pass: manifest `configChanges` + `resizeableActivity`, a navigation
+  rail, and the screens poured into **two columns**. The two columns were wrong.
+- `5e2b174` — **one column, not two**, and the fold animated. A Fold's inner screen is
+  ~832x750dp, which is the Material **medium** window class: rail + a single pane. Two
+  panes belong to **expanded**, 840dp and up. At 832 two columns come out ~355dp each —
+  narrower than the S22 the cards were drawn for — and column-major balancing strands
+  headings next to unrelated cards. The user saw it and said so.
+- `51b10fa` — the starting stack may be drawn up to 104px once its row is wide.
+- `2456796` — the rail gets a job at both ends (mark at its head, tabs centred, gear at
+  its foot, 80px). Picked by the user from four options that were built and screenshotted.
 
-**Unproven on real hardware** (both need the APK on a phone, neither is testable here):
-pointer capture during a real touch drag on the ruler — synthetic pointer events cannot
-hold a capture, so it is stubbed in the browser checks — and how the per-chip haptic
-actually FEELS. The old level-end notification is still unproven too.
+**Rollback point:** everything before the Fold pass is `2a7fdb4`.
+`git push origin 2a7fdb4:main --force` rolls the web app back; rebuild the APK after.
+
+**Waiting on the phone** — ask about these specifically, in this order:
+
+1. **Opening the phone with the clock running.** Two separate things: does the layout
+   cross-fade (rail appears, column widens), and does the clock keep its time instead of
+   restarting? The second one is the manifest change.
+2. **The chips growing.** They should get bigger AT ONCE and be slightly SOFT for about a
+   second, then sharpen. If they go grey/flat instead, the held-layers fix did not survive
+   on real hardware — see `useChipLayers` in `ChipStackViz.tsx`.
+3. **Settings on the inner screen** — five skins in two rows, all eight accents in one.
+   That is the clearest "the width is being used" moment.
+4. **The cover screen and the S22** must look exactly as they did.
+5. Folding open and shut quickly several times — that is where the layout used to stick.
+
+**Older, still unproven on real hardware** (all predate this pass): the level-end
+notification, pointer capture during a real touch drag on the ruler, and how the per-chip
+haptic actually feels.
 
 **The ruler needs a real calibration before it means anything.** It refuses to measure
 until it has one, so there is nothing to break, but the first person to open it has to
 stand 20 chips next to the phone and then 5. Any colour works.
+
+**A dev server is still running** — `chipstack-dev` (`npm run dev`) on port 5173, bound to
+localhost only. The user was asked whether to stop it and answered to leave everything as
+it is, so it was left alone. Killing it is harmless.
+
+### Recent work 2026-09-03/04 (the Fold) — two screens, one app
+
+Everything lives in **one block at the END of `src/styles.css`**, **`src/lib/windowLayout.ts`**
+(new), two lines in `App.tsx`, the nav's two extra elements, and two attributes in
+`android/app/src/main/AndroidManifest.xml`. Nothing else was touched.
+
+**The threshold is width AND height: `(min-width: 600px) and (min-height: 600px)`.** Height
+is what keeps phones out — an S22 in landscape is ~800x360 and wants the tuned landscape
+rules above it, and a Fold's COVER screen is ~412x960, WIDER than an S22 but no taller, so
+it is still a phone. Opened out the same Fold reports ~832x750 and crosses over. **Do not
+relax this to width alone.**
+
+- **`lib/windowLayout.ts`** owns the threshold and writes `data-layout="compact|wide"` on
+  `<html>`. The whole wide layout is CSS hanging off that one attribute, so folding costs
+  **zero React renders** — which is the point, with a clock ticking behind it. The
+  attribute is written at import time, so the first paint is already the right shape.
+- **The fold is animated with a view transition.** The tab bar does not travel to the left
+  edge; it stops existing and a rail starts existing, which no CSS transition can cross.
+  `document.startViewTransition` cross-fades the two, with the incoming layout arriving
+  from `scale(.985)`. A named morph on the bar itself was tried and REMOVED: matching a
+  92x750 rail to a 412x62 bar makes the browser stretch one snapshot into the other's
+  shape, and it smears across the middle of the screen for the whole animation.
+- **Two traps in that switch, both hit for real, both now guarded:**
+  1. Compare the window against what is **DRAWN** (`documentElement.dataset.layout`), never
+     against a variable set on the way into the transition. A skipped transition (a hidden
+     document is enough) never runs the callback, and a variable that already claims the
+     new shape makes every later fold look like no change at all — the layout then stays
+     wrong until a reload. This is what "flips once, then never again" looked like.
+  2. **No "one at a time" lock.** A hinge can be half-opened and shut again inside one
+     300ms animation, and a lock held by a transition that never reports finishing
+     swallows exactly the change that mattered. There is a 500ms self-heal on top.
+- **Both a `matchMedia` change listener AND a debounced `resize` listener**, because the
+  first is precise but not guaranteed to arrive when a webview is resized from outside.
+- **`.app` becomes a named grid** (banner / rail / header / screen) at `data-layout="wide"`.
+  **Every new direct child of `.app` must be given a `grid-area`** or the grid invents a
+  row for it underneath everything else. The "open in the app" banner is why the banner
+  row exists; an auto row with no item in it takes no space.
+- **The rail** is 80px: token mark at its head, the four tabs floating in the middle
+  between two `.rail-fill` spacers, the settings gear anchored at its foot. `.rail-logo`,
+  `.rail-fill` and `.rail-gear` are in the markup at every width and `display: none` on a
+  phone, where the header carries the mark and the gear exactly as before. The wide block
+  hides the header's copies instead — never two of either visible at once.
+- **One pane, capped at 720px.** The width that is left goes into the choice grids
+  instead: `.style-grid` 3 across, `.accent-grid` 8, `.chip-art-grid` and `.theme-grid` 4,
+  `.bg-preset-grid` 4, `.seat-grid` 3.
+- **Overlays stop stretching**: `.sheet-overlay` centres, and `.cr-sheet` (the counting
+  round AND the table tools) becomes a floating panel — `inset: 0` + `margin: auto` +
+  `height: fit-content`. `fit-content` is load-bearing: with both top and bottom pinned an
+  `auto` height stretches to fill instead of wrapping its content.
+- **The guest view opts out** — `.app.guest` goes back to flex at 620px. It is one player's
+  own card and the room's standings, and it has no tabs to turn into a rail.
+
+**The starting stack on a wide row** (`51b10fa`): `ChipStackViz` gained `roomyChipSize` and
+the Plan hero passes `104`. The cap is chosen from the MEASURED row width
+(`ROOMY_FROM = 520`), not from a layout flag, so the ResizeObserver that was already there
+does the work and no React state couples to the fold.
+
+⚠️ **The trap there, and the reason `useChipLayers` looks the way it does:** a bigger chip
+is a DIFFERENT render. Asking for one dropped every pile to the dimmed vector shadow for
+~1.5s — measured, four of five piles grey, right at the moment the phone is opened. So a
+pile now **keeps the layers it already has**, and **the size they were drawn at travels
+with them** (`drawnAt` comes back out of the hook), so every dimension read off a bitmap is
+scaled by what that bitmap really is. Half-built batches no longer publish over a complete
+pile either — that was what turned chips into shadows mid-render. A new COLOUR still throws
+the old layers away, because holding those would be the app appearing to change its mind
+about the chip.
+
+**Android side:** `configChanges` gained `density|navigation` and the activity declares
+`resizeableActivity="true"`, so unfolding resizes the running webview instead of restarting
+the activity underneath it. `fontScale` is deliberately NOT listed — the webview reads the
+text zoom when it is created, so that one still wants a restart.
+
+⚠️ **You cannot test the fold path by resizing the browser pane.** Under Chrome device
+emulation neither `matchMedia` change nor `resize` fires on a viewport change (CSS media
+queries still re-evaluate, which is why the FIRST, CSS-only version appeared to work).
+Dispatch `window.dispatchEvent(new Event('resize'))` by hand after each `resize_window` to
+exercise it.
+
+**Design record:** the four navigation options were built into the running app,
+screenshotted, and published as a private artifact the user picked from —
+https://claude.ai/code/artifact/86539984-3f4b-4dcc-bef3-a7e7e90671fd (four device frames at
+Fold proportions, with a skin switcher). Source is `scratchpad/fold-nav.html`; republish the
+same path to update it.
 
 ### Recent work 2026-08-30 (pass-the-phone) — the round the whole table can run
 
@@ -1627,6 +1749,33 @@ assist that followed still was not good enough. Historical detail lives in git a
    mind (fun/funny/smart/useful). Some already floated: payout/prize structure on the TV,
    bust-out leaderboard, thematic evenings.
 
+7. **Fold postures — tabletop and book — deliberately NOT built.** Offered, and the user
+   declined for now (2026-09-03), then confirmed again on 2026-09-04 with "leave it all as
+   it is". A foldable also has a HALF-OPENED state: hinge horizontal is **tabletop** (the
+   phone stands like a tent — top half faces the room, bottom half lies flat under the
+   thumbs), hinge vertical is **book**. It needs no native plugin — CSS covers it with
+   `@media (vertical-viewport-segments: 2)` / `(horizontal-viewport-segments: 2)` and the
+   `env(viewport-segment-*)` geometry, so content can dodge the hinge. **The pitch, if it
+   ever comes up again:** in tabletop, the clock big on the upper half and the roster plus
+   controls on the lower — the phone becomes a table clock that still takes input, which
+   is exactly the game-night shape (see the `game-night-reality` memory: one host phone in
+   the middle of the table). **Why it is not in:** it cannot be verified here. The browser
+   pane does not emulate viewport segments, and whether Samsung's WebView reports them at
+   all in half-open posture is a device question. Do not ship posture CSS blind.
+8. **targetSdk 34 → 35, deliberately NOT done.** `android/variables.gradle`, one line —
+   and then a real pass. Android 15 makes **edge-to-edge mandatory**: the window extends
+   behind the status and navigation bars and cannot opt out, so anything not padded with
+   `env(safe-area-inset-*)` ends up under the clock or the gesture pill. The app is
+   largely prepared (`viewport-fit=cover`, `--safe-t`/`--safe-b` in the header, the nav,
+   the sheets), but the header, the rail's bottom gear, the full-screen clock and the
+   counting sheet all need checking, and the status-bar icon colour has to flip with the
+   skin — a light skin like Playful needs dark icons. **Why it matters for the Fold:**
+   from Android 16 (API 36) the system ignores an app's orientation/resizability
+   restrictions on large screens for apps targeting 36, and applies compatibility
+   behaviour below that, which can show up as letterboxing. We already declare
+   `resizeableActivity="true"`, so this should not bite — but **if the app ever appears
+   boxed in with black bars on the Fold, targetSdk is the first suspect.** Play Store's
+   targetSdk 35 requirement does not apply: the APK is sideloaded.
 ---
 
 ## User context
