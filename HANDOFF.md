@@ -1227,6 +1227,80 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 
 ## ⚠️ Open items / next steps
 
+### Recent work 2026-09-04 (third pass) — what the app makes people download
+
+A measured pass, not a guessed one: built with `--sourcemap` and the main chunk
+attributed per module. Numbers below are real build output, before/after.
+
+**Firebase was in the precache, 112,605 B, for everyone.** `vite.config.ts` already
+excluded `liveSession-*.js` on the stated grounds that only a phone pairing with a
+TV ever loads the SDK — but Firebase also splits into its own vendor chunks, which
+rolldown named after their entry file (`index.esm-*.js`), and that pattern never
+matched. Every install downloaded it. Runtime was always correct (the reference in
+the main chunk is the `__vite__mapDeps` preload table, not a static import), so this
+was purely a service-worker manifest bug.
+Fixed with a `manualChunks` rule that names the chunk **`firebase-vendor`** after
+what it is, plus that name in `globIgnores` and in the `CacheFirst` runtime rule.
+**Do not go back to matching bundler-generated hash names in workbox config** —
+that is exactly how this drifted. Side effect, deliberate: `firebase/auth` now rides
+in the same vendor chunk as firestore instead of its own, which is one fewer round
+trip for the only people who load either.
+
+**`qrcode-generator` (51,871 B of source) was in the boot path** for three screens
+nobody opens on a normal night. New `lib/qr.ts` — `qrDataUrl()` + `useQrDataUrl()`,
+one dynamic import cached across call sites. All three sites (ShareSheet,
+TvBroadcast, TvMode's pairing card) already rendered nothing while the code was
+null, so async cost them no new branch.
+
+**The big screen is lazy now.** `TvMode.tsx` is the largest file in the app
+(105,712 B of source) and a phone parsed it at every launch to show it on the nights
+somebody presses "preview" — or never. New `screens/BigScreen.tsx` holds one
+`lazy()` + `Suspense` and BOTH ways in go through it (App for `deviceIsTv`,
+TableScreen's portal for the preview), so they share the chunk. The fallback is a
+bare `.tv` div: that class already paints the big screen's own ground, so a device
+booting straight into TV mode shows the right dark colour rather than a white flash.
+The chunk is precached like the rest of the app, so it stays a local read offline.
+
+Measured, whole build:
+
+| | before | after |
+|---|---|---|
+| main chunk | 652.34 kB / 192.96 kB gz | **586.45 kB / 173.27 kB gz** |
+| precache | 1109 KiB | **1000 KiB** |
+| on demand | — | TvMode 46.39 kB (15.93 gz), qrcode 20.65 kB (7.29 gz) |
+
+Verified against the production preview (`chipstack-prod`, :5200), not the dev
+server: at boot the network shows only the main chunk, capacitor and three.js —
+no TvMode, no qrcode, no firebase. Opening TV mode pulls both lazy chunks and the
+screen renders in full; the "show on TV" QR and the share-sheet QR both produce
+real images (`data:image/gif`, 636px). Console clean.
+
+**Deliberately NOT done, and why:**
+
+- **The fonts stay in the precache.** 164,956 B of woff2 for four families, of which
+  a user renders one — and the default `minimal` skin renders none at all (verified:
+  zero woff2 requests on a default load; the browser only fetches a face when a glyph
+  needs it, so it is the service worker alone that force-downloads all twelve).
+  Taking them out of `globPatterns` would cut the install by 165 kB, at the price of
+  a skin picked for the first time while OFFLINE rendering in the fallback font until
+  the next time online. The user weighed that and said keep them.
+- **`lib/tvBackgrounds.ts` (31,857 B) is still in the main chunk**, because
+  `TvBroadcast` imports it and that card's header is on the Table tab every night.
+  Moving it would mean loading the 37 preset backgrounds only when the picker opens.
+  Worth about 8 kB gzip; not attempted.
+- **The stylesheet is one 128 kB file** (24 kB gz) carrying all five skins and the
+  whole TV surface. Splittable in principle, invasive and FOUC-prone in practice.
+- **Storage was measured and is fine.** A realistic night (8 players with chip
+  history, a 200-entry timeline) is 25,322 B: `JSON.stringify` 0.05 ms, `setItem`
+  0.06 ms. With a 200 kB TV background photo in `Settings.tvBackground` it is
+  225,343 B and 0.34 + 0.31 ms — still nothing against a 250 ms debounce plus
+  `requestIdleCallback`. **Do not "optimise" the photo out of the persisted blob into
+  IndexedDB on performance grounds; there is no performance problem there.**
+- `liveSignature` is `useMemo`d on the state object and only computed while hosting —
+  once per dispatch, not once per render. `computeStack` has its LRU cache. Both fine.
+
+---
+
 ### STATE RIGHT NOW (2026-09-04, second pass — the ruler on two screens)
 
 Local branch **`feat/chip-3d-render`**, tip **`f049e4b`** = `main`. Working tree clean.

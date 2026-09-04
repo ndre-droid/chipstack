@@ -5,7 +5,7 @@ import ChipsScreen from './screens/ChipsScreen';
 import TableScreen from './screens/TableScreen';
 import CashScreen from './screens/CashScreen';
 import SettingsScreen from './screens/SettingsScreen';
-import TvMode from './screens/TvMode';
+import BigScreen from './screens/BigScreen';
 import { firebaseConfigured } from './lib/firebaseConfig';
 import { IconPlan, IconChips, IconTable, IconCash, IconSettings } from './components/Icons';
 import { useT } from './lib/i18n';
@@ -332,7 +332,7 @@ function AppShell() {
   // clears the flag (and any live session) and returns to the normal phone app.
   if (asTv) {
     return (
-      <TvMode
+      <BigScreen
         onClose={() => {
           // The pairing code is public and guessable, so the document goes when the
           // big screen does instead of lingering until the TTL sweep finds it.

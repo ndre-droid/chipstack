@@ -1,10 +1,10 @@
-import { memo, useEffect, useMemo, useState } from 'react';
-import qrcode from 'qrcode-generator';
+import { memo, useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { IconCheck, IconChevron } from './Icons';
 import { TV_BACKGROUNDS, backgroundFolders, groupOfBackground, type TvBackgroundGroup } from '../lib/tvBackgrounds';
 import { addPhoto, deletePhoto, listPhotos, type SavedPhoto } from '../lib/photoStore';
 import { useT } from '../lib/i18n';
+import { useQrDataUrl } from '../lib/qr';
 import { analyzeBackground } from '../lib/imageAnalysis';
 import type { AccentId, Skin, TvTextRole } from '../types';
 import { Toggle } from './Toggle';
@@ -144,16 +144,7 @@ function TvBroadcast() {
   /* A tablet is the one big screen with a camera: point it at this and it opens
      the big-screen URL itself, which beats typing a github.io path on a TV remote
      or an on-screen keyboard. Cheap enough to keep next to the link. */
-  const tvQr = useMemo(() => {
-    try {
-      const qr = qrcode(0, 'M');
-      qr.addData(TV_URL);
-      qr.make();
-      return qr.createDataURL(6, 12);
-    } catch {
-      return null;
-    }
-  }, []);
+  const tvQr = useQrDataUrl(TV_URL, { cell: 6, margin: 12 });
 
   const copyUrl = async () => {
     try {

@@ -1,12 +1,12 @@
 import { memo, startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import qrcode from 'qrcode-generator';
 import { useStore } from '../store';
 import type { Denomination } from '../types';
 import Chip from '../components/Chip';
 import ChipStackViz from '../components/ChipStackViz';
 import { IconPlay, IconPause, IconChevron, IconReset } from '../components/Icons';
 import { useT, useFmt } from '../lib/i18n';
+import { useQrDataUrl } from '../lib/qr';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 import type { Unsubscribe } from 'firebase/firestore';
 import { secondsLeft as clockSecondsLeft, initialClock } from '../lib/clockLogic';
@@ -712,22 +712,12 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   // Deep-link QR: opening this URL on a phone loads the app and auto-connects as
   // host to this code (App reads `?tv=`), so the phone can pair by scanning too.
   const pairUrl = liveSessionCode ? `${window.location.origin}${window.location.pathname}?tv=${liveSessionCode}` : '';
-  const pairQr = useMemo(() => {
-    if (!pairUrl) return null;
-    try {
-      const qr = qrcode(0, 'M');
-      qr.addData(pairUrl);
-      qr.make();
-      /* 10px a module, not 6. The big QR overlay is drawn at up to 46vmin, which on a
-         4K panel is well over a thousand pixels — a 6px-module bitmap blown up that
-         far is soft enough that a phone camera hunts for it. Rendering it larger and
-         letting the browser scale DOWN is free (and the small pairing-card copy is
-         crisper for it too); the whole image is still a few kB. */
-      return qr.createDataURL(10, 16);
-    } catch {
-      return null;
-    }
-  }, [pairUrl]);
+  /* 10px a module, not 6. The big QR overlay is drawn at up to 46vmin, which on a
+     4K panel is well over a thousand pixels — a 6px-module bitmap blown up that far
+     is soft enough that a phone camera hunts for it. Rendering it larger and letting
+     the browser scale DOWN is free (and the small pairing-card copy is crisper for
+     it too); the whole image is still a few kB. */
+  const pairQr = useQrDataUrl(pairUrl, { cell: 10, margin: 16 });
   /* The same code, on demand. The pairing banner is only up while the screen is
      waiting for its phone, so once someone is driving it there was no way to get a
      second phone (or a re-installed one) connected without leaving TV mode. */

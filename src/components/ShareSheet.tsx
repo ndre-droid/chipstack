@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import qrcode from 'qrcode-generator';
 import { useStore } from '../store';
 import { useT } from '../lib/i18n';
 import { encodeSetup, decodeSetup, renderStackImage } from '../lib/share';
 import { IconShare, IconCheck } from '../components/Icons';
 import { useBackHandler } from '../lib/backHandler';
+import { useQrDataUrl } from '../lib/qr';
 
 interface Props {
   onClose: () => void;
@@ -30,16 +30,9 @@ export default function ShareSheet({ onClose, imageRows, title, subtitle, totalC
     [title, subtitle, imageRows, totalChips, totalLabel],
   );
 
-  const qrUrl = useMemo(() => {
-    try {
-      const qr = qrcode(0, 'L');
-      qr.addData(code);
-      qr.make();
-      return qr.createDataURL(4, 12);
-    } catch {
-      return null;
-    }
-  }, [code]);
+  /* 'L': a setup code is long, and the lowest correction level is what keeps the
+     module count (and therefore the printed size) sane. */
+  const qrUrl = useQrDataUrl(code, { level: 'L', cell: 4, margin: 12 });
 
   const copyCode = async () => {
     try {

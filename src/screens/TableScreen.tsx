@@ -2,7 +2,7 @@ import { memo, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../store';
 import { IconPlay, IconPause, IconReset, IconChevron, IconDice, IconExpand } from '../components/Icons';
-import TvMode from './TvMode';
+import BigScreen from './BigScreen';
 import RemoteControl from './RemoteControl';
 import ConnectToTv from './ConnectToTv';
 import StartingStack from '../components/StartingStack';
@@ -341,7 +341,7 @@ export default function TableScreen() {
           transform, and any transformed ancestor becomes the containing block for
           `position: fixed` — the big screen was then laid out inside the ~470px
           card column instead of filling the window. */}
-      {tv && createPortal(<TvMode onClose={() => setTv(false)} />, document.body)}
+      {tv && createPortal(<BigScreen onClose={() => setTv(false)} />, document.body)}
     </div>
   );
 }

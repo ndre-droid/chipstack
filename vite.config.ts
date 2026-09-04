@@ -57,16 +57,29 @@ export default defineConfig({
               /* The Firebase chunk is ~470kB of the precache and only a phone that
                  pairs with a TV ever loads it — everyone else was downloading it on
                  install for nothing. Cached on first use instead; live sync needs
-                 the network anyway, so there is nothing to keep offline here. */
+                 the network anyway, so there is nothing to keep offline here.
+
+                 `liveSession-*` alone was NOT enough, and the gap was invisible: the
+                 SDK also splits into its own vendor chunks, which the bundler named
+                 after their entry file (`index.esm-*.js`) and this list therefore
+                 never matched. 112kB of Firebase was being precached by every
+                 install regardless. Hence `manualChunks` below — the chunk is named
+                 by what it IS, so this pattern cannot drift away from it again. */
               /* Same argument for three.js (~185kB gzipped) plus the loader and the
                  chip model: only a device left on the 3D chips ever needs them. */
-              globIgnores: ['**/liveSession-*.js', '**/three.module-*.js', '**/GLTFLoader-*.js', '**/RoomEnvironment-*.js'],
+              globIgnores: [
+                '**/liveSession-*.js',
+                '**/firebase-vendor-*.js',
+                '**/three.module-*.js',
+                '**/GLTFLoader-*.js',
+                '**/RoomEnvironment-*.js',
+              ],
               cleanupOutdatedCaches: true,
               runtimeCaching: [
                 {
-                  urlPattern: /\/liveSession-[^/]*\.js$/,
+                  urlPattern: /\/(liveSession|firebase-vendor)-[^/]*\.js$/,
                   handler: 'CacheFirst',
-                  options: { cacheName: 'chipstack-live-sync', expiration: { maxEntries: 4 } },
+                  options: { cacheName: 'chipstack-live-sync', expiration: { maxEntries: 8 } },
                 },
                 {
                   urlPattern: /\/(three\.module|GLTFLoader|RoomEnvironment)-[^/]*\.js$|\/models\/[^/]*\.glb$/,
@@ -79,5 +92,19 @@ export default defineConfig({
         ]),
   ],
   define: { __BUILD_ID__: JSON.stringify(buildId) },
-  build: single ? { outDir: 'dist-single' } : {},
+  build: single
+    ? { outDir: 'dist-single' }
+    : {
+        rollupOptions: {
+          output: {
+            /* Give the Firebase SDK a chunk named after itself. Nothing here changes
+               WHEN it loads — it was already behind a dynamic import and stayed out
+               of the boot path — but the service-worker rules above have to be able
+               to name it, and a rolldown-generated name derived from a node_modules
+               entry file (`index.esm-*`) is not a name anything can rely on. */
+            manualChunks: (id: string) =>
+              /node_modules[\/](@firebase|firebase)[\/]/.test(id) ? 'firebase-vendor' : undefined,
+          },
+        },
+      },
 });
