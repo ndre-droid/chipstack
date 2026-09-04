@@ -394,7 +394,17 @@ function AppShell() {
 
       {toast && <div className="snackbar app-toast">{toast}</div>}
 
+      {/* The tabs, plus the two pieces the RAIL needs and the bottom bar does not.
+          On a phone they are `display: none` and the header carries the mark and the
+          gear as it always has; once the window is wide the rail takes both — a
+          column with a job at each end instead of four items and a long empty
+          strip — and the header's copies are hidden instead. Two elements, never
+          two visible at once; see the wide block in styles.css. */}
       <nav className="bottom-nav">
+        <span className="rail-logo" aria-hidden>
+          <LogoMark />
+        </span>
+        <span className="rail-fill" aria-hidden />
         {TABS.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -404,6 +414,15 @@ function AppShell() {
             </button>
           );
         })}
+        <span className="rail-fill" aria-hidden />
+        <button
+          className={`rail-gear ${view === 'settings' ? 'on' : ''}`}
+          onClick={toSettings}
+          aria-label={t('header.settings')}
+          aria-pressed={view === 'settings'}
+        >
+          <IconSettings size={19} />
+        </button>
       </nav>
     </div>
   );

@@ -337,6 +337,11 @@ a { color: inherit; }
   transition: color 0.16s;
 }
 .nav-item svg { width: 22px; height: 22px; stroke-width: 1.9; }
+/* The rail's own two pieces — the mark at its head and the gear at its foot. They
+   are in the markup at every width and simply absent on a phone, where the header
+   carries both (see the wide block at the end of this file). */
+.rail-logo, .rail-fill, .rail-gear { display: none; }
+
 .nav-item.active { color: var(--acc); }
 .nav-item.active svg { stroke-width: 2.1; }
 
@@ -3237,7 +3242,7 @@ input[type='color'] { cursor: pointer; }
    the grids of choices that were two-across open out.
    ============================================================ */
 :root[data-layout='wide'] {
-  --rail-w: 92px;
+  --rail-w: 80px;
 }
 
 /* Header across the top, tabs down the left edge, the rail the full height of
@@ -3282,17 +3287,41 @@ input[type='color'] { cursor: pointer; }
   flex-direction: column;
   justify-content: flex-start;
   gap: 4px;
-  padding: 10px 8px calc(10px + var(--safe-b)) calc(8px + env(safe-area-inset-left, 0px));
+  padding: 12px 8px calc(10px + var(--safe-b)) calc(8px + env(safe-area-inset-left, 0px));
   border-top: none;
   border-right: 1px solid var(--line);
 }
 :root[data-layout='wide'] .nav-item {
   flex: 0 0 auto;
-  padding: 11px 4px;
+  padding: 10px 2px;
   border-radius: 14px;
-  font-size: 11px;
+  font-size: 10.5px;
   transition: color 0.16s, background 0.16s;
 }
+
+/* …and the column gets a job at both ends. Four items pinned to the top of a
+   full-height strip is what made the rail look unfinished. The mark now sits at
+   its head, the tabs float in the middle, and the gear is anchored at its foot —
+   where a thumb reaches on a phone held open, rather than in the far top corner.
+   The header gives up its copies of both in exchange. */
+:root[data-layout='wide'] .rail-logo { display: grid; place-items: center; padding-bottom: 6px; }
+:root[data-layout='wide'] .rail-logo .logo-mark { width: 26px; height: 26px; }
+:root[data-layout='wide'] .rail-fill { display: block; flex: 1 1 auto; }
+:root[data-layout='wide'] .rail-gear {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin: 2px auto 0;
+  border-radius: 12px;
+  color: var(--text-dim);
+  transition: color 0.15s, background 0.15s;
+}
+:root[data-layout='wide'] .rail-gear:hover { color: var(--text); background: var(--surface-2); }
+:root[data-layout='wide'] .rail-gear.on { color: var(--acc); background: var(--acc-wash); }
+:root[data-layout='wide'] .rail-gear:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+:root[data-layout='wide'] .app-header .logo-mark,
+:root[data-layout='wide'] .app-header .header-gear { display: none; }
 :root[data-layout='wide'] .nav-item.active { background: var(--acc-wash); }
 
 /* The toast sat above the tab bar; there is no tab bar down there any more. */
