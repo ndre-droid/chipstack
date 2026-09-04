@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { AppState, CarryBalance, ChipSet, Denomination, TimelineEvent, BlindLevel, Preset, Settings, SessionConfig, LedgerPlayer, AccentId, Skin, ChipArt, LeagueGame, Moment, CountingProgress, Person, TvLayout, TvTextScale } from './types';
 
 import { applySharedSettings, shareableSettings } from './lib/settingsScope';
+import { normalizeCalibrations } from './lib/chipRuler';
 import { DEFAULT_TV_TEXT_SCALE, isDefaultTvLayout, normalizeTvLayout, normalizeTvTextScale } from './lib/tvLayout';
 import { pushTrail } from './lib/chipTrail';
 
@@ -891,6 +892,11 @@ function migrate(raw: string | null): AppState {
   // An existing install has already made all these decisions — never greet it with
   // the first-run wizard just because the field is new.
   if (typeof settings.onboardedAt !== 'number') settings.onboardedAt = 0;
+  /* The chip ruler measures against ONE piece of glass, so its calibrations are a
+     map keyed by screen. Anything in there that is not a believable calibration is
+     dropped rather than carried: a ruler that trusts a hand-edited backup is
+     confidently wrong at a table, which is worse than asking for two drags. */
+  settings.chipRulerCals = normalizeCalibrations(settings.chipRulerCals);
   if (typeof settings.tvShowPayouts !== 'boolean') settings.tvShowPayouts = false;
   if (typeof settings.tvShowBustOrder !== 'boolean') settings.tvShowBustOrder = false;
   if (typeof settings.breakMinutes !== 'number' || settings.breakMinutes < 1) settings.breakMinutes = 5;

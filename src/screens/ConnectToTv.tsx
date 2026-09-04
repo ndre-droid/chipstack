@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { useT } from '../lib/i18n';
+import { IconChevron } from '../components/Icons';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 import { useLiveSyncStatus } from '../lib/useLiveHostSync';
 import { flushLiveSync, queueData } from '../lib/liveSyncQueue';
@@ -31,6 +32,11 @@ export default function ConnectToTv() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
+  /* Folded away until it is asked for. A code is typed once a night at most, and
+     four empty boxes plus the paragraph explaining them were the first third of the
+     Table tab every single night — above the people actually playing. A CONNECTED
+     session is a different card: that one is the live status and stays open. */
+  const [open, setOpen] = useState(false);
 
   const connected = liveSessionRole === 'host' && !!liveSessionCode;
 
@@ -113,6 +119,17 @@ export default function ConnectToTv() {
   }, [connected]);
   void ageTick;
 
+  /* Something has to be read — the code was wrong, or the big screen went away and
+     took the session with it. A message inside a fold nobody opened is not a message. */
+  useEffect(() => {
+    if (err) setOpen(true);
+  }, [err]);
+
+  /* Opened by hand: the cursor belongs in the first box, not one tap further on. */
+  useEffect(() => {
+    if (open && !connected) inputs.current[0]?.focus();
+  }, [open, connected]);
+
   if (!firebaseConfigured) return null;
 
   const code = digits.join('');
@@ -171,6 +188,7 @@ export default function ConnectToTv() {
 
   const disconnect = () => dispatch({ type: 'UPDATE_SETTINGS', patch: { liveSessionCode: null, liveSessionRole: null } });
 
+
   // Force the full state to the TV right now. Auto-sync already does this on every
   // change and retries by itself; this jumps the backoff when the user is impatient.
   const pushNow = () => {
@@ -204,10 +222,27 @@ export default function ConnectToTv() {
 
   return (
     <>
-      <div className="section-label">
-        {t('connect.title')}
-        {connected && <span className="hint">{t('tv.liveConnected')}</span>}
-      </div>
+      {connected ? (
+        <div className="section-label">
+          {t('connect.title')}
+          <span className="hint">{t('tv.liveConnected')}</span>
+        </div>
+      ) : (
+        <button
+          className="mins-toggle connect-toggle"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+        >
+          <span>
+            📺 {t('connect.title')}
+            <span className="hint" style={{ marginLeft: 8 }}>{t('connect.collapsedHint')}</span>
+          </span>
+          <span className={`chevron ${open ? 'rot90' : ''}`}>
+            <IconChevron size={16} />
+          </span>
+        </button>
+      )}
+      {(connected || open) && (
       <div className="card">
         {connected ? (
           <>
@@ -273,6 +308,7 @@ export default function ConnectToTv() {
           </>
         )}
       </div>
+      )}
     </>
   );
 }

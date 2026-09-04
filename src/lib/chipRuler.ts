@@ -25,6 +25,16 @@
  * so, three or four chips — the first few chips of every stack are physically below
  * the screen and cannot be measured at all. `minMeasurable` is that horizon, and the
  * sheet has to offer a way to just type those in rather than pretend.
+ *
+ * Both numbers describe ONE piece of glass, which is why the calibration is stored
+ * per screen (`screenKeyOf` at the bottom of this file): a folding phone has two
+ * panels in different density buckets, standing on two different edges, and one
+ * calibration cannot be true of both.
+ *
+ * And `y` is measured from the bottom of the GLASS, not from the bottom of whatever
+ * the ladder happens to be drawn in. The caller adds back whatever sits below the
+ * ladder (`blockedPx` / `belowPx`) before asking, so chrome that comes and goes
+ * changes the RANGE the instrument can reach and never the scale it reads.
  */
 
 /**
@@ -203,11 +213,12 @@ export function spanFor(chips: number, cal: RulerCalibration | null | undefined)
 
 /**
  * The shortest stack the ruler can actually see — everything under it is hidden by
- * the case and the bezel, and has to be typed instead.
+ * the case and the bezel (plus `blockedPx`, whatever sits between the ladder's
+ * bottom edge and the bottom of the glass), and has to be typed instead.
  */
-export function minMeasurable(cal: RulerCalibration | null | undefined): number {
+export function minMeasurable(cal: RulerCalibration | null | undefined, blockedPx = 0): number {
   if (!isCalibrated(cal)) return 0;
-  return Math.ceil(cal.zeroPx / cal.px);
+  return Math.ceil((Math.max(0, blockedPx) + cal.zeroPx) / cal.px);
 }
 
 /**
@@ -238,4 +249,114 @@ export function rulerCapacity(ladderPx: number, cal: RulerCalibration | null | u
 export function stacksTotal(stacks: number[], pending = 0, inventory = 0): number {
   const total = stacks.reduce((s, n) => s + Math.max(0, n), 0) + Math.max(0, pending);
   return inventory > 0 ? Math.min(total, inventory) : total;
+}
+
+/* ------------------------------------------------------------------
+   Which screen is this?
+   ------------------------------------------------------------------
+   A calibration is CSS pixels per chip plus a case-and-bezel offset, and both
+   of those are facts about ONE piece of glass. A folding phone has two, and
+   they disagree on both counts: Android hands out a density BUCKET, so a CSS
+   pixel is only approximately 1/160 inch and the two panels land in different
+   buckets — a few percent, which is a whole chip on a tall stack — and the
+   edge the phone stands on when it is shut is not the edge it stands on when
+   it is open, so `zeroPx` is a different distance entirely.
+
+   So calibrations are kept per screen. The key has to be stable across
+   reloads, across rotation and across the app being folded open and shut
+   again, and it has to CHANGE when the glass does:
+
+   - the screen's own dimensions, smaller side first, so turning the device
+     does not invent a second screen;
+   - the device pixel ratio, which separates two panels of the same nominal
+     size;
+   - and the layout class the app is drawing, as a backstop for a webview that
+     reports the window instead of the display. On the one device this exists
+     for, the cover screen is compact and the inner screen is wide, so even a
+     screen object that lies cannot merge the two.
+
+   Erring towards a NEW key is the safe direction: the worst case is two
+   calibration drags that were not strictly necessary. Erring the other way
+   measures a stack with the other screen's ruler and says nothing. */
+
+/** Everything the key is built from — passed in, so this stays testable. */
+export interface ScreenShape {
+  /** the screen's own width in CSS px (not the window's) */
+  width: number;
+  /** the screen's own height in CSS px */
+  height: number;
+  /** device pixel ratio */
+  dpr: number;
+  /** is the app drawing its wide (rail + one pane) layout on this screen? */
+  wide: boolean;
+}
+
+/** The identity of one piece of glass. */
+export function screenKeyOf(s: ScreenShape): string {
+  const w = Math.max(0, Math.round(s.width));
+  const h = Math.max(0, Math.round(s.height));
+  const dpr = Math.round((s.dpr > 0 ? s.dpr : 1) * 100) / 100;
+  return `${Math.min(w, h)}x${Math.max(w, h)}@${dpr}${s.wide ? ':w' : ':c'}`;
+}
+
+/** What this browser is showing the app on, right now. */
+export function readScreenShape(): ScreenShape {
+  if (typeof window === 'undefined') return { width: 0, height: 0, dpr: 1, wide: false };
+  const s = window.screen;
+  return {
+    width: s?.width || window.innerWidth || 0,
+    height: s?.height || window.innerHeight || 0,
+    dpr: window.devicePixelRatio || 1,
+    wide: typeof document !== 'undefined' && document.documentElement.dataset.layout === 'wide',
+  };
+}
+
+/** Every screen this device has been calibrated on, by `screenKeyOf`. */
+export type RulerCalibrations = Record<string, RulerCalibration>;
+
+/** The calibration for one screen, or null when that screen has never been measured. */
+export function calibrationFor(
+  cals: RulerCalibrations | null | undefined,
+  key: string,
+): RulerCalibration | null {
+  const cal = cals?.[key];
+  return isCalibrated(cal) ? cal : null;
+}
+
+/** Store a screen's calibration, leaving every other screen's alone. */
+export function withCalibration(
+  cals: RulerCalibrations | null | undefined,
+  key: string,
+  cal: RulerCalibration,
+): RulerCalibrations {
+  return { ...(cals ?? {}), [key]: cal };
+}
+
+/** Throw away one screen's calibration — "measure this screen again". */
+export function forgetCalibration(
+  cals: RulerCalibrations | null | undefined,
+  key: string,
+): RulerCalibrations {
+  const next = { ...(cals ?? {}) };
+  delete next[key];
+  return next;
+}
+
+/** Drop anything that is not a believable calibration — a hand-edited backup, an
+ *  older shape of the field, a screen key that is not a string. */
+export function normalizeCalibrations(raw: unknown): RulerCalibrations {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: RulerCalibrations = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof key !== 'string' || !key) continue;
+    const cal = value as RulerCalibration | undefined;
+    if (!isCalibrated(cal)) continue;
+    const samples = Array.isArray(cal.samples)
+      ? cal.samples.filter(
+          (p) => p && Number.isFinite(p.y) && Number.isFinite(p.chips) && p.chips > 0,
+        ).slice(-MAX_SAMPLES)
+      : undefined;
+    out[key] = samples?.length ? { px: cal.px, zeroPx: cal.zeroPx, samples } : { px: cal.px, zeroPx: cal.zeroPx };
+  }
+  return out;
 }

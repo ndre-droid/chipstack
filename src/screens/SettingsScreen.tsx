@@ -3,11 +3,12 @@ import { useStore } from '../store';
 import Chip from '../components/Chip';
 import { chip3dSupported, clearChipCache } from '../lib/chip3d';
 import { useT, useFmt } from '../lib/i18n';
-import type { Appearance, AccentId, Skin, ChipArt } from '../types';
+import type { Appearance, AccentId, ChipArt } from '../types';
 import { useConfirm } from '../components/Confirm';
 import MoneyInput from '../components/MoneyInput';
 import { buildBackup, downloadBackup, parseBackup, restorePhotos } from '../lib/backup';
 import { haptic, hapticBackend } from '../lib/platform';
+import { ACCENT_SWATCHES, SKIN_STYLES, accentColor } from '../lib/skins';
 
 const CURRENCIES = ['€', '$', '£', 'zł', 'Fr'];
 const UNIT_PRESETS = [
@@ -16,13 +17,7 @@ const UNIT_PRESETS = [
   { label: '1 point = €1', value: 1 },
 ];
 
-const STYLES: { id: Skin; name: string; bg: string; note: string }[] = [
-  { id: 'minimal', name: 'Minimal', bg: '#16161a', note: 'Neutral canvas — also pick light / dark below.' },
-  { id: 'casino', name: 'Casino Felt', bg: 'radial-gradient(120% 90% at 50% 0%, #275a3d, #0a1c12)', note: 'Warm green felt & brass, with a serif touch.' },
-  { id: 'playful', name: 'Playful', bg: '#fbe9c8', note: 'Bright, bold and chunky.' },
-  { id: 'scifi', name: 'Sci-Fi', bg: 'radial-gradient(120% 90% at 50% 0%, #0c1a4c, #05060f)', note: 'Deep space with a neon glow.' },
-  { id: 'pokernacht', name: 'Pokernacht', bg: 'radial-gradient(120% 90% at 50% 0%, #4a1220, #140609)', note: 'Late-night broadcast: burgundy, gold and card-back damask.' },
-];
+const STYLES = SKIN_STYLES;
 
 const APPEARANCES: { id: Appearance; name: string }[] = [
   { id: 'system', name: 'System' },
@@ -30,16 +25,7 @@ const APPEARANCES: { id: Appearance; name: string }[] = [
   { id: 'dark', name: 'Dark' },
 ];
 
-const ACCENTS: { id: AccentId; name: string; color: string }[] = [
-  { id: 'amber', name: 'Amber', color: '#f0b429' },
-  { id: 'gold', name: 'Gold', color: '#e6c878' },
-  { id: 'emerald', name: 'Emerald', color: '#34d399' },
-  { id: 'cyan', name: 'Cyan', color: '#3fe6ff' },
-  { id: 'cobalt', name: 'Cobalt', color: '#5aa0ff' },
-  { id: 'violet', name: 'Violet', color: '#b18cff' },
-  { id: 'crimson', name: 'Crimson', color: '#ff6b6b' },
-  { id: 'coral', name: 'Coral', color: '#ff7a4d' },
-];
+const ACCENTS = ACCENT_SWATCHES;
 
 const CHIP_ARTS: { id: ChipArt; name: string }[] = [
   { id: 'deco', name: 'Art Deco' },
@@ -63,7 +49,6 @@ export default function SettingsScreen() {
   const [buzzPath, setBuzzPath] = useState<'native' | 'web' | 'none' | null>(null);
 
   const activeStyle = STYLES.find((s) => s.id === settings.skin) ?? STYLES[0];
-  const accentColor = (id: AccentId) => ACCENTS.find((a) => a.id === id)?.color ?? '#f0b429';
   const currentAccent = settings.accents?.[settings.skin] ?? 'amber';
   // picking a preset clears any custom accent so the preset takes over
   const setAccent = (id: AccentId) =>

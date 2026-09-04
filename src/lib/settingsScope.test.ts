@@ -52,6 +52,12 @@ const phone: Settings = {
   gameMode: 'tournament',
   cashUseTimer: false,
   countMode: 'colours',
+  countStyle: 'pass',
+  countPassHintSeen: true,
+  countBigOnly: false,
+  countHaptics: true,
+  chipRuler: null,
+  chipRulerCals: { '412x960@2.625:c': { px: 20.8, zeroPx: 70 } },
   tvShowStartStack: false,
   bountyMode: false,
   bountyAmount: 5,
@@ -77,6 +83,12 @@ const tv: Settings = {
   skin: 'scifi',
   language: 'en',
   countMode: 'money',
+  countStyle: 'solo',
+  countPassHintSeen: false,
+  countBigOnly: true,
+  countHaptics: false,
+  chipRuler: null,
+  chipRulerCals: {},
   rosterSort: 'seat',
   levelAlerts: false,
   breakAt: null,
@@ -122,6 +134,16 @@ check('its zoom survives', legacy.tvScale === 1);
 check('its own background is not replaced', legacy.tvBackground === null);
 check('the shareable half did come through', legacy.skin === 'casino' && legacy.language === 'de');
 check('but not the device-local half beside it', legacy.countMode === 'money');
+
+/* Every device-local key has to be PINNED, not just left out of what we send.
+   `countStyle` and `countPassHintSeen` were on the list and missing from the pin,
+   and the compiler could not see it: both are optional on Settings, and a Pick of
+   an optional key is satisfied by omitting it. This is that bug, named. */
+console.log('\nan optional device-local field is pinned like any other');
+check('how this table counts is not overwritten by a setup', legacy.countStyle === 'solo');
+check('nor is the hint it has already shown', legacy.countPassHintSeen === false);
+check('nor the ruler this screen was calibrated with', Object.keys(legacy.chipRulerCals ?? {}).length === 0);
+check('nor whether this phone buzzes', legacy.countHaptics === false);
 
 console.log('\nthe reverse direction: the phone loading a TV backup');
 const ontoPhone = applySharedSettings(phone, { ...tv });

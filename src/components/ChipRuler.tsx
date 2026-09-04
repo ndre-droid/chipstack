@@ -7,14 +7,18 @@ import { haptic } from '../lib/platform';
 import {
   CALIBRATION_STEPS,
   calibrate,
+  calibrationFor,
   chipsAt,
   hiddenChips,
   isCalibrated,
   minMeasurable,
+  readScreenShape,
   rulerCapacity,
+  screenKeyOf,
   spanFor,
   stacksTotal,
   teach,
+  withCalibration,
 } from '../lib/chipRuler';
 import type { Denomination } from '../types';
 
@@ -47,18 +51,15 @@ const BUZZ_COLUMN = 28;
  * ruler can be persuaded to see. Those get tapped in, and that row sits above the
  * ladder rather than hidden behind a mode.
  *
- * NOTHING is allowed below the ladder, or over it — and that is a correctness rule
- * rather than a layout preference. `zeroPx` is calibrated as a distance from the
- * ladder's bottom edge to the table, so chrome below the ladder is added to the real
- * case-and-bezel offset: a button bar's worth of it is four or five chips of extra
- * guesswork under every stack, and anything that appears or disappears between
- * calibrating and measuring moves the physical zero and silently invalidates the
- * calibration. Chrome that merely FLOATS over the foot is no better in practice — the
- * pixels it covers cannot be dragged to, so those chips are lost all the same. So the
- * sheet has no bottom bar at all: close and confirm live in the header, and the ladder
- * owns every pixel from the last line of text down to the glass. Above the ladder
- * anything may come and go: it only shortens the top, and the range lost is range,
- * not accuracy.
+ * NOTHING is put below the ladder, or over it. The scale itself is safe either way
+ * now — `belowPx` is measured and added back, so chrome under the sheet costs range
+ * and not accuracy — but pixels that cannot be dragged to are chips that cannot be
+ * measured, and a button bar's worth of them is four or five chips of typing under
+ * every single stack. Chrome that merely FLOATS over the foot is no better: the
+ * pixels it covers are just as unreachable. So the sheet has no bottom bar at all:
+ * close and confirm live in the header, and the ladder owns every pixel from the last
+ * line of text down to the glass, at every window size. Above the ladder anything may
+ * come and go — it only shortens the top.
  *
  * The bar's grip sits on the RIGHT. The phone is held in the left hand against the
  * pile and dragged with the right thumb by most people, and a grip on the left is
@@ -68,6 +69,19 @@ const BUZZ_COLUMN = 28;
  * number and feeling one: you can watch the chips instead of the screen while you
  * drag, and a stack that ticks twenty times on the way up has confirmed the
  * calibration without anybody checking it.
+ *
+ * TWO screens, and the ruler knows which one it is on. A folding phone's panels are
+ * in different density buckets — a few percent, a whole chip on a tall stack — and
+ * shut it stands on a different edge than it does open, which is the entire offset.
+ * So the calibration is looked up by `screenKeyOf` and folding the phone while the
+ * sheet is open switches to that screen's own, or asks for it. The stacks already
+ * logged survive the fold: they are counts of chips, and no screen changes those.
+ *
+ * And every height handed to the maths is measured from the bottom of the GLASS, not
+ * from the bottom of the ladder — `belowPx` is added back before asking. On a phone
+ * they are the same pixel. They stop being the same pixel the moment any layout puts
+ * anything under the sheet, and the difference is silently four or five chips under
+ * every stack, so it is added rather than assumed away.
  */
 export default function ChipRuler({
   denom,
@@ -83,22 +97,84 @@ export default function ChipRuler({
   const t = useT();
   const { money, num } = useFmt();
   const { unitValue, currency } = state.settings;
-  const cal = state.settings.chipRuler ?? null;
+  const cals = state.settings.chipRulerCals;
+  const legacy = state.settings.chipRuler;
   const buzz = state.settings.countHaptics ?? true;
 
   useBackHandler(true, onClose);
 
+  /* Which piece of glass this is. Watched rather than read once: the phone can be
+     folded open with the sheet on screen, and that is a different screen with a
+     different scale under the same React tree. The layout class is part of the key
+     and lib/windowLayout writes it on its own debounce — sometimes inside a view
+     transition, after a resize listener would already have run — so the attribute
+     itself is watched instead of being raced for. */
+  const [screen, setScreen] = useState(() => screenKeyOf(readScreenShape()));
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const read = () => setScreen(screenKeyOf(readScreenShape()));
+    const later = () => {
+      clearTimeout(timer);
+      timer = setTimeout(read, 200);
+    };
+    const obs = new MutationObserver(read);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-layout'] });
+    window.addEventListener('resize', later);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', later);
+      obs.disconnect();
+    };
+  }, []);
+
+  const cal = calibrationFor(cals, screen);
+  /** other screens this device has been calibrated on — why it is asking again */
+  const otherScreens = Object.keys(cals ?? {}).filter((k) => k !== screen).length;
+
+  /* One calibration existed before a device could have two screens. Adopt it for the
+     screen the ruler is opened on next and retire the field: that is the only screen
+     it can honestly be claimed to have been measured on, and if the guess is wrong
+     the very first stack says so out loud. */
+  const adopted = useRef(false);
+  useEffect(() => {
+    if (adopted.current || !isCalibrated(legacy) || Object.keys(cals ?? {}).length > 0) return;
+    adopted.current = true;
+    dispatch({
+      type: 'UPDATE_SETTINGS',
+      patch: { chipRulerCals: withCalibration(cals, screen, legacy), chipRuler: null },
+    });
+  }, [legacy, cals, screen, dispatch]);
+
   /** how tall the measuring track is, in CSS px — read from the DOM, never guessed */
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [trackPx, setTrackPx] = useState(0);
+  /* Where the ladder's bottom edge is, relative to the bottom of the WINDOW.
+     Positive: something sits under the ladder, and that gap is part of the offset —
+     measured rather than assumed to be zero, which is what a centred sheet on a wide
+     window would otherwise have added to every count in silence. Negative: the
+     ladder hangs past the bottom of the window (a stale visual-viewport height does
+     this), and the pixels it claims down there cannot be dragged to.
+     SIGNED on purpose. Clamping it at zero would leave the second case reading every
+     stack too tall by whatever the overhang was, which is the one failure mode a
+     ruler must not have. */
+  const [belowPx, setBelowPx] = useState(0);
   useEffect(() => {
     const el = trackRef.current;
     if (!el) return;
-    const read = () => setTrackPx(el.clientHeight);
+    const read = () => {
+      const r = el.getBoundingClientRect();
+      setTrackPx(r.height);
+      setBelowPx(Math.round(window.innerHeight - r.bottom));
+    };
     read();
     const ro = new ResizeObserver(read);
     ro.observe(el);
-    return () => ro.disconnect();
+    // the ladder can keep its size while the window under it changes shape
+    window.addEventListener('resize', read);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', read);
+    };
   }, []);
 
   /** how far the bar sits above the bottom edge of the screen */
@@ -123,12 +199,17 @@ export default function ChipRuler({
   /** what the last correction did to the calibration, shown once and then forgotten */
   const [learn, setLearn] = useState<{ n: number; ok: boolean } | null>(null);
 
-  const measured = !calibrating && touched ? chipsAt(dragPx, cal) : 0;
-  const capacity = calibrating ? 0 : rulerCapacity(trackPx, cal);
-  /** what has to be tapped rather than measured: the chips below the glass */
-  const horizon = hiddenChips(cal);
-  /* ...so the one-tap row has to reach at least that far, or the hint names piles it
-     then offers no way to enter. */
+  /* The drag, as a height above the bottom of the GLASS. `dragPx` on its own is a
+     height above the LADDER, and a calibration is not in those units. */
+  const dragAbs = dragPx + belowPx;
+  const measured = !calibrating && touched ? chipsAt(dragAbs, cal) : 0;
+  const capacity = calibrating ? 0 : rulerCapacity(trackPx + belowPx, cal);
+  /** what has to be tapped rather than measured: the chips no drag can reach */
+  const horizon = hiddenChips(cal, belowPx);
+  /* ...so the one-tap row stretches to cover them. Past TINY_MAX it stops growing —
+     a row of twelve buttons wraps, and a row that wraps grows downwards into the
+     ladder, which is the one thing nothing here is allowed to do. Deeper piles than
+     that are what the keypad beside it is for. */
   const tiny: number[] = [];
   for (let n = 1; n <= Math.min(TINY_MAX, Math.max(TINY_MIN, horizon)); n++) tiny.push(n);
   const total = stacksTotal(stacks, measured, denom.count);
@@ -155,7 +236,7 @@ export default function ChipRuler({
     setCalError(false);
     setCalTooTall(false);
     setLearn(null);
-    if (!calibrating) buzzFor(chipsAt(y, cal));
+    if (!calibrating) buzzFor(chipsAt(y + belowPx, cal));
   };
 
   /* One gesture for the whole track: press anywhere to put the bar there, keep the
@@ -163,7 +244,13 @@ export default function ChipRuler({
      other hand a finger easily wanders off the track, and without capture the bar
      would stop dead where it left instead of following. */
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    trackRef.current?.setPointerCapture(e.pointerId);
+    try {
+      trackRef.current?.setPointerCapture(e.pointerId);
+    } catch {
+      /* the pointer was already released, or this is not a real one. Capture is a
+         nicety — the drag still works without it, and losing the sheet over it
+         would not be. */
+    }
     // calibrating there is no scale yet, so nothing buzzes per chip: one tick on
     // grabbing the bar is what tells the hand the drag has started
     if (calibrating && buzz) haptic(BUZZ_CHIP);
@@ -177,8 +264,8 @@ export default function ChipRuler({
   /** ± a single chip, for when the drag lands a hair off */
   const nudge = (by: number) => {
     if (!isCalibrated(cal) || !touched) return;
-    const next = Math.max(0, chipsAt(dragPx, cal) + by);
-    setDragPx(Math.max(0, Math.min(trackPx, spanFor(next, cal))));
+    const next = Math.max(0, chipsAt(dragAbs, cal) + by);
+    setDragPx(Math.max(0, Math.min(trackPx, spanFor(next, cal) - belowPx)));
     buzzFor(next);
   };
 
@@ -201,8 +288,10 @@ export default function ChipRuler({
   const submitTyped = (n: number) => {
     if (n <= 0) return;
     if (canCorrect && n !== measured) {
-      const next = teach(cal, { y: dragPx, chips: n });
-      if (next) dispatch({ type: 'UPDATE_SETTINGS', patch: { chipRuler: next } });
+      const next = teach(cal, { y: dragAbs, chips: n });
+      if (next) {
+        dispatch({ type: 'UPDATE_SETTINGS', patch: { chipRulerCals: withCalibration(cals, screen, next) } });
+      }
       setLearn({ n, ok: !!next });
     }
     log(n);
@@ -228,14 +317,14 @@ export default function ChipRuler({
       return;
     }
     if (calStep === 0) {
-      setCalFirst({ y: dragPx, chips });
+      setCalFirst({ y: dragAbs, chips });
       setCalStep(1);
       setDragPx(0);
       setTouched(false);
       haptic(12);
       return;
     }
-    const solved = calFirst && calibrate(calFirst, { y: dragPx, chips });
+    const solved = calFirst && calibrate(calFirst, { y: dragAbs, chips });
     if (!solved) {
       // start over rather than keep half a calibration nobody can see
       setCalError(true);
@@ -245,12 +334,34 @@ export default function ChipRuler({
       setTouched(false);
       return;
     }
-    dispatch({ type: 'UPDATE_SETTINGS', patch: { chipRuler: solved } });
+    dispatch({
+      type: 'UPDATE_SETTINGS',
+      patch: { chipRulerCals: withCalibration(cals, screen, solved), chipRuler: null },
+    });
     setCalStep(null);
     setDragPx(0);
     setTouched(false);
     haptic([12, 60, 12]);
   };
+
+  /* The phone was folded open (or shut) with the sheet on screen. That is a
+     different piece of glass with a different scale — and possibly no calibration at
+     all — so the bar stops meaning anything until it is dragged again, and the sheet
+     goes back to asking if this screen has never been measured. What is NOT thrown
+     away is the list of stacks: those are counts of chips, they were true when they
+     were taken, and no amount of folding changes how many chips were in a pile. */
+  const knownScreen = useRef(screen);
+  useEffect(() => {
+    if (knownScreen.current === screen) return;
+    knownScreen.current = screen;
+    setDragPx(0);
+    setTouched(false);
+    setCalFirst(null);
+    setCalError(false);
+    setCalTooTall(false);
+    setLearn(null);
+    setCalStep(isCalibrated(calibrationFor(cals, screen)) ? null : 0);
+  }, [screen, cals]);
 
   const restartCalibration = () => {
     setCalStep(0);
@@ -265,7 +376,7 @@ export default function ChipRuler({
   /* every chip the ladder has a pixel for, floating bar or not: a scale that skipped
      the chips behind the buttons would read as a scale that starts at six */
   const ticks: number[] = [];
-  for (let n = Math.max(1, minMeasurable(cal)); n <= capacity; n++) ticks.push(n);
+  for (let n = Math.max(1, minMeasurable(cal, belowPx)); n <= capacity; n++) ticks.push(n);
 
   const priceOf = (chips: number) => money(chips * denom.value * unitValue, currency);
 
@@ -411,7 +522,7 @@ export default function ChipRuler({
             : learn
               ? t(learn.ok ? 'ruler.learned' : 'ruler.learnBad', { n: learn.n })
               : calibrating
-                ? t('ruler.calibrateWhy')
+                ? t(otherScreens > 0 ? 'ruler.newScreen' : 'ruler.calibrateWhy')
                 : horizon > 0
                   ? t(horizon === 1 ? 'ruler.horizon1' : 'ruler.horizon', { n: horizon })
                   : t('ruler.standIt')}
@@ -422,7 +533,7 @@ export default function ChipRuler({
           <div
             key={n}
             className={`ruler-tick${n % COLUMN_CHIPS === 0 ? ' col' : n % 5 === 0 ? ' five' : ''}`}
-            style={{ bottom: spanFor(n, cal) }}
+            style={{ bottom: spanFor(n, cal) - belowPx }}
           >
             {n % COLUMN_CHIPS === 0 && <span>{n} · {priceOf(n)}</span>}
           </div>

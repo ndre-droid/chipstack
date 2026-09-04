@@ -15,6 +15,11 @@ import {
   spanFor,
   stacksTotal,
   teach,
+  calibrationFor,
+  forgetCalibration,
+  normalizeCalibrations,
+  screenKeyOf,
+  withCalibration,
 } from './chipRuler.ts';
 
 /**
@@ -210,6 +215,88 @@ console.log('\na corrected stack teaches the ruler, and a lone one only slides i
   for (let i = 0; i < MAX_SAMPLES + 5; i++) many = teach(many, { y: yFor(12), chips: 12 }) ?? many;
   check('the samples do not grow forever', (many.samples?.length ?? 0) <= MAX_SAMPLES, String(many.samples?.length));
   check('and a truthful ruler stays truthful', chipsAt(yFor(17), many) === 17);
+}
+
+/**
+ * Two screens, one device.
+ *
+ * The Fold is the reason this exists: shut it is a 412x960 panel standing on its own
+ * bottom edge, open it is 832x750 in a different density bucket standing on a
+ * different edge. One calibration cannot be true of both, and quietly using the
+ * wrong one under-reads every stack for the rest of the night.
+ */
+console.log('');
+console.log('one device, two pieces of glass');
+{
+  const cover = screenKeyOf({ width: 412, height: 960, dpr: 2.625, wide: false });
+  const inner = screenKeyOf({ width: 832, height: 750, dpr: 2.4, wide: true });
+  check('the two panels are told apart', cover !== inner, cover + ' / ' + inner);
+
+  check(
+    'turning the device does not invent a third screen',
+    screenKeyOf({ width: 960, height: 412, dpr: 2.625, wide: false }) === cover,
+  );
+  check(
+    'and neither does a fractional dpr wobble',
+    screenKeyOf({ width: 412, height: 960, dpr: 2.6251, wide: false }) === cover,
+  );
+  check(
+    'a webview reporting the window is still caught by the layout class',
+    screenKeyOf({ width: 412, height: 960, dpr: 2.625, wide: true }) !== cover,
+  );
+
+  const cals = withCalibration(withCalibration({}, cover, good!), inner, { px: 17.3, zeroPx: 40 });
+  check('each screen keeps its own', calibrationFor(cals, cover)?.px === good!.px);
+  check('...and the other one is not it', calibrationFor(cals, inner)?.px === 17.3);
+  check('an unmeasured screen has nothing', calibrationFor(cals, 'somewhere-else') === null);
+  check(
+    'measuring one screen leaves the other alone',
+    Object.keys(withCalibration(cals, cover, { px: 21, zeroPx: 10 })).length === 2,
+  );
+  const forgotten = forgetCalibration(cals, inner);
+  check('recalibrating one screen forgets only that one', calibrationFor(forgotten, inner) === null);
+  check('...and keeps the other', calibrationFor(forgotten, cover) !== null);
+
+  // a stored map is user data that has been through a backup file and a merge
+  const dirty = normalizeCalibrations({
+    ok: good,
+    absurd: { px: MAX_PX_PER_CHIP + 40, zeroPx: 10 },
+    negative: { px: 20, zeroPx: -5 },
+    nonsense: 'twenty',
+    '': good,
+  });
+  check('a believable calibration survives the trip', !!dirty.ok);
+  check('an impossible chip height does not', !dirty.absurd);
+  check('nor a table above the screen', !dirty.negative);
+  check('nor a string', !dirty.nonsense);
+  check('nor a nameless screen', !dirty['']);
+  check('a junk field is an empty map, not a crash', Object.keys(normalizeCalibrations(null)).length === 0);
+  check('an array is not a map of screens', Object.keys(normalizeCalibrations([good])).length === 0);
+}
+
+/**
+ * The ladder is not always the bottom of the glass. `blockedPx` is whatever sits
+ * under it, and it has to cost RANGE and never scale: chips that cannot be reached
+ * get typed, chips that can still read the same number.
+ */
+console.log('');
+console.log('what sits below the ladder costs range, not scale');
+{
+  const gap = 220;
+  check('no gap is the old answer', hiddenChips(good, 0) === hiddenChips(good));
+  check(
+    'a gap puts more chips out of reach',
+    hiddenChips(good, gap) > hiddenChips(good, 0),
+    hiddenChips(good, gap) + ' vs ' + hiddenChips(good, 0),
+  );
+  check(
+    'exactly its own worth of them',
+    hiddenChips(good, gap) === Math.floor((gap + ZERO) / PX),
+    String(hiddenChips(good, gap)),
+  );
+  check('and the shortest measurable stack rises with it', minMeasurable(good, gap) > minMeasurable(good, 0));
+  check('a negative gap is not a discount', hiddenChips(good, -50) === hiddenChips(good, 0));
+  check('nor for the shortest stack', minMeasurable(good, -50) === minMeasurable(good, 0));
 }
 
 console.log(failures ? `\nchipRuler: ${failures} FAILED` : '\nchipRuler: all checks passed');

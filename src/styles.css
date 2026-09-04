@@ -2458,6 +2458,9 @@ input[type='color'] { cursor: pointer; }
 .pr-stackedit { margin-top: 8px; padding: 9px 10px; border-radius: var(--r-sm);
   background: var(--acc-wash); border: 1px solid var(--acc-line); }
 .pr-stackedit .input { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* the two exact paths out of a typed estimate: tally it, or measure it */
+.pr-exact { display: flex; gap: 8px; margin-top: 8px; }
+.pr-exact .btn { flex: 1; min-width: 0; white-space: nowrap; }
 .quick-chip.is-set { border-color: var(--acc-line); color: var(--acc); }
 .pr-menu { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .pr-cashout { margin-top: 8px; }
@@ -2569,7 +2572,12 @@ input[type='color'] { cursor: pointer; }
 .cr-small-sum { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
 
 /* --- The chip ruler: a length beside the phone, read back as a count --- */
-.ruler-sheet { z-index: 70; }
+/* Sized to the WINDOW, not to the visible viewport the counting sheet uses. The
+   ladder's bottom edge is the instrument's zero, so it follows the glass and not
+   the keyboard: a ladder that shrank when the number pad opened would move the
+   physical zero mid-measurement. The sheet has no bottom bar for a keyboard to
+   bury, and the component measures whatever gap is left anyway (`belowPx`). */
+.ruler-sheet { z-index: 70; height: 100%; }
 .ruler-sheet .cr-title { display: flex; align-items: center; gap: 8px; }
 /* No bottom bar: close and confirm sit in the header, so the ladder can own every
    pixel down to the glass. Chrome floating over its foot costs the same chips as
@@ -2830,6 +2838,8 @@ input[type='color'] { cursor: pointer; }
 
 /* ---- Table tab: the setup fold ---- */
 .setup-toggle { margin: 18px 2px 8px; }
+/* the TV code, folded away until a big screen is actually in the room */
+.connect-toggle { margin: 2px 2px 10px; }
 .setup-body { animation: screen-in .2s ease-out; }
 
 /* ---- In-app confirmation (replaces window.confirm) ---- */
@@ -2995,6 +3005,16 @@ input[type='color'] { cursor: pointer; }
   font-variant-numeric: tabular-nums; }
 .onb-num.wide { flex: 1; min-width: 74px; }
 .onb-num.active { background: var(--acc-wash); border-color: var(--acc); color: var(--acc); }
+/* First run: which box of chips is on the table, and what the app should look
+   like. Both reuse the rows and swatches Settings and the Chips tab already
+   have — a second copy of either is how a new skin ends up half-added. */
+.onb-sets { margin-top: 10px; border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: 2px 12px; background: var(--surface); }
+.onb-sets .preset-set-row:last-child { border-bottom: none; }
+.onb-sets .preset-set-row.active .preset-set-text b { color: var(--acc); }
+.onb-sets .preset-set-row.active { position: relative; }
+.onb-sets .preset-set-row.active::after { content: '✓'; margin-left: auto; color: var(--acc); font-weight: 700; }
+.onb-styles { margin-top: 12px; }
 .onb-plan { margin-top: 18px; padding: 12px 14px; border-radius: var(--r-sm);
   background: var(--surface-2); border: 1px solid var(--line);
   display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums; }
@@ -3357,6 +3377,25 @@ input[type='color'] { cursor: pointer; }
   border-radius: var(--r-lg);
   overflow: hidden;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+
+/* ...except the chip ruler, which is an INSTRUMENT and not a dialog. Its scale
+   is calibrated as a distance from the table to the bottom of the GLASS, so the
+   ladder has to keep every pixel down to that edge at every window size — the
+   panel treatment above left it a 160px stub (eight chips) floating 220px above
+   the table on an unfolded Fold, which is not a ruler. Full width is right too:
+   the grip belongs under the thumb at the edge of the screen the pile is
+   standing against. */
+:root[data-layout='wide'] .cr-sheet.ruler-sheet {
+  inset: 0;
+  width: auto;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
 }
 
 /* A guest's phone is one player's own card and the room's standings. It reads

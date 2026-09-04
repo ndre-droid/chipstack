@@ -117,12 +117,18 @@ export interface Settings {
    *  most of the physical chips and least of the money (see lib/smallChange.ts).
    *  Per-device, like `countMode`. */
   countBigOnly?: boolean;
-  /** The chip ruler's calibration, in CSS pixels on THIS screen with THESE chips:
-   *  `px` is one chip's height, `zeroPx` how far below the bottom of the screen the
-   *  table sits when the phone stands on it (case bottom + bezel). Null until both
-   *  have been measured — see lib/chipRuler.ts. Device-local by nature: a fact about
-   *  the glass and the case, not about the game. */
+  /** LEGACY: the single chip-ruler calibration, from before a device could have two
+   *  screens. Kept only so an existing one can be adopted into `chipRulerCals` the
+   *  next time the ruler is opened; nothing reads it after that. */
   chipRuler?: { px: number; zeroPx: number; samples?: { y: number; chips: number }[] } | null;
+  /** The chip ruler's calibration PER SCREEN, in CSS pixels with THESE chips: `px`
+   *  is one chip's height, `zeroPx` how far below the bottom of the glass the table
+   *  sits when the phone stands on it (case bottom + bezel). Keyed by
+   *  `screenKeyOf()` — a folding phone has two panels in different density buckets
+   *  standing on two different edges, and one calibration cannot be true of both.
+   *  Empty until a screen has been measured; see lib/chipRuler.ts. Device-local by
+   *  nature: a fact about the glass and the case, not about the game. */
+  chipRulerCals?: Record<string, { px: number; zeroPx: number; samples?: { y: number; chips: number }[] }>;
   /** Buzz once per chip as the ruler's bar is dragged, so the count can be felt
    *  rather than read. Taste, and battery — hence per-device, like `chipAnim`. */
   countHaptics?: boolean;

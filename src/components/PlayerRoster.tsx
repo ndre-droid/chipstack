@@ -53,8 +53,8 @@ function PlayerRoster({ levelIdx }: { levelIdx?: number }) {
   const [editId, setEditId] = useState<string | null>(null);
   /** the whole-table round: one screen of bars that always adds up */
   const [round, setRound] = useState(false);
-  /** one pile counted exactly, colour by colour */
-  const [countId, setCountId] = useState<string | null>(null);
+  /** one pile counted exactly — and which of the two instruments was asked for */
+  const [count, setCount] = useState<{ id: string; ruler: boolean } | null>(null);
   // The stack being typed in right now. Entering the euro amount straight into the
   // row is the FASTEST thing at a live table, so it is the primary path; the
   // colour-by-colour tally sits one tap further in.
@@ -479,7 +479,9 @@ function PlayerRoster({ levelIdx }: { levelIdx?: number }) {
                         quick={quickAmounts}
                         confirmLabel={t('count.save')}
                         byColourLabel={t('roster.byColour')}
-                        onByColour={() => { setStackId(null); setCountId(p.id); }}
+                        rulerLabel={t('roster.measure')}
+                        onByColour={() => { setStackId(null); setCount({ id: p.id, ruler: false }); }}
+                        onRuler={() => { setStackId(null); setCount({ id: p.id, ruler: true }); }}
                         onCancel={() => setStackId(null)}
                         onConfirm={(v) => setStackMoney(p.id, v)}
                       />
@@ -688,8 +690,15 @@ function PlayerRoster({ levelIdx }: { levelIdx?: number }) {
 
       {confirm.node}
       {round && <CountRound levelIdx={levelIdx} onClose={() => setRound(false)} onUndoable={offerUndo} />}
-      {countId && (
-        <CountStack playerId={countId} levelIdx={levelIdx} onClose={() => setCountId(null)} onUndoable={offerUndo} />
+      {count && (
+        <CountStack
+          playerId={count.id}
+          levelIdx={levelIdx}
+          startMode="colours"
+          startRuler={count.ruler}
+          onClose={() => setCount(null)}
+          onUndoable={offerUndo}
+        />
       )}
       {pickPeople && <PeoplePicker onClose={() => setPickPeople(false)} />}
       {editId && <PlayerSheet playerId={editId} onClose={() => setEditId(null)} />}
@@ -786,7 +795,9 @@ function StackPrompt({
   quick,
   confirmLabel,
   byColourLabel,
+  rulerLabel,
   onByColour,
+  onRuler,
   onConfirm,
   onCancel,
 }: {
@@ -798,7 +809,9 @@ function StackPrompt({
   quick: number[];
   confirmLabel: string;
   byColourLabel: string;
+  rulerLabel: string;
   onByColour: () => void;
+  onRuler: () => void;
   onConfirm: (amount: number) => void;
   onCancel: () => void;
 }) {
@@ -841,9 +854,18 @@ function StackPrompt({
           {confirmLabel}
         </button>
       </div>
-      <button className="btn btn-ghost btn-sm btn-block mt8" onClick={onByColour}>
-        🧮 {byColourLabel}
-      </button>
+      {/* The two exact ways out of an estimate, both one tap from here. The ruler
+          used to be four taps and a mode switch further in — down inside the colour
+          tally, on a row you had to find first — which is a long way to walk for the
+          faster of the two instruments. */}
+      <div className="pr-exact">
+        <button className="btn btn-ghost btn-sm" onClick={onByColour}>
+          🧮 {byColourLabel}
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={onRuler}>
+          📏 {rulerLabel}
+        </button>
+      </div>
     </div>
   );
 }

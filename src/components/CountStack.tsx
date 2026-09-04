@@ -25,6 +25,8 @@ export default function CountStack({
   onClose,
   onResult,
   onUndoable,
+  startMode,
+  startRuler = false,
 }: {
   playerId: string;
   /** the blind level being played — decides which colours are dead weight */
@@ -34,6 +36,11 @@ export default function CountStack({
   onResult?: (units: number) => void;
   /** offered the ledger as it stood, so the caller can put an undo up */
   onUndoable?: (previous: LedgerSnapshot) => void;
+  /** which half of the sheet to open on, when the button that opened it already
+   *  said which one it meant. Absent: whatever this device used last. */
+  startMode?: 'money' | 'colours';
+  /** open the ruler straight away, on the first colour of the stack */
+  startRuler?: boolean;
 }) {
   const { state, dispatch } = useStore();
   const t = useT();
@@ -72,9 +79,17 @@ export default function CountStack({
   /* How the stack gets entered. Typing the euro amount is the default because at a
      real table it is by far the fastest — you look at the pile, type a number. Tallying
      by colour is the exact-but-slow path, kept one tap away. The choice is remembered
-     in settings, so a table that prefers one never re-picks it. */
-  const mode: 'money' | 'colours' = settings.countMode ?? 'money';
-  const setMode = (m: 'money' | 'colours') => dispatch({ type: 'UPDATE_SETTINGS', patch: { countMode: m } });
+     in settings, so a table that prefers one never re-picks it.
+     ...but the remembered choice does not get to overrule the button that was just
+     pressed. "By colour" opening on the money field was the sheet answering a
+     question nobody asked, so an explicit `startMode` seeds this opening and the
+     preference only decides when nothing was said. Switching still writes the
+     preference, so the table's own habit is still learned. */
+  const [mode, setModeLocal] = useState<'money' | 'colours'>(startMode ?? settings.countMode ?? 'money');
+  const setMode = (m: 'money' | 'colours') => {
+    setModeLocal(m);
+    dispatch({ type: 'UPDATE_SETTINGS', patch: { countMode: m } });
+  };
 
   const [counts, setCounts] = useState<Record<string, number>>({});
   /** the money-mode field, as typed (a string so "" isn't the same as 0) */
@@ -151,6 +166,17 @@ export default function CountStack({
       setPrefilled(false);
     }
   }, [player, denominations, session, unitValue, small, startStack]);
+
+  /* Opened from the ruler button rather than from "by colour": the ladder is what
+     was asked for, so it is what appears — on the first colour of the stack, with
+     the rest of the sheet already behind it to switch to. Runs once; re-opening the
+     ruler after closing it is the user's call, not the prop's. */
+  const rulerOpened = useRef(false);
+  useEffect(() => {
+    if (rulerOpened.current || !startRuler || !denoms.length) return;
+    rulerOpened.current = true;
+    setRulerId(denoms[0].id);
+  }, [startRuler, denoms]);
 
   const bump = (id: string, by: number) => {
     if (id === padId) padFresh.current = false;

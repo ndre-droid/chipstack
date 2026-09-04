@@ -41,6 +41,7 @@ export const DEVICE_LOCAL_SETTINGS = [
   // this screen — both facts about the device in your hand, not about the night
   'countBigOnly',
   'chipRuler',
+  'chipRulerCals',
   'countHaptics',
   'levelAlerts',
   // how chips are drawn: a weak phone and a TV stick want different answers, and
@@ -73,34 +74,25 @@ export function shareableSettings(s: Settings): Omit<Settings, DeviceLocalKey> {
  */
 export function applySharedSettings(current: Settings, incoming: Partial<Settings>): Settings {
   const merged = { ...current, ...incoming } as Settings;
-  // one assignment per key, typed: a loop over the list would need a cast that
-  // hides exactly the mismatch this is meant to prevent
   return { ...merged, ...pinned(current) };
 }
 
-/** The device-local half of a settings object, ready to be spread back over a merge. */
+/**
+ * The device-local half of a settings object, ready to be spread back over a merge.
+ *
+ * Built by walking DEVICE_LOCAL_SETTINGS rather than listing the keys a second time.
+ * The hand-written version was one list pretending to be two, and it drifted exactly
+ * as you would expect: `countStyle` and `countPassHintSeen` were declared device-local
+ * and then quietly not pinned, so an imported preset could still overwrite them. The
+ * compiler could not see it — both are OPTIONAL on `Settings`, and a `Pick` of an
+ * optional key is satisfied by leaving it out.
+ *
+ * Copying a key the current settings do not have writes `undefined` over whatever
+ * arrived, which is the same answer: this device did not have one, so it still does
+ * not.
+ */
 function pinned(s: Settings): Pick<Settings, DeviceLocalKey> {
-  return {
-    deviceIsTv: s.deviceIsTv,
-    liveSessionCode: s.liveSessionCode,
-    liveSessionRole: s.liveSessionRole,
-    guestName: s.guestName,
-    guestEmoji: s.guestEmoji,
-    onboardedAt: s.onboardedAt,
-    tvScale: s.tvScale,
-    tvLayoutOwn: s.tvLayoutOwn,
-    tvStartStackHidden: s.tvStartStackHidden,
-    rosterSort: s.rosterSort,
-    countMode: s.countMode,
-    countBigOnly: s.countBigOnly,
-    chipRuler: s.chipRuler,
-    countHaptics: s.countHaptics,
-    levelAlerts: s.levelAlerts,
-    chipStyle: s.chipStyle,
-    chipAnim: s.chipAnim,
-    breakAt: s.breakAt,
-    tvBackground: s.tvBackground,
-    tvBackgroundFocus: s.tvBackgroundFocus,
-    tvBackgroundTone: s.tvBackgroundTone,
-  };
+  const out = {} as Record<string, unknown>;
+  for (const key of DEVICE_LOCAL_SETTINGS) out[key] = s[key];
+  return out as Pick<Settings, DeviceLocalKey>;
 }
