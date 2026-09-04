@@ -1220,6 +1220,119 @@ Big multi-part rehaul. Design spec: `docs/superpowers/specs/2026-07-26-tv-remote
 
 ## ⚠️ Open items / next steps
 
+### STATE RIGHT NOW (2026-09-04, second pass — the ruler on two screens)
+
+Local branch **`feat/chip-3d-render`**. Working tree has the pass below **uncommitted**;
+`main` and the APK are still at `2456796` / `02dc5f9`. `npm test` 29 files green,
+`npx tsc -b` clean, `npm run build` clean, `npm run lint` no errors.
+
+**Still unseen on the physical Fold**: everything from the first Fold pass (below), plus
+all of this. Nothing here has been on hardware.
+
+#### What this pass changed, and why
+
+**1. The chip ruler was BROKEN on the unfolded Fold.** Measured in an 832x750 window:
+`.ruler-sheet` inherited the wide-layout rule that turns `.cr-sheet` into a floating
+centred panel, so the ladder collapsed to its `min-height: 160px` (about eight chips)
+and floated 224px above the bottom of the glass. `zeroPx` is calibrated as a distance
+from the table to the bottom edge — the instrument's entire premise was gone. Fixed by
+`:root[data-layout='wide'] .cr-sheet.ruler-sheet`, which puts it back full-bleed. **A
+sheet that measures something physical is not a dialog and must never be centred.**
+
+**2. One calibration, two pieces of glass.** A Fold's panels sit in different density
+buckets (~15% apart on chip height) and the phone stands on a different edge shut than
+open, which is the whole offset. `Settings.chipRuler` became
+`Settings.chipRulerCals` — a map keyed by `screenKeyOf()` (screen dimensions smaller-side
+first, dpr, plus the layout class as a backstop for a webview that reports the window).
+Folding **while the ruler is open** switches to that screen's calibration, or asks for it
+with `ruler.newScreen`; the stacks already logged survive, because those are counts of
+chips and no screen changes those. The old single field is adopted for the first screen
+the ruler is opened on and then retired.
+
+**3. Every height is now measured from the GLASS, not from the ladder.** `belowPx` (the
+gap between the ladder's bottom edge and the bottom of the window) is measured and added
+back before any maths — `chipsAt(dragPx + belowPx)`, ticks at `spanFor(n) - belowPx`,
+calibration samples in the same units, `hiddenChips(cal, belowPx)`. It is **signed on
+purpose**: negative means the ladder hangs past the window (a stale `--vvh` does this),
+and clamping it at zero would read every stack too tall. The ruler sheet is also sized to
+`100%` (the window) rather than `var(--vvh)` — the counting sheet uses `--vvh` so a
+keyboard cannot bury its confirm bar, but the ruler has no bottom bar and its bottom edge
+IS the instrument, so it follows the glass.
+
+Verified end to end in the browser at both sizes: calibrated the cover shape (drags at
+400px/190px → `px: 21, zeroPx: 20` exactly), read 20/10/30 chips back at 400/190/610px;
+folded to 832x750, which correctly asked to calibrate the new screen, calibrated it
+(`px: 17.5, zeroPx: 20`), read 20 back; folded shut again and the cover calibration
+returned with no re-ask. Both live under their own keys in `chipRulerCals`.
+
+**4. Getting to the ruler.** It was Table → the row's ✎ → "By colour" → switch to the
+colours segment → find the row → 📏. Now the stack editor offers **🧮 By colour** and
+**📏 Measure** side by side (`.pr-exact`), and `CountStack` takes `startMode` /
+`startRuler`. Two taps. Related: "By colour" opened the sheet on the MONEY field,
+because the sheet only ever read the remembered `countMode` — the button that was just
+pressed now wins, and switching inside still writes the preference.
+
+**5. `settingsScope.pinned()` had drifted from its own list.** `countStyle` and
+`countPassHintSeen` were declared device-local and then not pinned, so an imported
+preset/backup could overwrite them. Invisible to the compiler: both are OPTIONAL on
+`Settings`, and a `Pick` of an optional key is satisfied by omitting it. `pinned()` is
+now derived from `DEVICE_LOCAL_SETTINGS` itself, and the test's two fixtures now DISAGREE
+on every device-local field (they were both undefined, which is why the loop passed).
+
+**6. Connect-to-TV was the first third of the Table tab, every night.** Four empty code
+boxes and a paragraph, above the people actually playing. Collapsed to one line until
+tapped; a CONNECTED session still renders the full card, because that one is the live
+status. It auto-opens when there is an error to read.
+
+**7. First run asks which chips you own, and what it should look like.** Five steps now:
+buy-in → **chips** → players → length → **look**. The chips question is not cosmetic —
+everything the app computes is computed against the box on the table, and a first-time
+user with a Dice 300 case was being planned a tournament out of somebody else's ceramic
+set. It is asked BEFORE the ladder step, because the ladder is derived from the chips.
+Nothing is written to the store until "Let's play" (except the skin, which previews
+live), so "Skip" still means what it says. `SKIN_STYLES` / `ACCENT_SWATCHES` moved out of
+SettingsScreen into **`lib/skins.ts`** so there is one copy.
+
+**8. …which immediately exposed a real defect: `unitValue` belongs to the BOX.**
+Dice 300 + €20 at the default one-point-per-cent is 2000 points nobody can be handed, and
+the first screen after the wizard was a red "couldn't match the buy-in exactly — closest
+stack is 1000 (target 2000)". **`lib/unitValue.ts`** (+ tests) picks the unit for the
+chosen box, under a deliberately conservative rule: **a unit that already works is never
+changed**; only when the box cannot build the buy-in exactly is the standard unit whose
+stack lands nearest a comfortable pile taken instead. After it, Dice 300 + €20 opens on
+"400 pts · 22 chips · 40 BB", ladder 5/10, no warning. Applied at onboarding ONLY — a unit
+value is the meaning of every number in the app, ledger included.
+
+#### Files
+
+`lib/chipRuler.ts` (screenKeyOf/readScreenShape/calibrationFor/withCalibration/
+forgetCalibration/normalizeCalibrations; `minMeasurable` gained `blockedPx`),
+`components/ChipRuler.tsx`, `lib/skins.ts` (new), `lib/unitValue.ts` (+ test, new),
+`components/Onboarding.tsx`, `components/CountStack.tsx`, `components/PlayerRoster.tsx`,
+`screens/ConnectToTv.tsx`, `screens/SettingsScreen.tsx`, `lib/settingsScope.ts` (+ test),
+`store.tsx` (migrate normalises `chipRulerCals`), `types.ts`, `styles.css`, `lib/i18n.ts`.
+
+#### What to ask after the phone has seen it
+
+1. **The ruler on the inner screen.** Does the ladder reach the bottom edge of the glass,
+   and does calibrating it there give sane numbers? Then fold shut and check the cover
+   screen did not lose its own.
+2. **Folding with the ruler open.** It should switch calibration silently, or say "this
+   screen is new to the ruler" — never measure with the other screen's scale.
+3. The two-tap route to the ruler from a player's row.
+4. First run on a fresh install (or after Settings → reset): five steps, and whether the
+   chip-set question feels like the right second question.
+
+#### Not done, deliberately
+
+- The **colour sweep** (measure every colour in one standing, without leaving the ruler)
+  was offered again and the user picked the plain direct button instead. Still the
+  obvious next step if measuring a full stack feels slow at a real table.
+- Cash tab on a wide window repeats "BOUGHT IN / IN CHIPS / NET" per player instead of
+  using one header row. Cosmetic, untouched.
+
+---
+
 ### STATE RIGHT NOW (2026-09-04)
 
 Local branch **`feat/chip-3d-render`**, whose tip is `main` == **`2456796`**. Working tree
