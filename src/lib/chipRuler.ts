@@ -121,9 +121,11 @@ export interface RulerCalibration {
  *
  * Returns null rather than a number when the result is not believable: a bad
  * calibration poisons every count afterwards, so it has to fail at the one moment
- * the user is still looking at it.
+ * the user is still looking at it. What this does NOT judge is how far the samples
+ * fell from the line — see `fitCalibration` below, and the comment on it for why
+ * that judgement belongs to one caller and not the other.
  */
-export function fitCalibration(samples: RulerSample[], now = Date.now()): RulerCalibration | null {
+export function fitCorrections(samples: RulerSample[], now = Date.now()): RulerCalibration | null {
   const pts = samples.filter((p) => Number.isFinite(p.y) && Number.isFinite(p.chips) && p.chips > 0);
   const line = lineOf(pts);
   if (!line) return null;
@@ -141,11 +143,30 @@ export function fitCalibration(samples: RulerSample[], now = Date.now()): RulerC
   /* Residuals need a third point to exist at all, and they are measured against the
      CLAMPED line — the one the ruler will actually read stacks with, not the raw fit. */
   if (pts.length >= 3) {
-    const rms = rmsChips(pts, px, zeroPx);
-    if (!(rms <= MAX_RMS_CHIPS)) return null;
-    cal.rms = rms;
+    cal.rms = rmsChips(pts, px, zeroPx);
     cal.span = Math.max(...pts.map((p) => p.chips));
   }
+  return cal;
+}
+
+/**
+ * The same fit, for CALIBRATION DRAGS, which are held to a tighter standard.
+ *
+ * The difference is where the samples came from, and it matters. Calibration drags
+ * are three readings of one stack the user has just counted, taken one after another
+ * in a controlled moment — so three that do not agree are a mis-drag, and refusing
+ * them costs one repeated drag. Corrections are the opposite in every way: each is a
+ * separate evening's "no, that was 18", made about a calibration already known to be
+ * wrong. Scatter between those is what a drifting ruler looks like, and refusing to
+ * fit it would hand the user back the very calibration they keep correcting.
+ *
+ * So the scatter gate lives here, on the caller that should have it, rather than
+ * inside the arithmetic where both callers would inherit it.
+ */
+export function fitCalibration(samples: RulerSample[], now = Date.now()): RulerCalibration | null {
+  const cal = fitCorrections(samples, now);
+  if (!cal) return null;
+  if (cal.rms !== undefined && !(cal.rms <= MAX_RMS_CHIPS)) return null;
   return cal;
 }
 
@@ -249,6 +270,7 @@ const REFIT_SPREAD = 4;
 export function teach(
   cal: RulerCalibration | null | undefined,
   sample: RulerSample,
+  now = Date.now(),
 ): RulerCalibration | null {
   if (!isCalibrated(cal)) return null;
   if (!Number.isFinite(sample.y) || !(sample.chips > 0)) return null;
@@ -256,14 +278,17 @@ export function teach(
   const fixes = [...(cal.samples ?? []), sample].slice(-MAX_SAMPLES);
   const spread = Math.max(...fixes.map((p) => p.chips)) - Math.min(...fixes.map((p) => p.chips));
   if (fixes.length >= 2 && spread >= REFIT_SPREAD) {
-    const fitted = fitCalibration(fixes);
+    const fitted = fitCorrections(fixes, now);
     if (fitted) return { ...fitted, samples: fixes };
   }
 
   // slide the line onto the corrected stack, keeping the chip height
   const zeroPx = sample.chips * cal.px - sample.y;
   if (zeroPx < -cal.px || zeroPx > MAX_ZERO_PX) return null;
-  return { px: cal.px, zeroPx: Math.max(0, zeroPx), samples: fixes };
+  /* No `rms` on a slid line, deliberately: it passes exactly through the one stack
+     it was told about, and a zero there would be arithmetic claiming an accuracy
+     nothing has demonstrated. `at` is real, though — the ruler did change today. */
+  return { px: cal.px, zeroPx: Math.max(0, zeroPx), at: now, samples: fixes };
 }
 
 /** Is a stored calibration still one we are willing to measure with? */

@@ -9,6 +9,7 @@ import {
   calibrate,
   chipsAt,
   fitCalibration,
+  fitCorrections,
   hiddenChips,
   isCalibrated,
   minMeasurable,
@@ -395,6 +396,56 @@ console.log('a third drag is what makes a calibration checkable');
   const junk = normalizeCalibrations({ 'a@1:c:p': { px: PX, zeroPx: ZERO, rms: 'good', span: null, at: 'now' } });
   check('a hand-edited quality is dropped, the calibration is not', !!junk['a@1:c:p']);
   check('...and it claims nothing', junk['a@1:c:p']?.rms === undefined && junk['a@1:c:p']?.at === undefined);
+}
+
+/**
+ * A correction is not a calibration drag, and the scatter gate must not treat it
+ * like one.
+ *
+ * Calibration drags happen in one controlled moment against a stack the user has
+ * just counted, so three of them that disagree are a mis-drag and must be refused.
+ * Corrections are the opposite in every way: each is a separate evening's "that was
+ * really 18", made about a calibration ALREADY KNOWN to be wrong. Scatter between
+ * them is what a drifting ruler looks like — and refusing to fit it would leave the
+ * user with the very calibration they have now corrected three times.
+ */
+console.log('');
+console.log('corrections are allowed to disagree');
+{
+  const T = 1_700_000_000_000;
+  // the 18-that-said-13: believable, and wrong on every stack
+  const off = calibrate({ y: 20 * 28 - 40, chips: 20 }, { y: 10 * 28 - 40, chips: 10 });
+
+  /* Three honest corrections with a fair amount of judgement in them: ±14 px, about
+     two thirds of a chip each. Fitted, they land exactly on the truth. */
+  const spread = [
+    { y: yFor(8) + 14, chips: 8 },
+    { y: yFor(14) - 14, chips: 14 },
+    { y: yFor(20) + 14, chips: 20 },
+  ];
+
+  check('as calibration drags they are refused', fitCalibration(spread) === null);
+  const fitted = fitCorrections(spread, T);
+  check('as corrections they are fitted', fitted !== null);
+  check('and they land on the truth', !!fitted && Math.abs(fitted.px - PX) < 1e-9, String(fitted?.px));
+  check('the scatter is still reported', (fitted?.rms ?? 0) > MAX_RMS_CHIPS, String(fitted?.rms));
+  check('and the fit is stamped', fitted?.at === T);
+
+  /* ...and the same three arriving one at a time through teach must end up there
+     too. This is the regression: the third correction pushes the set past the gate,
+     and a gated refit would silently drop back to sliding the line — leaving the
+     chip height wherever the second correction happened to put it. */
+  let c = off;
+  for (const fix of spread) c = teach(c, fix, T) ?? c;
+  check('teach reaches the same place', !!c && Math.abs(c.px - PX) < 1e-9, String(c?.px));
+  check('...and did not just slide', Math.abs(c!.px - off!.px) > 1, String(c?.px));
+  check('the corrections are all remembered', c?.samples?.length === 3);
+
+  // a lone correction still only slides, and still says when it happened
+  const slid = teach(good, { y: yFor(12) + 10, chips: 12 }, T);
+  check('one correction keeps the chip height', slid?.px === good!.px);
+  check('...and is stamped too', slid?.at === T);
+  check('...and claims no quality of its own', slid?.rms === undefined);
 }
 
 console.log(failures ? `\nchipRuler: ${failures} FAILED` : '\nchipRuler: all checks passed');
