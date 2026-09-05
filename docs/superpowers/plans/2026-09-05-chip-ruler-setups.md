@@ -1454,7 +1454,10 @@ Add helpers below `saveCal`:
   /** the setups that already know this screen and could lend their chip height */
   const donors = setupsWithCal(setups, screen, setup.id);
 
-  const useSetup = (id: string, list = setups) => {
+  /* `pickSetup`, not `useSetup`: `.oxlintrc.json` runs `react/rules-of-hooks` as an
+     error, and anything named `useX` is treated as a hook — this is called from
+     `onClick`, which would be "a hook called inside a callback". */
+  const pickSetup = (id: string, list = setups) => {
     dispatch({ type: 'UPDATE_SETTINGS', patch: { chipRulerSetups: list, chipRulerSetupId: id } });
     setPicking(false);
     setNewName(null);
@@ -1484,7 +1487,7 @@ Add helpers below `saveCal`:
 
   const createSetup = (name: string) => {
     const id = nextSetupId(setups);
-    useSetup(id, [...setups, newSetup(name, id)]);
+    pickSetup(id, [...setups, newSetup(name, id)]);
   };
 ```
 
@@ -1520,7 +1523,7 @@ Insert the picker immediately **after** the closing `</div>` of `.ruler-head` an
             <button
               key={s.id}
               className={`ruler-setup${s.id === setup.id ? ' on' : ''}`}
-              onClick={() => useSetup(s.id)}
+              onClick={() => pickSetup(s.id)}
             >
               <span>{setupName(s)}</span>
               <i>{calibrationFor(s.cals, screen) ? '✓' : '–'}</i>
