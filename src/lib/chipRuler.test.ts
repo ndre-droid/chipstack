@@ -5,6 +5,7 @@ import {
   MAX_ZERO_PX,
   MIN_PX_PER_CHIP,
   MAX_SAMPLES,
+  MAX_RMS_CHIPS,
   calibrate,
   chipsAt,
   fitCalibration,
@@ -22,6 +23,7 @@ import {
   rulerSlots,
   screenKeyOf,
   withCalibration,
+  worstSample,
 } from './chipRuler.ts';
 
 /**
@@ -343,6 +345,56 @@ console.log('what sits below the ladder costs range, not scale');
   check('and the shortest measurable stack rises with it', minMeasurable(good, gap) > minMeasurable(good, 0));
   check('a negative gap is not a discount', hiddenChips(good, -50) === hiddenChips(good, 0));
   check('nor for the shortest stack', minMeasurable(good, -50) === minMeasurable(good, 0));
+}
+
+/**
+ * Three drags, because two of them cannot disagree.
+ *
+ * The endpoints set the slope on their own — a middle point adds nothing to it.
+ * What it buys is a RESIDUAL: the first number the ruler has ever had for how much
+ * to trust itself, and the only way to tell a shaky drag from a steady one.
+ */
+console.log('');
+console.log('a third drag is what makes a calibration checkable');
+{
+  const steps = [...CALIBRATION_STEPS];
+  const clean = steps.map((n) => ({ y: yFor(n), chips: n }));
+  const fit = fitCalibration(clean, 1_700_000_000_000);
+
+  check('three honest drags fit', fit !== null);
+  check('chip height recovered', !!fit && Math.abs(fit.px - PX) < 1e-9, String(fit?.px));
+  check('offset recovered', !!fit && Math.abs(fit.zeroPx - ZERO) < 1e-9, String(fit?.zeroPx));
+  check('and they agree with each other', (fit?.rms ?? 9) < 0.01, String(fit?.rms));
+  check('the readout knows how tall a stack it was anchored on', fit?.span === steps[0]);
+  check('and when it was measured', fit?.at === 1_700_000_000_000);
+
+  // two drags have no residual to report — a line through two points is always exact
+  check('two drags claim no quality', good?.rms === undefined && good?.span === undefined);
+  check('but are still stamped', typeof good?.at === 'number');
+
+  // one drag 40 px out: about two chips, which is a mis-drag and not noise
+  const blundered = clean.map((p, i) => (i === 1 ? { ...p, y: p.y + 40 } : p));
+  check('a mis-drag among three is refused', fitCalibration(blundered) === null);
+  check('and it is named', worstSample(blundered) === 1, String(worstSample(blundered)));
+  check('nothing to single out among two', worstSample(clean.slice(0, 2)) === -1);
+
+  // drag noise is not a blunder: three px of thumb wobble still calibrates
+  const wobbly = clean.map((p, i) => ({ ...p, y: p.y + [2, -3, 2][i]! }));
+  const okFit = fitCalibration(wobbly);
+  check('a few px of wobble still calibrates', okFit !== null, String(okFit?.rms));
+  check('and reports itself as good', (okFit?.rms ?? 9) < 0.25, String(okFit?.rms));
+
+  /* The quality is only worth having if it survives being written down. A stored
+     calibration goes through normalizeCalibrations on every single load, and that
+     function REBUILDS the object field by field — so anything it does not know
+     about is silently dropped, and the readout would be blank after one restart. */
+  const stored = normalizeCalibrations({ 'a@1:c:p': fit });
+  check('the quality comes back off disk', stored['a@1:c:p']?.rms === fit?.rms);
+  check('...and what it was measured on', stored['a@1:c:p']?.span === fit?.span);
+  check('...and when', stored['a@1:c:p']?.at === fit?.at);
+  const junk = normalizeCalibrations({ 'a@1:c:p': { px: PX, zeroPx: ZERO, rms: 'good', span: null, at: 'now' } });
+  check('a hand-edited quality is dropped, the calibration is not', !!junk['a@1:c:p']);
+  check('...and it claims nothing', junk['a@1:c:p']?.rms === undefined && junk['a@1:c:p']?.at === undefined);
 }
 
 console.log(failures ? `\nchipRuler: ${failures} FAILED` : '\nchipRuler: all checks passed');

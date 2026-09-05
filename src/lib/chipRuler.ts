@@ -53,15 +53,30 @@ export const MAX_PX_PER_CHIP = 80;
 export const MAX_ZERO_PX = 300;
 
 /**
- * The two stacks calibration asks for, tallest first.
+ * The stacks calibration asks for by default, tallest first — you take chips OFF one
+ * stack rather than building three.
  *
- * Both are deliberately WELL above the screen's bottom edge. A five-chip stack tops
- * out a centimetre off the table — down in the offset, behind the button bar, and
- * squashed under the dragging thumb — so the second drag used to be the least
- * accurate one of the pair while carrying the whole of the offset. Ten chips is far
- * enough up to aim at, and ten chips of separation is still plenty of slope.
+ * Three rather than two, and none of them 30. A line through two points is exact by
+ * construction, so a two-drag calibration can never report a residual and a shaky
+ * drag looks exactly like a steady one. The third drag does not improve the slope —
+ * the endpoints already set that — it is there so the fit has something to disagree
+ * with, which is the only way `rms` can exist.
+ *
+ * And 30 chips is a stack most ladders cannot show: a phone holds about 27 at a
+ * typical chip height. These are DEFAULTS, though: the sheet lets each one be
+ * changed, because the number of chips is the user's to state and not ours to assume.
  */
-export const CALIBRATION_STEPS = [20, 10] as const;
+export const CALIBRATION_STEPS = [20, 12, 6] as const;
+
+/**
+ * How far a set of calibration drags may fall from the line through them, in CHIPS,
+ * before it is refused.
+ *
+ * Half a chip. Thumb wobble is two or three CSS px — about a tenth of a chip — so
+ * this is loose enough to accept an ordinary set and tight enough to catch the one
+ * drag that landed on the wrong chip: a 40 px blunder among three fits at about 0.9.
+ */
+export const MAX_RMS_CHIPS = 0.5;
 
 /** How many corrections the fit remembers. Enough to average out a shaky drag. */
 export const MAX_SAMPLES = 8;
@@ -83,6 +98,18 @@ export interface RulerCalibration {
    * wrong, so averaging the two would defend the mistake being corrected.
    */
   samples?: RulerSample[];
+  /**
+   * How far the calibration drags fell from the fitted line, in CHIPS (RMS).
+   *
+   * Undefined when there is nothing to report rather than zero: a two-point fit, a
+   * carried-`px` re-zero and a slid line all pass exactly through their own data, so
+   * a zero here would be a claim of perfect accuracy made by arithmetic.
+   */
+  rms?: number;
+  /** the tallest stack the fit was anchored on, so a readout can say "±0.3 on a 20" */
+  span?: number;
+  /** when it was measured, ms since epoch */
+  at?: number;
 }
 
 /**
@@ -96,11 +123,40 @@ export interface RulerCalibration {
  * calibration poisons every count afterwards, so it has to fail at the one moment
  * the user is still looking at it.
  */
-export function fitCalibration(samples: RulerSample[]): RulerCalibration | null {
+export function fitCalibration(samples: RulerSample[], now = Date.now()): RulerCalibration | null {
   const pts = samples.filter((p) => Number.isFinite(p.y) && Number.isFinite(p.chips) && p.chips > 0);
-  if (pts.length < 2) return null;
+  const line = lineOf(pts);
+  if (!line) return null;
 
+  const { px } = line;
+  if (!(px >= MIN_PX_PER_CHIP && px <= MAX_PX_PER_CHIP)) return null;
+
+  // The table cannot be ABOVE the screen's bottom edge. A hair negative is drag
+  // noise and gets flattened; more than a chip's worth means the drags do not
+  // describe one straight line, and there is nothing to salvage.
+  if (line.zeroPx < -px || line.zeroPx > MAX_ZERO_PX) return null;
+  const zeroPx = Math.max(0, line.zeroPx);
+
+  const cal: RulerCalibration = { px, zeroPx, at: now };
+  /* Residuals need a third point to exist at all, and they are measured against the
+     CLAMPED line — the one the ruler will actually read stacks with, not the raw fit. */
+  if (pts.length >= 3) {
+    const rms = rmsChips(pts, px, zeroPx);
+    if (!(rms <= MAX_RMS_CHIPS)) return null;
+    cal.rms = rms;
+    cal.span = Math.max(...pts.map((p) => p.chips));
+  }
+  return cal;
+}
+
+/**
+ * Least squares through `y = chips·px − zeroPx`, with no opinion about whether the
+ * answer is believable. Shared by the fit (which then judges it) and by
+ * `worstSample` (which is only called once the fit has already said no).
+ */
+function lineOf(pts: RulerSample[]): { px: number; zeroPx: number } | null {
   const n = pts.length;
+  if (n < 2) return null;
   const mChips = pts.reduce((a, p) => a + p.chips, 0) / n;
   const mY = pts.reduce((a, p) => a + p.y, 0) / n;
   let sxy = 0;
@@ -111,17 +167,41 @@ export function fitCalibration(samples: RulerSample[]): RulerCalibration | null 
   }
   // every sample the same height: a slope cannot be read off one point twice
   if (!(sxx > 0)) return null;
-
   const px = sxy / sxx;
-  if (!(px >= MIN_PX_PER_CHIP && px <= MAX_PX_PER_CHIP)) return null;
+  if (!Number.isFinite(px) || !(px > 0)) return null;
+  return { px, zeroPx: px * mChips - mY };
+}
 
-  // The table cannot be ABOVE the screen's bottom edge. A hair negative is drag
-  // noise and gets flattened; more than a chip's worth means the drags do not
-  // describe one straight line, and there is nothing to salvage.
-  const raw = px * mChips - mY;
-  if (raw < -px || raw > MAX_ZERO_PX) return null;
+/** How far these drags sit from that line, as a number of chips. */
+function rmsChips(pts: RulerSample[], px: number, zeroPx: number): number {
+  const sq = pts.reduce((s, p) => s + (p.y - (p.chips * px - zeroPx)) ** 2, 0);
+  return Math.sqrt(sq / pts.length) / px;
+}
 
-  return { px, zeroPx: Math.max(0, raw) };
+/**
+ * Which of these drags disagrees with the others — the index of the one furthest
+ * from the line through all of them, or -1 when there is nothing to single out.
+ *
+ * Called only after a fit has been refused, and it is what turns "those three drags
+ * do not describe one stack, start again" into "drag 2 again". Two of the three were
+ * almost certainly fine, and asking for them a second time is how a calibration
+ * becomes something people avoid.
+ */
+export function worstSample(samples: RulerSample[]): number {
+  if (samples.length < 3) return -1;
+  if (!samples.every((p) => Number.isFinite(p.y) && Number.isFinite(p.chips) && p.chips > 0)) return -1;
+  const line = lineOf(samples);
+  if (!line) return -1;
+  let worst = -1;
+  let biggest = -1;
+  samples.forEach((p, i) => {
+    const err = Math.abs(p.y - (p.chips * line.px - line.zeroPx));
+    if (err > biggest) {
+      biggest = err;
+      worst = i;
+    }
+  });
+  return worst;
 }
 
 /**
@@ -403,7 +483,17 @@ export function normalizeCalibrations(raw: unknown): RulerCalibrations {
           (p) => p && Number.isFinite(p.y) && Number.isFinite(p.chips) && p.chips > 0,
         ).slice(-MAX_SAMPLES)
       : undefined;
-    out[key] = samples?.length ? { px: cal.px, zeroPx: cal.zeroPx, samples } : { px: cal.px, zeroPx: cal.zeroPx };
+    const kept: RulerCalibration = { px: cal.px, zeroPx: cal.zeroPx };
+    if (samples?.length) kept.samples = samples;
+    /* What the fit thought of itself. Optional, and each one carried only if it is
+       still a number: an older calibration has none of these, and a hand-edited one
+       may have a string where a residual should be. Losing the readout is a blank
+       line in Settings; trusting a made-up one is a ruler claiming an accuracy it
+       has never demonstrated. */
+    if (Number.isFinite(cal.rms) && (cal.rms as number) >= 0) kept.rms = cal.rms;
+    if (Number.isFinite(cal.span) && (cal.span as number) > 0) kept.span = cal.span;
+    if (Number.isFinite(cal.at) && (cal.at as number) > 0) kept.at = cal.at;
+    out[key] = kept;
   }
   return out;
 }
