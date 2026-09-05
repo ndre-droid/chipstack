@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../store';
 import { IconPlay, IconPause, IconReset, IconChevron, IconDice, IconExpand } from '../components/Icons';
@@ -65,6 +65,15 @@ export default function TableScreen() {
   const [tv, setTv] = useState(false);
   const [focus, setFocus] = useState(false);
   const [tools, setTools] = useState(false);
+  /* Bumped by the big screen's counting button. The round belongs to the roster card
+     (it owns the undo offer and the snapshots), so this asks it to open rather than
+     growing a second way of counting a table. */
+  const [countReq, setCountReq] = useState(0);
+  /* Stable on purpose: the roster is memoised because this tab repaints every second
+     while the clock runs, and a fresh closure per render would repaint it with the
+     clock. See lib/perf notes — the same reason the roster takes `levelIdx` and not
+     the clock itself. */
+  const backToBigScreen = useCallback(() => setTv(true), []);
   const [alertDenied, setAlertDenied] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
 
@@ -233,7 +242,11 @@ export default function TableScreen() {
             <JoinRequests />
 
             {/* Everyone at the table: joining, rebuys, stack counts, cash-outs — one card. */}
-            <PlayerRoster levelIdx={levelIdx} />
+            <PlayerRoster
+              levelIdx={levelIdx}
+              countRequest={countReq}
+              onCountClosed={backToBigScreen}
+            />
           </>
         }
         right={
@@ -370,7 +383,20 @@ export default function TableScreen() {
           transform, and any transformed ancestor becomes the containing block for
           `position: fixed` — the big screen was then laid out inside the ~470px
           card column instead of filling the window. */}
-      {tv && createPortal(<BigScreen onClose={() => setTv(false)} />, document.body)}
+      {tv &&
+        createPortal(
+          <BigScreen
+            onClose={() => setTv(false)}
+            /* Down off the stand, count, back on the stand. The big screen closes so
+               the counting round has the whole phone, and `onCountClosed` above puts
+               it back the moment the round is done. */
+            onCount={() => {
+              setTv(false);
+              setCountReq((n) => n + 1);
+            }}
+          />,
+          document.body,
+        )}
     </div>
   );
 }

@@ -37,7 +37,22 @@ type Handout = { id: string; amount: number; denoms: { value: number; color: str
  * later re-entry ADDS to `buyIn` — the earlier cash-out stays on the record and the
  * net stays right. Stacks (`chips`) are an overview figure and never feed settlement.
  */
-function PlayerRoster({ levelIdx }: { levelIdx?: number }) {
+/**
+ * `countRequest` opens the counting round from outside the card — the big screen asks
+ * for it by bumping the number — and `onCountClosed` fires when THAT round is done,
+ * so whoever asked can put its own screen back. Opening it from the roster's own
+ * button is unchanged and reports nothing: the caller only hears about the rounds it
+ * started itself.
+ */
+function PlayerRoster({
+  levelIdx,
+  countRequest = 0,
+  onCountClosed,
+}: {
+  levelIdx?: number;
+  countRequest?: number;
+  onCountClosed?: () => void;
+}) {
   const { state, dispatch } = useStore();
   const t = useT();
   const { money } = useFmt();
@@ -53,6 +68,15 @@ function PlayerRoster({ levelIdx }: { levelIdx?: number }) {
   const [editId, setEditId] = useState<string | null>(null);
   /** the whole-table round: one screen of bars that always adds up */
   const [round, setRound] = useState(false);
+  /** …and whether this one was asked for from outside, so the answer goes back */
+  const asked = useRef(false);
+  /* The request itself. Zero is "never asked", so mounting is not a request, and a
+     bump opens exactly the round the card's own button opens. */
+  useEffect(() => {
+    if (!countRequest) return;
+    asked.current = true;
+    setRound(true);
+  }, [countRequest]);
   /** one pile counted exactly — and which of the two instruments was asked for */
   const [count, setCount] = useState<{ id: string; ruler: boolean } | null>(null);
   // The stack being typed in right now. Entering the euro amount straight into the
@@ -689,7 +713,19 @@ function PlayerRoster({ levelIdx }: { levelIdx?: number }) {
       </div>
 
       {confirm.node}
-      {round && <CountRound levelIdx={levelIdx} onClose={() => setRound(false)} onUndoable={offerUndo} />}
+      {round && (
+        <CountRound
+          levelIdx={levelIdx}
+          onClose={() => {
+            setRound(false);
+            if (asked.current) {
+              asked.current = false;
+              onCountClosed?.();
+            }
+          }}
+          onUndoable={offerUndo}
+        />
+      )}
       {count && (
         <CountStack
           playerId={count.id}

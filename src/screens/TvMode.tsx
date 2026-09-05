@@ -353,7 +353,15 @@ function TvCell({
   );
 }
 
-export default function TvMode({ onClose }: { onClose: () => void }) {
+/**
+ * `onCount` is the way back into the app for a counting round, and it is passed ONLY
+ * where the big screen is an overlay on the device that owns the game — the Table
+ * tab's preview, which on a folding phone is the whole point: the panel stands on
+ * the table, gets picked up to take the new stacks, and goes back. A screen that is
+ * a television (a browser on the set, or a paired TV device) has no roster of its
+ * own to open and nobody standing at it to type, so it is not offered there.
+ */
+export default function TvMode({ onClose, onCount }: { onClose: () => void; onCount?: () => void }) {
   const { state, dispatch } = useStore();
   const t = useT();
   const { money, num } = useFmt();
@@ -2006,6 +2014,11 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
 
       {/* controls (for the phone holding the session) */}
       <div className="tv-controls">
+        {onCount && (
+          <button className="tv-txt tv-count" onClick={onCount}>
+            🧮 {t('roster.countRound')}
+          </button>
+        )}
         {/* Cash game without the timer: no clock to run, but the blinds still go up
             when the table says so — step the ladder by hand from the big screen. */}
         {manualBlinds && (

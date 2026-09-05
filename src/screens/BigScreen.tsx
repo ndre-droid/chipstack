@@ -21,10 +21,10 @@ import { Suspense, lazy } from 'react';
  */
 const TvMode = lazy(() => import('./TvMode'));
 
-export default function BigScreen({ onClose }: { onClose: () => void }) {
+export default function BigScreen({ onClose, onCount }: { onClose: () => void; onCount?: () => void }) {
   return (
     <Suspense fallback={<div className="tv" aria-hidden />}>
-      <TvMode onClose={onClose} />
+      <TvMode onClose={onClose} onCount={onCount} />
     </Suspense>
   );
 }
