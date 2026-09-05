@@ -46,6 +46,23 @@ export type TvLayout = Record<TvPanelId, TvSlot>;
 export type TvTextRole = 'clock' | 'blinds' | 'level' | 'players' | 'legend' | 'stats' | 'quips';
 export type TvTextScale = Record<TvTextRole, number>;
 
+/** One screen's chip-ruler calibration as it is stored: CSS pixels per chip, how far
+ *  below the glass the table sits, the hand corrections it has learned from, and how
+ *  well its calibration drags agreed. Structurally the same as `RulerCalibration` in
+ *  lib/chipRuler.ts, written out here rather than imported so `Settings` stays a plain
+ *  description of what is on disk. */
+export interface StoredCalibration {
+  px: number;
+  zeroPx: number;
+  samples?: { y: number; chips: number }[];
+  /** how far the calibration drags fell from the fitted line, in chips (RMS) */
+  rms?: number;
+  /** the tallest stack that fit was anchored on */
+  span?: number;
+  /** when it was measured, ms since epoch */
+  at?: number;
+}
+
 export interface Settings {
   unitValue: number;        // real money value of 1 chip-unit (default 0.01)
   currency: string;         // symbol, e.g. "€"
@@ -120,7 +137,7 @@ export interface Settings {
   /** LEGACY: the single chip-ruler calibration, from before a device could have two
    *  screens. Kept only so an existing one can be adopted into `chipRulerCals` the
    *  next time the ruler is opened; nothing reads it after that. */
-  chipRuler?: { px: number; zeroPx: number; samples?: { y: number; chips: number }[] } | null;
+  chipRuler?: StoredCalibration | null;
   /** The chip ruler's calibration PER SCREEN, in CSS pixels with THESE chips: `px`
    *  is one chip's height, `zeroPx` how far below the bottom of the glass the table
    *  sits when the phone stands on it (case bottom + bezel). Keyed by
@@ -128,7 +145,7 @@ export interface Settings {
    *  standing on two different edges, and one calibration cannot be true of both.
    *  Empty until a screen has been measured; see lib/chipRuler.ts. Device-local by
    *  nature: a fact about the glass and the case, not about the game. */
-  chipRulerCals?: Record<string, { px: number; zeroPx: number; samples?: { y: number; chips: number }[] }>;
+  chipRulerCals?: Record<string, StoredCalibration>;
   /** Buzz once per chip as the ruler's bar is dragged, so the count can be felt
    *  rather than read. Taste, and battery — hence per-device, like `chipAnim`. */
   countHaptics?: boolean;

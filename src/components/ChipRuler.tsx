@@ -6,9 +6,9 @@ import { useT, useFmt } from '../lib/i18n';
 import { haptic } from '../lib/platform';
 import {
   CALIBRATION_STEPS,
-  calibrate,
   calibrationFor,
   chipsAt,
+  fitCalibration,
   hiddenChips,
   isCalibrated,
   minMeasurable,
@@ -19,7 +19,9 @@ import {
   stacksTotal,
   teach,
   withCalibration,
+  worstSample,
 } from '../lib/chipRuler';
+import type { RulerSample } from '../lib/chipRuler';
 import type { Denomination } from '../types';
 
 /** the smallest and largest one-tap rows offered for a pile too short to measure */
@@ -33,6 +35,8 @@ const HAPTIC_GAP_MS = 28;
    vibrator — it is issued, it is even honoured, and nobody feels a thing. */
 const BUZZ_CHIP = 11;
 const BUZZ_COLUMN = 28;
+/** how far above the glass the shortest calibration stack must top out, in CSS px */
+const MIN_STEP_PX = 12;
 
 /**
  * Measure a colour instead of counting it.
@@ -216,7 +220,19 @@ export default function ChipRuler({
 
   /** calibration: null when measuring, otherwise which of CALIBRATION_STEPS we are on */
   const [calStep, setCalStep] = useState<number | null>(calibrateOnly || !isCalibrated(cal) ? 0 : null);
-  const [calFirst, setCalFirst] = useState<{ y: number; chips: number } | null>(null);
+  /**
+   * How many chips each calibration drag is standing next to.
+   *
+   * Editable, because a fixed number is a dead end. A stack of 20 that does not fit
+   * the ladder used to leave the flow with nothing to do but start over, and six
+   * chips vanish entirely behind a thick case's lip. The user says what is on the
+   * table; the fit draws a line through whatever they say.
+   */
+  const [calCounts, setCalCounts] = useState<number[]>(() => [...CALIBRATION_STEPS]);
+  /** the drags taken so far, one per step — a hole while a single bad one is redone */
+  const [calDrags, setCalDrags] = useState<(RulerSample | undefined)[]>([]);
+  /** which drag the fit blamed, so the sheet can ask for that one back */
+  const [calBad, setCalBad] = useState<number | null>(null);
   const [calError, setCalError] = useState(false);
   /** the stack that was too tall for the ladder to have measured honestly */
   const [calTooTall, setCalTooTall] = useState(false);
@@ -343,8 +359,27 @@ export default function ChipRuler({
     if (buzz) haptic(16);
   };
 
+  /** the drags actually taken, with the holes removed */
+  const taken = (list: (RulerSample | undefined)[]) => list.filter((d): d is RulerSample => !!d);
+
+  /** park the bar and forget it means anything — every step boundary does this */
+  const restBar = () => {
+    setRawPx(0);
+    setDragPx(0);
+    setTouched(false);
+  };
+
+  const setCount = (i: number, n: number) => {
+    /* Strictly decreasing, because that is the physical act: one stack, chips coming
+       off it. Two steps claiming the same height would also hand the fit two points
+       it cannot draw a slope through. */
+    const lo = i + 1 < calCounts.length ? calCounts[i + 1]! + 1 : 2;
+    const hi = i > 0 ? calCounts[i - 1]! - 1 : 99;
+    setCalCounts((c) => c.map((v, j) => (j === i ? Math.max(lo, Math.min(hi, n)) : v)));
+  };
+
   const nextCalStep = () => {
-    const chips = CALIBRATION_STEPS[calStep ?? 0];
+    const step = calStep ?? 0;
     /* A stack taller than the ladder pins the bar at the ceiling, and the drag then
        says "this stack is exactly as tall as the screen" — a lie the fit cannot see
        through, and the fastest way to a calibration that reads 18 chips as 13. */
@@ -352,34 +387,58 @@ export default function ChipRuler({
       setCalTooTall(true);
       return;
     }
-    if (calStep === 0) {
-      setCalFirst({ y: dragAbs, chips });
-      setCalStep(1);
-      setRawPx(0);
-      setDragPx(0);
-      setTouched(false);
+
+    const drags = calDrags.slice();
+    drags[step] = { y: dragAbs, chips: calCounts[step]! };
+    setCalDrags(drags);
+    setCalBad(null);
+
+    const missing = calCounts.findIndex((_, i) => !drags[i]);
+    if (missing >= 0) {
+      /* Two drags are already a provisional line, and it is worth using: the default
+         third stack is six chips, which under a chunky case tops out BELOW the glass
+         and cannot be dragged to at all. Raise it until it is somewhere a thumb can
+         reach, rather than asking for a stack the phone is standing on top of. */
+      if (taken(drags).length === 2) {
+        const rough = fitCalibration(taken(drags));
+        if (rough) {
+          setCalCounts((c) => {
+            const want = [...c];
+            const ceiling = want[missing - 1] ?? 99;
+            let n = want[missing]!;
+            while (n < ceiling - 1 && spanFor(n, rough) <= MIN_STEP_PX) n++;
+            want[missing] = n;
+            return want;
+          });
+        }
+      }
+      setCalStep(missing);
+      restBar();
       haptic(12);
       return;
     }
-    const solved = calFirst && calibrate(calFirst, { y: dragAbs, chips });
+
+    const solved = fitCalibration(taken(drags));
     if (!solved) {
-      // start over rather than keep half a calibration nobody can see
+      /* Two of the three were almost certainly fine. Asking for all of them again is
+         how a calibration becomes something people avoid, so the fit names the drag
+         that disagrees and only that one is taken again. */
+      const bad = worstSample(taken(drags));
+      setCalBad(bad >= 0 ? bad : null);
       setCalError(true);
-      setCalFirst(null);
-      setCalStep(0);
-      setRawPx(0);
-      setDragPx(0);
-      setTouched(false);
+      setCalDrags(bad >= 0 ? drags.map((d, i) => (i === bad ? undefined : d)) : []);
+      setCalStep(bad >= 0 ? bad : 0);
+      restBar();
       return;
     }
+
     dispatch({
       type: 'UPDATE_SETTINGS',
       patch: { chipRulerCals: withCalibration(cals, screen, solved), chipRuler: null },
     });
     setCalStep(null);
-    setRawPx(0);
-    setDragPx(0);
-    setTouched(false);
+    setCalDrags([]);
+    restBar();
     haptic([12, 60, 12]);
     if (calibrateOnly) onClose();
   };
@@ -397,7 +456,9 @@ export default function ChipRuler({
     setRawPx(0);
     setDragPx(0);
     setTouched(false);
-    setCalFirst(null);
+    setCalDrags([]);
+    setCalBad(null);
+    setCalCounts([...CALIBRATION_STEPS]);
     setCalError(false);
     setCalTooTall(false);
     setLearn(null);
@@ -406,7 +467,9 @@ export default function ChipRuler({
 
   const restartCalibration = () => {
     setCalStep(0);
-    setCalFirst(null);
+    setCalDrags([]);
+    setCalBad(null);
+    setCalCounts([...CALIBRATION_STEPS]);
     setCalError(false);
     setCalTooTall(false);
     setRawPx(0);
@@ -445,7 +508,7 @@ export default function ChipRuler({
           </div>
           <div className="cr-prev">
             {calibrating
-              ? t('ruler.calibrateStep', { i: (calStep ?? 0) + 1, n: CALIBRATION_STEPS.length })
+              ? t('ruler.calibrateStep', { i: (calStep ?? 0) + 1, n: calCounts.length })
               : t('ruler.title')}
           </div>
         </div>
@@ -458,7 +521,7 @@ export default function ChipRuler({
           <button className="icon-btn" onClick={onClose} aria-label={t('count.close')}>✕</button>
           {calibrating ? (
             <button className="btn btn-primary ruler-go" disabled={!touched} onClick={nextCalStep}>
-              {t(calStep === 0 ? 'ruler.calibrateNext' : 'ruler.calibrateSaveShort')}
+              {t(taken(calDrags).length + 1 >= calCounts.length ? 'ruler.calibrateSaveShort' : 'ruler.calibrateNext')}
             </button>
           ) : (
             <button
@@ -474,11 +537,29 @@ export default function ChipRuler({
       </div>
 
       {calibrating ? (
-        <p className="ruler-hint">
-          {t(calStep === 0 ? 'ruler.calibrateTall' : 'ruler.calibrateShort', {
-            n: CALIBRATION_STEPS[calStep ?? 0],
-          })}
-        </p>
+        <>
+          <p className="ruler-hint">
+            {t(taken(calDrags).length === 0 ? 'ruler.calibrateTall' : 'ruler.calibrateShort')}
+          </p>
+          <div className="ruler-step">
+            <button
+              className="cr-btn"
+              onClick={() => setCount(calStep ?? 0, (calCounts[calStep ?? 0] ?? 0) - 1)}
+              aria-label="−1"
+            >
+              −
+            </button>
+            <b>{calCounts[calStep ?? 0]}</b>
+            <button
+              className="cr-btn"
+              onClick={() => setCount(calStep ?? 0, (calCounts[calStep ?? 0] ?? 0) + 1)}
+              aria-label="+1"
+            >
+              +
+            </button>
+            <span>{t('ruler.calibrateCount')}</span>
+          </div>
+        </>
       ) : (
         <>
           <div className="ruler-strip">
@@ -567,7 +648,9 @@ export default function ChipRuler({
         {calTooTall
           ? t('ruler.calibrateTooTall')
           : calError
-            ? t('ruler.calibrateBad')
+            ? calBad !== null
+              ? t('ruler.calibrateRedo', { i: calBad + 1 })
+              : t('ruler.calibrateBad')
             : learn
               ? t(learn.ok ? 'ruler.learned' : 'ruler.learnBad', { n: learn.n })
               : calibrating
@@ -592,7 +675,7 @@ export default function ChipRuler({
           <span className="ruler-grip" />
           <span className="ruler-read">
             {calibrating ? (
-              t('ruler.calibrateRead', { n: CALIBRATION_STEPS[calStep ?? 0] })
+              t('ruler.calibrateRead', { n: calCounts[calStep ?? 0] ?? 0 })
             ) : touched ? (
               <>
                 <b>{measured}</b> · {priceOf(measured)}

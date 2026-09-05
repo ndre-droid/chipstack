@@ -497,10 +497,27 @@ function BeforeTheNight() {
         }),
     });
 
-  const reading = (slot: RulerSlot) =>
-    slot.cal
-      ? t('settings.rulerReady', { px: slot.cal.px.toFixed(1), zero: Math.round(slot.cal.zeroPx) })
-      : t('settings.rulerNone');
+  /**
+   * What a measured slot says about itself.
+   *
+   * `20.8 px per chip · 70 px below the glass` was true and useless — two numbers
+   * nobody can act on, in units nobody measures chips in. Three drags produce a
+   * residual, so the slot can report the thing that matters instead: how far off a
+   * stack is likely to read, and when that was last established. A calibration with
+   * no residual keeps the old line rather than claiming an accuracy nothing has
+   * demonstrated — a two-drag one from before this existed, or a line slid onto a
+   * single correction, genuinely has nothing to report.
+   */
+  const reading = (slot: RulerSlot) => {
+    if (!slot.cal) return t('settings.rulerNone');
+    const { rms, span, at } = slot.cal;
+    const body =
+      rms !== undefined && span
+        ? t('settings.rulerQuality', { rms: rms.toFixed(1), n: span })
+        : t('settings.rulerReady', { px: slot.cal.px.toFixed(1), zero: Math.round(slot.cal.zeroPx) });
+    const when = at ? new Date(at).toLocaleDateString(state.settings.language) : '';
+    return when ? `${body} · ${when}` : body;
+  };
 
   return (
     <>
