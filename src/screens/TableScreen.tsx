@@ -159,7 +159,7 @@ export default function TableScreen() {
   const showSticky = !manualBlinds && (!isCash || state.settings.cashUseTimer);
 
   return (
-    <div>
+    <div className={`table-screen${showSticky ? ' has-clockbar' : ''}`}>
       {showSticky && (
         <div className="table-sticky">
           <div className="ts-main">
@@ -201,10 +201,15 @@ export default function TableScreen() {
         </div>
       )}
 
-      {/* Two columns once the panel is wide enough to hold them — the reference
-          picture on the left, the night on the right. The split is contiguous, so
-          on a phone this is the same order it has always been; see Panes.tsx. */}
+      {/* Two columns once the panel is wide enough to hold them — the table on the
+          left, everything you set up on the right. The split is contiguous, so on a
+          phone this is the same order it has always been; see Panes.tsx.
+
+          The roster ends the left column because the left column is PINNED: the
+          right one is a long scroll of setup, and who is still in and how deep they
+          are is what you want to keep looking at while you read it. */}
       <Panes
+        stickyLeft
         left={
           <>
             {/* Connect to the TV — type the code the TV shows, right here on the Table tab */}
@@ -212,16 +217,16 @@ export default function TableScreen() {
 
             {/* The stack everyone gets for the buy-in */}
             <StartingStack levelIdx={levelIdx} />
-          </>
-        }
-        right={
-          <>
+
             {/* Anybody who scanned the code on the TV and typed their own name. */}
             <JoinRequests />
 
             {/* Everyone at the table: joining, rebuys, stack counts, cash-outs — one card. */}
             <PlayerRoster levelIdx={levelIdx} />
-
+          </>
+        }
+        right={
+          <>
             {/* Side pots and colouring up — the two calculations the table argues about. */}
             <button className="btn btn-ghost btn-block btn-sm tools-btn" onClick={() => setTools(true)}>
               🃏 {t('tools.open')}

@@ -66,6 +66,10 @@
   --r-lg: 20px;
   --nav-h: 62px;
   --header-h: 52px;
+  /* The scrollport's own top padding. A bar that sticks to the top of that
+     scrollport has to know it: `top: 0` pins BELOW the padding, and the page then
+     scrolls through the strip between the header and the bar. See `.table-sticky`. */
+  --screen-pt: 16px;
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
 
@@ -325,7 +329,7 @@ a { color: inherit; }
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 16px 16px calc(var(--nav-h) + var(--safe-b) + 28px);
+  padding: var(--screen-pt) 16px calc(var(--nav-h) + var(--safe-b) + 28px);
   -webkit-overflow-scrolling: touch;
 }
 
@@ -2908,9 +2912,13 @@ input[type='color'] { cursor: pointer; }
 
 /* ---- Table tab: the clock that stays put while you scroll ---- */
 .table-sticky {
-  position: sticky; top: 0; z-index: 12;
+  /* Negative on BOTH counts, and they have to match: the margin lifts the bar over
+     the scrollport's top padding when the page is at rest, and the sticky offset
+     keeps it there once the page moves. With `top: 0` the bar pinned below that
+     padding instead and the cards scrolled through the gap it left. */
+  position: sticky; top: calc(-1 * var(--screen-pt)); z-index: 12;
   display: flex; align-items: center; gap: 10px;
-  margin: -16px -16px 12px; padding: 10px 16px;
+  margin: calc(-1 * var(--screen-pt)) -16px 12px; padding: 10px 16px;
   background: color-mix(in srgb, var(--bg) 86%, transparent);
   backdrop-filter: blur(14px) saturate(1.2);
   border-bottom: 1px solid var(--line);
@@ -3016,12 +3024,13 @@ input[type='color'] { cursor: pointer; }
 
 /* ---- Landscape on a phone: the chrome gets out of the way ---- */
 @media (orientation: landscape) and (max-height: 540px) {
-  :root { --header-h: 44px; --nav-h: 50px; }
+  :root { --header-h: 44px; --nav-h: 50px; --screen-pt: 12px; }
   .app { max-width: 820px; }
-  .screen { padding: 12px 14px calc(var(--nav-h) + var(--safe-b) + 18px); }
+  .screen { padding: var(--screen-pt) 14px calc(var(--nav-h) + var(--safe-b) + 18px); }
   .app-header .header-sub { display: none; }
   .nav-item { flex-direction: row; gap: 7px; font-size: 12px; }
-  .table-sticky { margin: -12px -14px 10px; padding: 7px 14px; }
+  .table-sticky { margin-inline: -14px; margin-bottom: 10px; padding: 7px 14px; }
+  .table-screen.has-clockbar { --clockbar-h: 52px; }
 }
 
 /* the player count when the roster owns it: a figure, not a control */
@@ -3372,9 +3381,10 @@ input[type='color'] { cursor: pointer; }
 }
 :root[data-layout='wide'] .openapp-banner { grid-area: banner; }
 :root[data-layout='wide'] .app-header { grid-area: header; }
+:root[data-layout='wide'] { --screen-pt: 18px; }
 :root[data-layout='wide'] .screen {
   grid-area: screen;
-  padding: 18px 24px calc(24px + var(--safe-b));
+  padding: var(--screen-pt) 24px calc(24px + var(--safe-b));
 }
 /* Wider, but still a column — a card stretched across 800px stops being
    readable long before it stops fitting. */
@@ -3582,6 +3592,48 @@ input[type='color'] { cursor: pointer; }
    carries a top margin that the first one in a column must not add to, or the
    two columns start a few pixels apart and look like a mistake. */
 :root[data-panes='2'] .pane > :first-child { margin-top: 0; }
+
+/* ---- A column that stays put while the other one scrolls ----
+   The Table tab's left column is the night itself — the buy-in stack and the
+   roster — and the right one is a long scroll of setup. Scrolling the right one
+   used to carry the left one off the top with it and leave half the panel empty,
+   which is the shape this was reported for. Sticky inside the scrollport (the
+   `.screen`, which is what has `overflow-y: auto`) pins it there instead.
+
+   It gets its own scrollbar rather than a cap it can overflow: a full table is
+   taller than a Fold lying down, and a pinned column you cannot reach the bottom
+   of is worse than one that scrolls away. `overscroll-behavior: contain` stops
+   the page taking over when the roster hits its end.
+
+   The offset is the clock strip, which is sticky at the top of the SAME
+   scrollport — nothing else is above it, so `--clockbar-h` is the whole story,
+   and it is 0 on the nights the strip is not drawn (a cash game with no timer).
+   The cap comes off `--vvh`, the VISIBLE window, so a keyboard shortens the
+   column instead of hiding its bottom. */
+.table-screen { --clockbar-h: 0px; }
+/* 36px of controls between 10px of padding, plus the rule underneath */
+.table-screen.has-clockbar { --clockbar-h: 58px; }
+/* Where the pinned column starts. The strip is stuck one `--screen-pt` ABOVE the
+   scrollport's padding box (it cancels that padding, see `.table-sticky`), so the
+   column below it starts that much higher too. With no strip the column keeps the
+   page's own top padding and the offset is nothing. */
+.table-screen { --pane-top: 0px; }
+.table-screen.has-clockbar { --pane-top: calc(var(--clockbar-h) - var(--screen-pt)); }
+
+:root[data-panes='2'] .panes-sticky > .pane:first-child {
+  position: sticky;
+  top: var(--pane-top, 0px);
+  max-height: calc(
+    var(--vvh, 100dvh) - var(--header-h) - var(--safe-t) - var(--safe-b) - var(--pane-top, 0px) - 12px
+  );
+  overflow-y: auto;
+  /* `overflow-y` alone computes the other axis to `auto` as well, and the cards
+     round a few pixels wider than the box once a vertical scrollbar is inside it
+     — a sideways scrollbar under a pinned column, for nothing. Nothing in here
+     is meant to be wider than its column. */
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
 
 /* The choice grids opened out once already for the medium layout; inside a
    half-width column they are back to roughly phone width, so they go back to

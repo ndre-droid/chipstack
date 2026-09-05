@@ -16,12 +16,25 @@ import type { ReactNode } from 'react';
  * shuffle the phone's running order, which is the layout that gets used every
  * week.
  *
+ * `stickyLeft` pins the left column inside the scrolling screen, for the screens
+ * where the left column is the thing you keep looking at while you scroll the
+ * right one. It costs nothing on a phone: the pane is `display: contents` there,
+ * and `position` does not apply to a box that is not in the layout.
+ *
  * Which screens are wide enough — and when the attribute flips — belongs to
  * lib/windowLayout.ts (`data-panes` on <html>). See `.panes` in styles.css.
  */
-export default function Panes({ left, right }: { left: ReactNode; right: ReactNode }) {
+export default function Panes({
+  left,
+  right,
+  stickyLeft = false,
+}: {
+  left: ReactNode;
+  right: ReactNode;
+  stickyLeft?: boolean;
+}) {
   return (
-    <div className="panes">
+    <div className={`panes${stickyLeft ? ' panes-sticky' : ''}`}>
       <div className="pane">{left}</div>
       <div className="pane">{right}</div>
     </div>
