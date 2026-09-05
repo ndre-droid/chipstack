@@ -18,7 +18,24 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-09-04 from `main` @ `c9f8540`**, 4.94 MB (5,176,591 B),
+  (**CURRENT — rebuilt 2026-09-05 from `main` @ `e9a1476`**, 4.94 MB (5,179,356 B),
+  run `33962084043`: a television that was paired once can pair again — the big screen
+  showing last week's table while the phone had six new names on it was never a sync
+  failure, it was a laptop that had silently stopped being the TV (`deviceIsTv` false,
+  no code, no role) rendering its own persisted store. A paired TV mirrors the HOST's
+  roster into that store, so "there are players in the ledger" never meant "this device
+  runs the game" — and gating the "use this device as the TV" offer on it locked every
+  former TV out for good. `settings.tableFromMirror` (see `lib/tvRole.ts`) separates the
+  two now, the offer is warned about rather than removed, a failed `tvEnsurePairing`
+  retries on a backoff instead of going quiet for the night, and re-scanning the code you
+  are already hosting pushes the table instead of doing nothing.
+  Pages run `33962082315` green from the same commit, so
+  **APK / `main` / Pages are IN SYNC**. Download verified: `200`,
+  `application/vnd.android.package-archive`, 5,179,356 B.
+  **THE PAIRING PATH HAS NOT BEEN RE-TESTED ON THE REAL LAPTOP + PHONE YET** — the
+  visibility logic and the retry wiring were verified against the dev server, the actual
+  Firestore handshake was not.
+  Previous build: 2026-09-04 from `main` @ `c9f8540`, 4.94 MB (5,176,591 B),
   run `33905927951`: the persistence pass — the webview origin pinned so an update can
   never move the user's data, and `migrate()` no longer lets one malformed record
   black-screen the app (see "Recent work 2026-09-04 (what the user has entered...)").
