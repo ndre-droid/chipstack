@@ -179,6 +179,13 @@ export interface Settings {
    *  (off, then on again) clears it. Per-device: a TV telling the phone what to stop
    *  casting is the phone's business, not the setup's. */
   tvStartStackHidden: boolean;
+  /** The roster on this device was MIRRORED from a host phone (LIVE_APPLY_REMOTE),
+   *  not entered here. A paired big screen writes the host's table into its own
+   *  persisted store, so row count alone cannot tell a television apart from the
+   *  phone the night is run on — and judging by rows alone locked a TV that had
+   *  lost the 'tv' role out of ever pairing again (see lib/tvRole). Cleared by any
+   *  local change to the ledger. Per-device: it describes this store, not the game. */
+  tableFromMirror: boolean;
   /** This device is designated the big screen: it boots straight into TV mode,
    *  advertises a pairing code, and a phone connects to it. Per-device (never
    *  synced or shared), so only the actual TV carries it. */

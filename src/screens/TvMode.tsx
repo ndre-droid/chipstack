@@ -9,6 +9,7 @@ import { useT, useFmt } from '../lib/i18n';
 import { useQrDataUrl } from '../lib/qr';
 import { immersiveAvailable, setImmersive } from '../lib/immersive';
 import { firebaseConfigured } from '../lib/firebaseConfig';
+import { hasOwnTable as ownTable } from '../lib/tvRole';
 import type { Unsubscribe } from 'firebase/firestore';
 import { secondsLeft as clockSecondsLeft, initialClock } from '../lib/clockLogic';
 import type { ClockState } from '../lib/clockLogic';
@@ -361,12 +362,15 @@ function TvCell({
  * a television (a browser on the set, or a paired TV device) has no roster of its
  * own to open and nobody standing at it to type, so it is not offered there.
  */
+/** Backoff between attempts to claim a pairing code after one has failed. */
+const PAIR_RETRY_MS = [2000, 4000, 8000, 15000, 30000];
+
 export default function TvMode({ onClose, onCount }: { onClose: () => void; onCount?: () => void }) {
   const { state, dispatch } = useStore();
   const t = useT();
   const { money, num } = useFmt();
   const { blindLevels } = state.session;
-  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvRosterSort, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack, tvStartStackHidden, bountyMode, bountyAmount, customAccent, tvPenalties, tvHouseRules, showTrend, language } = state.settings;
+  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvRosterSort, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack, tvStartStackHidden, tableFromMirror, bountyMode, bountyAmount, customAccent, tvPenalties, tvHouseRules, showTrend, language } = state.settings;
 
   /* Display size. Per-device and deliberately NOT part of LiveData: the laptop
      acting as the big screen needs its own zoom, and a phone must not shrink it.
@@ -447,11 +451,12 @@ export default function TvMode({ onClose, onCount }: { onClose: () => void; onCo
   //                phone's data once a phone connects (data present in the doc).
   //  - isHostView: a controlling phone previewing its TV — read-only mirror.
   //  - standalone: no live session — runs entirely on its own local data/clock.
-  /* Whether this device has a table of its own — the honest test for "is this a
-     spare screen or the phone the night is being run on?". Read it only where the
-     device is NOT already a TV: a paired TV mirrors the phone's roster into its own
-     store (LIVE_APPLY_REMOTE below), so on that side of the line it says nothing. */
-  const hasOwnTable = ledger.length > 0;
+  /* Whether this device has a table of its OWN — the honest test for "is this a
+     spare screen or the phone the night is being run on?". Row count alone is not
+     that test: a paired TV mirrors the host's roster into its own persisted store
+     (LIVE_APPLY_REMOTE below), so every screen that was ever a TV reads as having a
+     table. `tableFromMirror` is what separates the two — see lib/tvRole. */
+  const hasOwnTable = ownTable({ players: ledger.length, tableFromMirror });
   const isTv = firebaseConfigured && liveSessionRole === 'tv' && !!liveSessionCode;
   const isHostView = firebaseConfigured && liveSessionRole === 'host' && !!liveSessionCode;
   const synced = isTv || isHostView;
@@ -487,8 +492,10 @@ export default function TvMode({ onClose, onCount }: { onClose: () => void; onCo
   const prevPaired = useRef(false);
   const tick = useRef<number | null>(null);
   /* Bumped when the session document disappears, to make the pairing effect below
-     run again and put it back. */
+     run again and put it back — and again after a failed attempt, so a screen that
+     could not claim a code at boot keeps trying instead of going quiet. */
   const [pairSeq, setPairSeq] = useState(0);
+  const pairAttempts = useRef(0);
   /** What the phone last asked for re: the starting-stack overlay; null = never heard. */
   const castWanted = useRef<boolean | null>(null);
   /* The clock exactly as it stands, for the effects that must not depend on it.
@@ -500,24 +507,39 @@ export default function TvMode({ onClose, onCount }: { onClose: () => void; onCo
   useEffect(() => {
     if (!firebaseConfigured || !deviceIsTv) return;
     let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | null = null;
     import('../lib/liveSession')
       .then(({ tvEnsurePairing }) =>
         tvEnsurePairing(liveSessionRole === 'tv' ? liveSessionCode : null, clockRef.current),
       )
       .then((code) => {
         if (cancelled) return;
+        pairAttempts.current = 0;
         if (liveSessionRole !== 'tv' || liveSessionCode !== code) {
           dispatch({ type: 'UPDATE_SETTINGS', patch: { liveSessionCode: code, liveSessionRole: 'tv' } });
         }
       })
       .catch(() => {
-        /* offline or transient — retried on next mount */
+        /* The comment here used to say "retried on next mount", and nothing ever
+           mounted again: this effect only re-runs when `deviceIsTv` or `pairSeq`
+           changes, and neither does on its own. So one bad moment at boot — the Wi-Fi
+           not up yet, anonymous sign-in refused, a write rejected — left the big
+           screen with no code and no 'tv' role for the rest of the night, silently
+           showing whatever was already in its store while the phone pushed into a
+           session nobody was watching. That is the bug; this is the retry. */
+        if (cancelled) return;
+        const n = pairAttempts.current++;
+        const wait = PAIR_RETRY_MS[Math.min(n, PAIR_RETRY_MS.length - 1)];
+        console.warn(`[tv] pairing failed (attempt ${n + 1}) — retrying in ${wait}ms`);
+        retry = setTimeout(() => setPairSeq((v) => v + 1), wait);
       });
     return () => {
       cancelled = true;
+      if (retry) clearTimeout(retry);
     };
     // `pairSeq` is what re-runs this after the document was swept or deleted — the
-    // code is reused, so the same four digits stay on the wall
+    // code is reused, so the same four digits stay on the wall — and after a failed
+    // attempt, which is what makes the retry above land
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceIsTv, pairSeq]);
 
@@ -1805,15 +1827,22 @@ export default function TvMode({ onClose, onCount }: { onClose: () => void; onCo
           <span className="tv-counting-step">{counting.index}/{counting.total}</span>
         </div>
       )}
-      {/* A SPARE screen — an old phone, a tablet, a browser on the television —
-          offers to become the table's permanent one. The device the night is being
-          run on does not: making it the TV means it stops being the phone and waits
-          for a second phone to drive it, which on a one-phone table is a dead end
-          (the pairing code, the QR, the whole handover). This screen is already
-          showing that device's own game with no pairing at all, which is what the
-          Table tab's "Big screen" button is for. */}
-      {firebaseConfigured && !deviceIsTv && !synced && !hasOwnTable && (
-        <button className="tv-connect-pill use-tv" onClick={useAsTv}>📺 {t('tv.useAsTv')}</button>
+      {/* Becoming the table's permanent screen. Offered to any screen that is not
+          one already and is not in a session — including a television that WAS
+          paired and has since lost the role, which is holding the host's mirrored
+          roster and used to be locked out here for exactly that reason: no offer,
+          no code, no QR, just last night's table with nothing to explain it.
+
+          The caution the offer used to be replaced by is now printed beside it. On
+          the phone the night is run on this really is a dead end (it stops being the
+          phone and waits for a second one to drive it) — but that is a thing to say,
+          not a reason to remove the only way in. Showing this device's own game with
+          no pairing at all is what the Table tab's "Big screen" button is for. */}
+      {firebaseConfigured && !deviceIsTv && !synced && (
+        <div className="tv-use-tv-wrap">
+          <button className="tv-connect-pill use-tv" onClick={useAsTv}>📺 {t('tv.useAsTv')}</button>
+          {hasOwnTable && <div className="tv-use-tv-warn">{t('tv.useAsTvWarn')}</div>}
+        </div>
       )}
 
       {/* This device is the TV, waiting for a phone — show the code to type on the phone */}

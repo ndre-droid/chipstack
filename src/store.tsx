@@ -87,6 +87,7 @@ const defaultSettings: Settings = {
   tvTextScale: { ...DEFAULT_TV_TEXT_SCALE },
   tvLayoutOwn: false,
   tvStartStackHidden: false,
+  tableFromMirror: false,
   deviceIsTv: false,
   tvScale: null,
   liveSessionCode: null,
@@ -243,6 +244,17 @@ type Action =
 function reducer(state: AppState, action: Action): AppState {
   let next = baseReducer(state, action);
   if (next.ledger === state.ledger) return next;
+
+  /* Whose table is this? A paired big screen writes the HOST's roster into its own
+     persisted store, so "there are players in the ledger" cannot tell a television
+     apart from the phone the night is run on — and a screen that had lost the 'tv'
+     role was then locked out of pairing again (see lib/tvRole). The ledger only ever
+     changes here, so this is the one place that cannot be forgotten: a mirror sets
+     the flag, any other change to the table clears it. */
+  const mirrored = action.type === 'LIVE_APPLY_REMOTE';
+  if (next.settings.tableFromMirror !== mirrored) {
+    next = { ...next, settings: { ...next.settings, tableFromMirror: mirrored } };
+  }
 
   next = withTimeline(state, next, action);
 
@@ -943,6 +955,11 @@ function migrate(raw: string | null): AppState {
   // A screen with nothing of its own to keep has nothing to protect from the phone.
   if (!settings.tvLayout) settings.tvLayoutOwn = false;
   if (typeof settings.deviceIsTv !== 'boolean') settings.deviceIsTv = false;
+  /* Absent on every store written before the flag existed. Seeded from `deviceIsTv`
+     rather than from nothing: a device that is the big screen right now is showing a
+     roster it mirrored, and starting it at `false` would tell the screen its own
+     game is on it. Any local change to the table corrects it on the spot. */
+  if (typeof settings.tableFromMirror !== 'boolean') settings.tableFromMirror = settings.deviceIsTv === true;
   settings.tvScale =
     typeof settings.tvScale === 'number' && settings.tvScale > 0
       ? Math.min(2.5, Math.max(0.6, settings.tvScale))

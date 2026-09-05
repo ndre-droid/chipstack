@@ -24,6 +24,8 @@ function check(label: string, ok: boolean, detail = '') {
 
 /** A phone in the middle of a night: hosting a session, TV photo picked, onboarded. */
 const phone: Settings = {
+  // the roster on this phone is its own
+  tableFromMirror: false,
   unitValue: 0.01,
   currency: '€',
   defaultSmallBlind: 10,
@@ -80,6 +82,8 @@ const phone: Settings = {
 /** The other device: the big screen, in TV mode, in its own session. */
 const tv: Settings = {
   ...phone,
+  // this screen's roster was mirrored from the host phone, not typed here
+  tableFromMirror: true,
   skin: 'scifi',
   language: 'en',
   countMode: 'money',
@@ -134,6 +138,7 @@ check('its zoom survives', legacy.tvScale === 1);
 check('its own background is not replaced', legacy.tvBackground === null);
 check('the shareable half did come through', legacy.skin === 'casino' && legacy.language === 'de');
 check('but not the device-local half beside it', legacy.countMode === 'money');
+check('and a phone’s setup cannot tell this screen its roster is its own', legacy.tableFromMirror === true);
 
 /* Every device-local key has to be PINNED, not just left out of what we send.
    `countStyle` and `countPassHintSeen` were on the list and missing from the pin,

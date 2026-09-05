@@ -2039,6 +2039,16 @@ input[type='color'] { cursor: pointer; }
 .tv-key:disabled { opacity: 0.5; }
 .tv-connect-pill.use-tv { cursor: pointer; }
 .tv-connect-pill.use-tv:hover { color: var(--tv-fg); border-color: var(--acc); }
+/* The offer, and the caution that used to REPLACE it. Hiding the button on a device
+   with a roster locked a television that had lost its pairing out of getting it back
+   — so the warning sits under the button now instead of standing in for it. Same
+   right-hand column as the pill so nothing floats over a panel. */
+.tv-use-tv-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.tv-use-tv-wrap .tv-connect-pill { align-self: auto; margin-bottom: 0; }
+.tv-use-tv-warn {
+  color: var(--tv-faint); font-size: clamp(10px, 1.2vmin, 16px); line-height: 1.4;
+  max-width: 42ch; text-align: right; margin-bottom: clamp(4px, 0.8vmin, 12px);
+}
 
 /* TV: waiting-for-phone pairing banner — the code to type on the phone */
 .tv-pair {

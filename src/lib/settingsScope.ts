@@ -32,6 +32,8 @@ export const DEVICE_LOCAL_SETTINGS = [
   // that was told to put the cast stack away keeps THAT too
   'tvLayoutOwn',
   'tvStartStackHidden',
+  // whether the roster in this store was mirrored from a host phone (see lib/tvRole)
+  'tableFromMirror',
   'rosterSort',
   'countMode',
   // whether the phone goes round the table, and whether that flow has been seen once

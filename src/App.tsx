@@ -10,6 +10,7 @@ import { firebaseConfigured } from './lib/firebaseConfig';
 import { IconPlan, IconChips, IconTable, IconCash, IconSettings } from './components/Icons';
 import { useT } from './lib/i18n';
 import { useLiveHostSync } from './lib/useLiveHostSync';
+import { flushLiveSync, queueData } from './lib/liveSyncQueue';
 import { useNativeDeepLink, appSchemeUrl } from './lib/deepLink';
 import { customAccentVars } from './lib/color';
 import { runBackHandlers } from './lib/backHandler';
@@ -109,6 +110,9 @@ function AppShell() {
   const activeAccent = accents?.[activeSkin] ?? 'amber';
   const t = useT();
   useLiveHostSync();
+  /* The live state, for the effects that must send it without depending on it. */
+  const stateRef = useRef(state);
+  stateRef.current = state;
   useVisualViewportHeight();
   useWindowLayout();
 
@@ -291,6 +295,19 @@ function AppShell() {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
+
+  /* Scanning the code again while this phone is ALREADY the host of it: the chooser
+     further down is skipped (nothing to choose), and re-dispatching the same settings is a
+     no-op — so the state signature never changes, the host-sync effect never fires,
+     and the one recovery the user is told to reach for did literally nothing. It is
+     also exactly when it is reached for: the big screen is stale. Send the table. */
+  useEffect(() => {
+    if (!pendingCode || !firebaseConfigured) return;
+    if (liveSessionCode !== pendingCode || liveSessionRole !== 'host') return;
+    queueData(pendingCode, () => stateRef.current);
+    flushLiveSync();
+    setPendingCode(null);
+  }, [pendingCode, liveSessionCode, liveSessionRole]);
 
   /* This phone belongs to somebody who is just playing: their own read-only view of
      the table, and the one thing they can do — put their name in. */
