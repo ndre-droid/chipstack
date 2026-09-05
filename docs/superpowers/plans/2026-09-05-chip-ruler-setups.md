@@ -1,10 +1,32 @@
-# Chip Ruler Setups + Three-Drag Calibration — Implementation Plan
+# Chip Ruler: Three-Drag Calibration — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give the chip ruler named setups ("No case", "Blue case"), each holding a whole per-screen calibration table, switchable from inside the ruler sheet — plus a third calibration drag that yields an error bar, editable stack counts, and a bar that snaps to the chip line.
+## SCOPE CHANGE — 2026-09-05, after Task 1 landed
 
-**Architecture:** A setup wraps the existing `RulerCalibrations` map unchanged, so `screenKeyOf`, `rulerSlots`, `teach` and every other per-screen concept keeps working untouched. All new maths goes in `src/lib/chipRuler.ts` behind pure functions with unit tests; the two React files only swap where they read the calibration from and grow the UI to pick a setup. Migration folds the existing `chipRulerCals` map into a first setup at load time, exactly the way the older single `chipRuler` field was already handled.
+**Setups are cancelled.** The whole point of a setup was that a case can come off,
+and the user has since glued the case to the phone permanently. With one chip set and
+a fixed case there is exactly one calibration table, which is what the app already
+had. Building a switcher for a set of one is a switcher nobody will ever touch.
+
+- **Cancelled outright: Tasks 3, 4, 5 and 8.** No `RulerSetup`, no setups CRUD, no new
+  `Settings` fields, no `settingsScope` entries, no store migration, no setup pill,
+  no picker, no one-drag door, no `rezero`.
+- **Task 2 is rewritten**, and shrinks to the one thing in it that is not about
+  setups: Task 1 introduced a regression in `teach` that has to be fixed.
+- **Kept as written: Tasks 6 and 7.** The snapping bar and the three-drag flow.
+- **Task 9 is trimmed** to the quality readout in Settings — no setup head, no
+  rename, no delete.
+
+Read the Task list below as: **1 ✅ · 2 (rewritten) · 6 · 7 · 9 (trimmed)**. Tasks 3,
+4, 5 and 8 are left in the file as tombstones so the numbering — and therefore
+`scripts/task-brief PLAN N` — keeps working.
+
+---
+
+**Goal:** Give the chip ruler a third calibration drag, which yields an error bar the app can show, editable stack counts, and a bar that snaps to the chip line.
+
+**Architecture:** All new maths goes in `src/lib/chipRuler.ts` behind pure functions with unit tests. `screenKeyOf`, `rulerSlots` and the per-screen calibration map are untouched. `ChipRuler.tsx` grows a step count it can edit and a bar that draws where it reads; `SettingsScreen.tsx` changes one line of text.
 
 **Tech Stack:** Vite + React 18 + TypeScript, Capacitor for Android. Tests are plain scripts run by `node --experimental-strip-types` via `npm test` (`scripts/run-tests.mjs`) — no framework.
 
@@ -17,9 +39,9 @@
 - **Typecheck + build:** `npm run build` (`tsc -b && vite build`)
 - **Lint:** `npm run lint` (oxlint)
 - **Nothing may be drawn below or floating over the ruler's ladder.** Pixels that cannot be dragged to are chips that must be typed. Every new control in `ChipRuler.tsx` goes *above* `.ruler-stage`. This is a hard rule stated in that file's header comment.
-- **Every new `Settings` field must be classified in `src/lib/settingsScope.ts`.** Both fields added here are device-local.
+- **No new `Settings` fields.** The scope change cancelled them; `chipRulerCals` stays the one calibration map, and `src/lib/settingsScope.ts` is not touched.
 - **i18n:** every user-visible string is a key in `src/lib/i18n.ts`, added to **both** the `en` and `de` dictionaries. No English in the store.
-- **`px` is the chips and the screen density; `zeroPx` is the case lip.** This is why a new case needs one drag and not three. Do not blur the two.
+- **`px` is the chips and the screen density; `zeroPx` is the case lip.** Do not blur the two.
 - **Commit messages:** conventional-commit prefix, body explaining the *why*, and the trailer `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
 
 ---
@@ -289,17 +311,22 @@ EOF
 
 ---
 
-### Task 2: One drag re-zeroes a carried chip height
+### Task 2: The scatter gate must not refuse a correction
 
-`px` is the chips and the screen density; `zeroPx` is the case lip. Swap the case and only one of the two moves — so a second setup for the same chips needs one drag, not three. `teach()` already does this arithmetic for its slide; extract it so both callers share one implementation.
+Task 1 gave `fitCalibration` a `MAX_RMS_CHIPS` gate and, in doing so, broke `teach`. That gate is right for calibration drags — three drags of a stack the user just counted, in one controlled moment, where a blunder must be refused before it poisons the night. It is wrong for corrections: each one is the user saying "that stack was really 18", taken at a different moment, about a calibration that is *already known to be wrong*. Scatter between them is information, not a blunder.
+
+Worse, the failure is silent. `teach`'s refit path calls `fitCalibration(fixes)` with three or more accumulated corrections; when the gate refuses, `teach` falls back to sliding the line and the user keeps a calibration they have now corrected three times.
 
 **Files:**
-- Modify: `src/lib/chipRuler.ts` (`teach` at ~line 156)
+- Modify: `src/lib/chipRuler.ts` (`fitCalibration` at ~line 126, `teach` at ~line 249)
 - Test: `src/lib/chipRuler.test.ts`
 
 **Interfaces:**
 - Consumes: `MAX_RMS_CHIPS`, `fitCalibration(samples, now?)` from Task 1.
-- Produces: `rezero(px: number, sample: RulerSample, now?: number): RulerCalibration | null`
+- Produces:
+  - `fitCorrections(samples: RulerSample[], now?: number): RulerCalibration | null` — the same line, the same believability checks on `px` and `zeroPx`, and the same `rms`/`span` reporting, but **no scatter gate**
+  - `fitCalibration` becomes `fitCorrections` plus the gate, so there is one implementation
+  - `teach(cal, sample, now?)` — carries the clock, refits through `fitCorrections`, and stamps `at` on both its paths
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -307,40 +334,57 @@ Append to `src/lib/chipRuler.test.ts`, before the final `console.log(failures ? 
 
 ```ts
 /**
- * A new case is not a new chip.
+ * A correction is not a calibration drag, and the scatter gate must not treat it
+ * like one.
  *
- * `px` is the chips and the density of the glass; `zeroPx` is the lip the phone
- * stands on. Only the second one changes when the case does, so carrying the chip
- * height over and solving the offset from a single drag is not a shortcut — it is
- * the physically correct amount of work.
+ * Calibration drags happen in one controlled moment against a stack the user has
+ * just counted, so three of them that disagree are a mis-drag and must be refused.
+ * Corrections are the opposite in every way: each is a separate evening's "that was
+ * really 18", made about a calibration ALREADY KNOWN to be wrong. Scatter between
+ * them is what a drifting ruler looks like — and refusing to fit it would leave the
+ * user with the very calibration they have now corrected three times.
  */
 console.log('');
-console.log('a case change is one drag, not three');
+console.log('corrections are allowed to disagree');
 {
-  const THICKER = 128; // a chunkier case: another 58 px of table below the glass
-  const drag = { y: 12 * PX - THICKER, chips: 12 };
-  const re = rezero(PX, drag, 1_700_000_000_000);
+  const T = 1_700_000_000_000;
+  // the 18-that-said-13: believable, and wrong on every stack
+  const off = calibrate({ y: 20 * 28 - 40, chips: 20 }, { y: 10 * 28 - 40, chips: 10 });
 
-  check('one drag re-zeroes', re !== null);
-  check('the chips are unchanged', re?.px === PX);
-  check('the new lip is solved', !!re && Math.abs(re.zeroPx - THICKER) < 1e-9, String(re?.zeroPx));
-  check('and it is stamped', re?.at === 1_700_000_000_000);
-  check('a re-zero claims no quality', re?.rms === undefined && re?.span === undefined);
-  for (const n of [8, 15, 22]) {
-    check(`${n} chips reads back exactly`, chipsAt(n * PX - THICKER, re) === n);
-  }
+  /* Three honest corrections with a fair amount of judgement in them: ±14 px, about
+     two thirds of a chip each. Fitted, they land exactly on the truth. */
+  const spread = [
+    { y: yFor(8) + 14, chips: 8 },
+    { y: yFor(14) - 14, chips: 14 },
+    { y: yFor(20) + 14, chips: 20 },
+  ];
 
-  check('an impossible chip height re-zeroes nothing', rezero(MAX_PX_PER_CHIP + 10, drag) === null);
-  check('nor does a stack of nothing', rezero(PX, { y: 200, chips: 0 }) === null);
-  check('nor NaN', rezero(PX, { y: Number.NaN, chips: 12 }) === null);
-  // a drag far above where 12 chips could reach implies a table above the glass
-  check('nor a table above the screen', rezero(PX, { y: 12 * PX + 200, chips: 12 }) === null);
-  // ...and one far below implies half a metre of case
-  check('nor half a metre of case', rezero(PX, { y: 12 * PX - MAX_ZERO_PX - 50, chips: 12 }) === null);
+  check('as calibration drags they are refused', fitCalibration(spread) === null);
+  const fitted = fitCorrections(spread, T);
+  check('as corrections they are fitted', fitted !== null);
+  check('and they land on the truth', !!fitted && Math.abs(fitted.px - PX) < 1e-9, String(fitted?.px));
+  check('the scatter is still reported', (fitted?.rms ?? 0) > MAX_RMS_CHIPS, String(fitted?.rms));
+  check('and the fit is stamped', fitted?.at === T);
+
+  /* ...and the same three arriving one at a time through teach must end up there
+     too. This is the regression: the third correction pushes the set past the gate,
+     and a gated refit would silently drop back to sliding the line — leaving the
+     chip height wherever the second correction happened to put it. */
+  let c = off;
+  for (const fix of spread) c = teach(c, fix, T) ?? c;
+  check('teach reaches the same place', !!c && Math.abs(c.px - PX) < 1e-9, String(c?.px));
+  check('...and did not just slide', Math.abs(c!.px - off!.px) > 1, String(c?.px));
+  check('the corrections are all remembered', c?.samples?.length === 3);
+
+  // a lone correction still only slides, and still says when it happened
+  const slid = teach(good, { y: yFor(12) + 10, chips: 12 }, T);
+  check('one correction keeps the chip height', slid?.px === good!.px);
+  check('...and is stamped too', slid?.at === T);
+  check('...and claims no quality of its own', slid?.rms === undefined);
 }
 ```
 
-Add `rezero` to the import list at the top of the file.
+Add `fitCorrections` to the import list at the top of the file.
 
 - [ ] **Step 2: Run the test and watch it fail**
 
@@ -348,47 +392,73 @@ Add `rezero` to the import list at the top of the file.
 node --experimental-strip-types src/lib/chipRuler.test.ts
 ```
 
-Expected: `does not provide an export named 'rezero'`.
+Expected: `does not provide an export named 'fitCorrections'`.
 
 - [ ] **Step 3: Implement**
 
-In `src/lib/chipRuler.ts`, add above `teach`:
+In `src/lib/chipRuler.ts`, split `fitCalibration` into the fit and the gate. Replace the whole `fitCalibration` function (its doc comment included) with:
 
 ```ts
 /**
- * Keep a chip height and solve the offset from a single drag of known height.
+ * Fit the line `y = chips·px − zeroPx` through a set of drags of known height.
  *
- * `zeroPx = chips·px − y`, which is one equation in one unknown. This is the whole
- * reason a second setup is cheap: taking the case off does not change how thick a
- * chip is or how many pixels an inch of glass has, so the only number that has to be
- * measured again is the lip the phone is standing on.
+ * Least squares rather than two points, because the drags arrive in sets larger than
+ * two: judging the top of a pile a couple of millimetres off is normal, and averaging
+ * is what stops one shaky drag from setting the scale for the whole night.
  *
- * Also what `teach` does when it can only slide the line: the same arithmetic, so
- * the same function, so the same rejections.
+ * Returns null rather than a number when the result is not believable: a bad
+ * calibration poisons every count afterwards, so it has to fail at the one moment
+ * the user is still looking at it. What this does NOT judge is how far the samples
+ * fell from the line — see `fitCalibration` below, and the comment on it for why
+ * that judgement belongs to one caller and not the other.
  */
-export function rezero(
-  px: number,
-  sample: RulerSample,
-  now = Date.now(),
-): RulerCalibration | null {
-  if (!Number.isFinite(px) || px < MIN_PX_PER_CHIP || px > MAX_PX_PER_CHIP) return null;
-  if (!Number.isFinite(sample.y) || !(sample.chips > 0)) return null;
-  const raw = sample.chips * px - sample.y;
-  if (raw < -px || raw > MAX_ZERO_PX) return null;
-  return { px, zeroPx: Math.max(0, raw), at: now };
+export function fitCorrections(samples: RulerSample[], now = Date.now()): RulerCalibration | null {
+  const pts = samples.filter((p) => Number.isFinite(p.y) && Number.isFinite(p.chips) && p.chips > 0);
+  const line = lineOf(pts);
+  if (!line) return null;
+
+  const { px } = line;
+  if (!(px >= MIN_PX_PER_CHIP && px <= MAX_PX_PER_CHIP)) return null;
+
+  // The table cannot be ABOVE the screen's bottom edge. A hair negative is drag
+  // noise and gets flattened; more than a chip's worth means the drags do not
+  // describe one straight line, and there is nothing to salvage.
+  if (line.zeroPx < -px || line.zeroPx > MAX_ZERO_PX) return null;
+  const zeroPx = Math.max(0, line.zeroPx);
+
+  const cal: RulerCalibration = { px, zeroPx, at: now };
+  /* Residuals need a third point to exist at all, and they are measured against the
+     CLAMPED line — the one the ruler will actually read stacks with, not the raw fit. */
+  if (pts.length >= 3) {
+    cal.rms = rmsChips(pts, px, zeroPx);
+    cal.span = Math.max(...pts.map((p) => p.chips));
+  }
+  return cal;
+}
+
+/**
+ * The same fit, for CALIBRATION DRAGS, which are held to a tighter standard.
+ *
+ * The difference is where the samples came from, and it matters. Calibration drags
+ * are three readings of one stack the user has just counted, taken one after another
+ * in a controlled moment — so three that do not agree are a mis-drag, and refusing
+ * them costs one repeated drag. Corrections are the opposite in every way: each is a
+ * separate evening's "no, that was 18", made about a calibration already known to be
+ * wrong. Scatter between those is what a drifting ruler looks like, and refusing to
+ * fit it would hand the user back the very calibration they keep correcting.
+ *
+ * So the scatter gate lives here, on the caller that should have it, rather than
+ * inside the arithmetic where both callers would inherit it.
+ */
+export function fitCalibration(samples: RulerSample[], now = Date.now()): RulerCalibration | null {
+  const cal = fitCorrections(samples, now);
+  if (!cal) return null;
+  if (cal.rms !== undefined && !(cal.rms <= MAX_RMS_CHIPS)) return null;
+  return cal;
 }
 ```
 
-Then replace the tail of `teach` (the two lines beginning `// slide the line onto the corrected stack`) with:
-
-```ts
-  // slide the line onto the corrected stack, keeping the chip height
-  const slid = rezero(cal.px, sample, now);
-  if (!slid) return null;
-  return { ...slid, samples: fixes };
-```
-
-and widen `teach`'s signature to carry the clock:
+Then fix `teach`. Widen its signature to carry the clock:
 
 ```ts
 export function teach(
@@ -398,322 +468,54 @@ export function teach(
 ): RulerCalibration | null {
 ```
 
-Inside `teach`, pass the clock to the refit as well — change `const fitted = fitCalibration(fixes);` to `const fitted = fitCalibration(fixes, now);`.
+change its refit call from `const fitted = fitCalibration(fixes);` to:
 
-- [ ] **Step 4: Run the test and watch it pass**
+```ts
+    const fitted = fitCorrections(fixes, now);
+```
+
+and replace the tail (the two lines beginning `// slide the line onto the corrected stack`) with:
+
+```ts
+  // slide the line onto the corrected stack, keeping the chip height
+  const zeroPx = sample.chips * cal.px - sample.y;
+  if (zeroPx < -cal.px || zeroPx > MAX_ZERO_PX) return null;
+  /* No `rms` on a slid line, deliberately: it passes exactly through the one stack
+     it was told about, and a zero there would be arithmetic claiming an accuracy
+     nothing has demonstrated. `at` is real, though — the ruler did change today. */
+  return { px: cal.px, zeroPx: Math.max(0, zeroPx), at: now, samples: fixes };
+}
+```
+
+- [ ] **Step 4: Run the tests and watch them pass**
 
 ```bash
 node --experimental-strip-types src/lib/chipRuler.test.ts
 ```
 
-Expected: `chipRuler: all checks passed`, including the pre-existing `teach` block.
+Expected: `chipRuler: all checks passed`, including every pre-existing `teach` check.
+
+```bash
+npm test && npm run build && npm run lint
+```
+
+Expected: all clean.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/lib/chipRuler.ts src/lib/chipRuler.test.ts
 git commit -m "$(cat <<'EOF'
-feat(ruler): rezero — a case change costs one drag
+fix(ruler): a correction is allowed to disagree with the last one
 
-Taking the case off does not change how thick a chip is or how many pixels an
-inch of glass has. Only the lip the phone stands on moves, and that is one
-equation in one unknown. teach()'s slide was already doing this arithmetic by
-hand, so it now calls the same function and inherits the same rejections.
+The scatter gate added with the third drag is right for calibration drags —
+three readings of one stack, in one moment, where disagreement is a mis-drag.
+It is wrong for corrections, which are separate evenings' "that was really 18"
+about a calibration already known to be wrong. Under the gate, the third
+correction silently stopped refitting and slid instead, handing back the chip
+height the user had just spent three corrections trying to fix.
 
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-EOF
-)"
-```
-
----
-
-### Task 3: Setups — a named calibration table
-
-**Files:**
-- Modify: `src/lib/chipRuler.ts` (append after `rulerSlots`, at the end of the file)
-- Test: `src/lib/chipRuler.test.ts`
-
-**Interfaces:**
-- Consumes: `RulerCalibrations`, `calibrationFor`, `withCalibration`, `forgetCalibration`, `normalizeCalibrations` (all already exported).
-- Produces:
-  - `MAX_SETUP_NAME: number` (24)
-  - `interface RulerSetup { id: string; name: string; cals: RulerCalibrations }`
-  - `newSetup(name: string, id: string): RulerSetup`
-  - `nextSetupId(setups: RulerSetup[]): string`
-  - `setupById(setups: RulerSetup[], id: string | null | undefined): RulerSetup | null`
-  - `activeSetup(setups: RulerSetup[], id: string | null | undefined): RulerSetup`
-  - `withSetupCal(setups, id, key, cal): RulerSetup[]`
-  - `withoutSetupCal(setups, id, key): RulerSetup[]`
-  - `renameSetup(setups, id, name): RulerSetup[]`
-  - `dropSetup(setups, id): RulerSetup[]`
-  - `setupsWithCal(setups, key, exceptId): RulerSetup[]`
-  - `normalizeSetups(raw: unknown, legacy?: unknown): RulerSetup[]`
-
-- [ ] **Step 1: Write the failing tests**
-
-Append to `src/lib/chipRuler.test.ts`, before the final `console.log(failures ? ...)` line:
-
-```ts
-/**
- * The case the phone is wearing.
- *
- * `zeroPx` is a case bottom and a bezel. Take the case off and every stack reads
- * three or four chips too tall — a constant added to every measurement, which is the
- * one error a ruler cannot detect on its own. So a whole calibration table is kept
- * per case, and switching between them is a tap rather than a re-measurement.
- */
-console.log('');
-console.log('one calibration table per case');
-{
-  const key = '412x960@2.625:c:p';
-  const other = '412x960@2.625:c:l';
-
-  let setups = [newSetup('', 's1')];
-  check('a fresh device has one setup', setups.length === 1);
-  check('...and it is the active one whatever it is asked for', activeSetup(setups, 'nope').id === 's1');
-  check('an unnamed setup is unnamed, not English', setups[0]!.name === '');
-
-  setups = withSetupCal(setups, 's1', key, good!);
-  setups = [...setups, newSetup('Blue case', nextSetupId(setups))];
-  check('the second setup gets a fresh id', setups[1]!.id === 's2');
-  check('and starts unmeasured', Object.keys(setups[1]!.cals).length === 0);
-  check('the first one is untouched', calibrationFor(setups[0]!.cals, key)?.px === good!.px);
-
-  setups = withSetupCal(setups, 's2', key, { px: good!.px, zeroPx: 128 });
-  check('each case has its own lip', calibrationFor(setups[1]!.cals, key)?.zeroPx === 128);
-  check('and the other case still has its own', calibrationFor(setups[0]!.cals, key)?.zeroPx === ZERO);
-  check('the same screen reads differently in each', chipsAt(300, setups[0]!.cals[key]) !== chipsAt(300, setups[1]!.cals[key]));
-
-  check('a setup with this screen can lend its chip height', setupsWithCal(setups, key, 's2').length === 1);
-  check('...and names which', setupsWithCal(setups, key, 's2')[0]!.id === 's1');
-  check('nobody can lend a screen nobody has', setupsWithCal(setups, other, 's2').length === 0);
-
-  setups = renameSetup(setups, 's1', '  No case  ');
-  check('a name is trimmed', setupById(setups, 's1')?.name === 'No case');
-  setups = renameSetup(setups, 's1', '   ');
-  check('and an empty rename is refused', setupById(setups, 's1')?.name === 'No case');
-  check('a name cannot run away', renameSetup(setups, 's1', 'x'.repeat(80))[0]!.name.length === MAX_SETUP_NAME);
-
-  const forgotten = withoutSetupCal(setups, 's2', key);
-  check('one setup can forget one screen', calibrationFor(forgotten[1]!.cals, key) === null);
-  check('...without touching the other setup', calibrationFor(forgotten[0]!.cals, key) !== null);
-
-  const dropped = dropSetup(setups, 's2');
-  check('a setup can be dropped', dropped.length === 1 && dropped[0]!.id === 's1');
-  check('but never the last one', dropSetup(dropped, 's1').length === 1);
-  check('dropping the active one falls back to what is left', activeSetup(dropped, 's2').id === 's1');
-}
-
-/**
- * What comes off disk is user data that has been through a backup file, a merge and
- * possibly a text editor. A ruler that trusts it is confidently wrong at a table.
- */
-console.log('');
-console.log('setups that survive the trip back from disk');
-{
-  const key = '412x960@2.625:c:p';
-  const legacy = normalizeSetups(undefined, { [key]: good });
-  check('an old per-screen map becomes the first setup', legacy.length === 1 && legacy[0]!.id === 's1');
-  check('...carrying its calibration', calibrationFor(legacy[0]!.cals, key)?.px === good!.px);
-
-  check('nothing at all is still one setup', normalizeSetups(undefined, undefined).length === 1);
-  check('...and an empty one', Object.keys(normalizeSetups(null, null)[0]!.cals).length === 0);
-  check('a junk field is not a crash', normalizeSetups('setups', null).length === 1);
-
-  const dirty = normalizeSetups([
-    { id: 's1', name: 'No case', cals: { [key]: good } },
-    { id: 's1', name: 'a twin', cals: {} },
-    { name: 'nameless', cals: {} },
-    'nonsense',
-    { id: 's4', name: 42, cals: { [key]: { px: 900, zeroPx: 10 } } },
-  ], null);
-  check('a good setup survives', dirty[0]?.id === 's1' && dirty[0]?.name === 'No case');
-  check('a duplicate id does not', dirty.filter((s) => s.id === 's1').length === 1);
-  check('nor an entry with no id', !dirty.some((s) => s.name === 'nameless'));
-  check('nor a string', dirty.length === 2, String(dirty.length));
-  check('a non-string name is dropped, the setup is not', dirty[1]?.id === 's4' && dirty[1]?.name === '');
-  check('and its impossible calibration is', Object.keys(dirty[1]?.cals ?? {}).length === 0);
-
-  // the legacy map is only a fallback: real setups win
-  const both = normalizeSetups([{ id: 's7', name: 'Real', cals: {} }], { [key]: good });
-  check('a stored setup beats the legacy map', both.length === 1 && both[0]!.id === 's7');
-  check('and the legacy map is not smuggled in', Object.keys(both[0]!.cals).length === 0);
-}
-```
-
-Add `MAX_SETUP_NAME`, `activeSetup`, `dropSetup`, `newSetup`, `nextSetupId`, `normalizeSetups`, `renameSetup`, `setupById`, `setupsWithCal`, `withSetupCal`, `withoutSetupCal` to the import list at the top of the file.
-
-- [ ] **Step 2: Run the test and watch it fail**
-
-```bash
-node --experimental-strip-types src/lib/chipRuler.test.ts
-```
-
-Expected: `does not provide an export named 'newSetup'`.
-
-- [ ] **Step 3: Implement**
-
-Append to the end of `src/lib/chipRuler.ts`:
-
-```ts
-/* ------------------------------------------------------------------
-   Which case is the phone wearing?
-   ------------------------------------------------------------------
-   `screenKeyOf` above answers "which piece of glass, held which way up", and it
-   answers it on its own — the app can see the screen and the orientation. What it
-   cannot see is the CASE, and the case is half the calibration: `zeroPx` is a case
-   bottom plus a bezel below the lowest pixel. Take the case off and every stack
-   reads three or four chips too tall, which is a constant added to every
-   measurement — the one error a ruler cannot detect by looking at its own numbers.
-
-   So the case is the one axis the user has to state, and it is stated once: a
-   SETUP is a name and a whole per-screen calibration table. A Fold with two cases
-   has eight slots, each measured once and kept. Switching is a tap in the sheet.
-
-   Nothing below this line knows what a case is. A setup is a named box around the
-   map that already existed, which is why `screenKeyOf`, `rulerSlots`, `teach` and
-   everything else carried on working untouched. */
-
-/** How long a setup's name may be. Long enough for "Blue silicone", short enough for a pill. */
-export const MAX_SETUP_NAME = 24;
-
-/** One named case, and everything measured while wearing it. */
-export interface RulerSetup {
-  /** stable and never reused — the active setup is remembered by it */
-  id: string;
-  /** what the user called it, or '' for the first one, which is named by the UI */
-  name: string;
-  /** the per-screen calibrations, keyed by `screenKeyOf` exactly as before */
-  cals: RulerCalibrations;
-}
-
-export function newSetup(name: string, id: string): RulerSetup {
-  return { id, name: name.trim().slice(0, MAX_SETUP_NAME), cals: {} };
-}
-
-/** The lowest `sN` nobody is using. Ids are never reused, so an old one can't be revived. */
-export function nextSetupId(setups: RulerSetup[]): string {
-  const taken = new Set(setups.map((s) => s.id));
-  let n = 1;
-  while (taken.has(`s${n}`)) n++;
-  return `s${n}`;
-}
-
-export function setupById(
-  setups: RulerSetup[],
-  id: string | null | undefined,
-): RulerSetup | null {
-  return setups.find((s) => s.id === id) ?? null;
-}
-
-/**
- * The setup being measured with, whatever the stored id says.
- *
- * Falls back to the first setup rather than returning null, and to an empty one
- * rather than throwing: every caller of this is about to read a calibration or write
- * one, and there is no useful behaviour for "the ruler has nowhere to keep this".
- * `normalizeSetups` guarantees at least one setup exists, so the last fallback is
- * unreachable in practice and is here to keep the type honest.
- */
-export function activeSetup(setups: RulerSetup[], id: string | null | undefined): RulerSetup {
-  return setupById(setups, id) ?? setups[0] ?? newSetup('', 's1');
-}
-
-/** Store one screen's calibration in one setup, leaving every other setup alone. */
-export function withSetupCal(
-  setups: RulerSetup[],
-  id: string,
-  key: string,
-  cal: RulerCalibration,
-): RulerSetup[] {
-  return setups.map((s) => (s.id === id ? { ...s, cals: withCalibration(s.cals, key, cal) } : s));
-}
-
-/** "Measure this screen again" — for one setup only. */
-export function withoutSetupCal(setups: RulerSetup[], id: string, key: string): RulerSetup[] {
-  return setups.map((s) => (s.id === id ? { ...s, cals: forgetCalibration(s.cals, key) } : s));
-}
-
-/** Rename a setup. An empty name keeps the old one: a nameless pill is a pill nobody can read. */
-export function renameSetup(setups: RulerSetup[], id: string, name: string): RulerSetup[] {
-  const clean = name.trim().slice(0, MAX_SETUP_NAME);
-  return setups.map((s) => (s.id === id && clean ? { ...s, name: clean } : s));
-}
-
-/** Drop a setup — never the last one, because the ruler must always have somewhere to write. */
-export function dropSetup(setups: RulerSetup[], id: string): RulerSetup[] {
-  if (setups.length < 2) return setups;
-  const next = setups.filter((s) => s.id !== id);
-  return next.length ? next : setups;
-}
-
-/**
- * The other setups that already know this screen — the ones that can lend a chip
- * height so a new case takes one drag instead of three.
- */
-export function setupsWithCal(
-  setups: RulerSetup[],
-  key: string,
-  exceptId: string | null | undefined,
-): RulerSetup[] {
-  return setups.filter((s) => s.id !== exceptId && !!calibrationFor(s.cals, key));
-}
-
-/**
- * Everything that comes off disk, made safe.
- *
- * Entry by entry rather than all-or-nothing: one hand-edited setup should not cost
- * the user the other three. A setup with no usable id is dropped, a non-string name
- * becomes the unnamed one (the UI has a word for that), and each setup's map goes
- * through `normalizeCalibrations`, which already refuses an impossible chip height.
- *
- * `legacy` is the older `chipRulerCals` map, from before a device could have two
- * cases. It is used ONLY when no setup survives, and it becomes the first setup —
- * the same adoption the even older single `chipRuler` field got. Nothing is asked of
- * the user and no calibration is lost.
- *
- * Always returns at least one setup. Every caller assumes that.
- */
-export function normalizeSetups(raw: unknown, legacy?: unknown): RulerSetup[] {
-  const out: RulerSetup[] = [];
-  if (Array.isArray(raw)) {
-    for (const item of raw) {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-      const s = item as Partial<RulerSetup>;
-      if (typeof s.id !== 'string' || !s.id) continue;
-      if (out.some((k) => k.id === s.id)) continue;
-      out.push({
-        id: s.id,
-        name: typeof s.name === 'string' ? s.name.trim().slice(0, MAX_SETUP_NAME) : '',
-        cals: normalizeCalibrations(s.cals),
-      });
-    }
-  }
-  if (!out.length) out.push({ id: 's1', name: '', cals: normalizeCalibrations(legacy) });
-  return out;
-}
-```
-
-- [ ] **Step 4: Run the test and watch it pass**
-
-```bash
-node --experimental-strip-types src/lib/chipRuler.test.ts
-```
-
-Expected: `chipRuler: all checks passed`.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add src/lib/chipRuler.ts src/lib/chipRuler.test.ts
-git commit -m "$(cat <<'EOF'
-feat(ruler): a calibration table per case
-
-screenKeyOf answers "which glass, held which way up" on its own. The case is the
-half the app cannot see, and it is half the calibration — zeroPx is a case bottom
-and a bezel. So it becomes the one axis the user states, once: a setup is a name
-around the per-screen map that already existed. Nothing below that line had to
-change.
+The gate moves out of the arithmetic and onto the caller that wants it.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
@@ -722,301 +524,32 @@ EOF
 
 ---
 
-### Task 4: Settings fields, scope and the load-time migration
+### Task 3: CANCELLED — setups
 
-**Files:**
-- Modify: `src/types.ts` (the `chipRuler` / `chipRulerCals` block at ~line 119-131)
-- Modify: `src/lib/settingsScope.ts` (`DEVICE_LOCAL_SETTINGS`, the `chipRuler` entries at ~line 45-46)
-- Modify: `src/store.tsx` (the `normalizeCalibrations` call at ~line 916)
-- Test: `src/lib/settingsScope.test.ts`
-
-**Interfaces:**
-- Consumes: `normalizeSetups`, `setupById`, `RulerSetup` from Task 3.
-- Produces: `Settings.chipRulerSetups?: StoredSetup[]`, `Settings.chipRulerSetupId?: string`, and the exported `StoredCalibration` type in `src/types.ts`.
-
-- [ ] **Step 1: Write the failing test**
-
-In `src/lib/settingsScope.test.ts`, add two fields to the `phone` fixture, immediately after the existing `chipRulerCals:` line:
-
-```ts
-  chipRulerSetups: [{ id: 's1', name: 'No case', cals: { '412x960@2.625:c:p': { px: 20.8, zeroPx: 70 } } }],
-  chipRulerSetupId: 's1',
-```
-
-Add one field to the second fixture (the one at ~line 94-95 with `chipRulerCals: {}`) — and only one, since both are optional and an explicit `undefined` is a different thing from an absent key:
-
-```ts
-  chipRulerSetups: [],
-```
-
-Then, next to the existing `check('nor the ruler this screen was calibrated with', ...)` line, add:
-
-```ts
-check('nor which case it was wearing', (legacy.chipRulerSetups ?? []).length === 0);
-check('nor which of them is in use', legacy.chipRulerSetupId === undefined);
-```
-
-- [ ] **Step 2: Run the test and watch it fail**
-
-```bash
-node --experimental-strip-types src/lib/settingsScope.test.ts
-```
-
-Expected: the two new checks print `FAIL` (the fields are not yet stripped), and the script exits non-zero.
-
-- [ ] **Step 3: Implement**
-
-In `src/types.ts`, replace the whole `chipRuler` / `chipRulerCals` block with:
-
-```ts
-  /** One screen's chip-ruler calibration, as stored. Structurally the same as
-   *  `RulerCalibration` in lib/chipRuler.ts, written out here rather than imported
-   *  so `Settings` stays a plain description of what is on disk. */
-  chipRuler?: StoredCalibration | null;
-  /** LEGACY: the chip ruler's calibrations per screen, from before a device could
-   *  have two CASES. `zeroPx` is a case bottom plus a bezel, so taking the case off
-   *  shifts every stack — which is why these now live inside a named setup. Kept
-   *  only so an existing map can be folded into the first setup at load; nothing
-   *  reads it afterwards. */
-  chipRulerCals?: Record<string, StoredCalibration>;
-  /** The chip ruler's calibrations grouped by SETUP: a named case ("No case", "Blue
-   *  case"), each holding its own per-screen map keyed by `screenKeyOf()`. Always at
-   *  least one entry after load; see lib/chipRuler.ts. Device-local by nature — a
-   *  case is a fact about this phone, not about the night. */
-  chipRulerSetups?: { id: string; name: string; cals: Record<string, StoredCalibration> }[];
-  /** Which setup the ruler measures with right now. Falls back to the first. */
-  chipRulerSetupId?: string;
-```
-
-and add, above the `Settings` interface:
-
-```ts
-/** One screen's chip-ruler calibration as it is stored: CSS pixels per chip, how far
- *  below the glass the table sits, the hand corrections it has learned from, and how
- *  well its calibration drags agreed. See lib/chipRuler.ts. */
-export interface StoredCalibration {
-  px: number;
-  zeroPx: number;
-  samples?: { y: number; chips: number }[];
-  rms?: number;
-  span?: number;
-  at?: number;
-}
-```
-
-In `src/lib/settingsScope.ts`, replace the two ruler lines inside `DEVICE_LOCAL_SETTINGS`:
-
-```ts
-  'chipRuler',
-  'chipRulerCals',
-  // ...and which case the phone is wearing, which is the other half of that
-  // calibration and just as much a fact about this device
-  'chipRulerSetups',
-  'chipRulerSetupId',
-```
-
-In `src/store.tsx`, replace the `settings.chipRulerCals = normalizeCalibrations(settings.chipRulerCals);` line and the comment above it with:
-
-```ts
-  /* The chip ruler measures against ONE piece of glass WEARING ONE CASE, so its
-     calibrations are a map keyed by screen, inside a setup named after the case.
-     Anything in there that is not a believable calibration is dropped rather than
-     carried: a ruler that trusts a hand-edited backup is confidently wrong at a
-     table, which is worse than asking for a few drags.
-
-     A map stored before setups existed becomes the first setup and the old field is
-     emptied — the same adoption the even older single `chipRuler` got. */
-  settings.chipRulerSetups = normalizeSetups(settings.chipRulerSetups, settings.chipRulerCals);
-  settings.chipRulerCals = {};
-  if (!setupById(settings.chipRulerSetups, settings.chipRulerSetupId)) {
-    settings.chipRulerSetupId = settings.chipRulerSetups[0]!.id;
-  }
-```
-
-and update the import in `src/store.tsx` — replace `normalizeCalibrations` with `normalizeSetups, setupById` in the `from './lib/chipRuler'` import (check whether `normalizeCalibrations` is still used elsewhere in the file first with `grep -n normalizeCalibrations src/store.tsx`; if not, drop it).
-
-- [ ] **Step 4: Run the tests and the typecheck**
-
-```bash
-npm test
-```
-
-Expected: all test files pass, including the two new `settingsScope` checks.
-
-```bash
-npm run build
-```
-
-Expected: no TypeScript errors. `ChipRuler.tsx` still compiles because it reads `chipRulerCals`, which still exists (now always `{}` after load — the sheet is fixed in Task 5).
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add src/types.ts src/lib/settingsScope.ts src/lib/settingsScope.test.ts src/store.tsx
-git commit -m "$(cat <<'EOF'
-feat(ruler): store setups, and fold the old per-screen map into the first one
-
-Both new fields are device-local: a case is a fact about this phone, and a setup
-that travelled inside a share code would hand someone else's case lip to a
-stranger's ruler. Existing installs are migrated at load and asked nothing.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-EOF
-)"
-```
+Cancelled by the 2026-09-05 scope change at the top of this file. The case is glued to
+the phone and there is one chip set, so there is one calibration table. No
+`RulerSetup`, no CRUD, no `normalizeSetups`.
 
 ---
 
-### Task 5: The sheet reads and writes the active setup
+### Task 4: CANCELLED — setup settings fields, scope and migration
 
-No visible change: with exactly one setup the ruler behaves identically. This task exists on its own so the swap can be reviewed without any UI noise around it.
+Cancelled by the 2026-09-05 scope change. No new `Settings` fields, no
+`DEVICE_LOCAL_SETTINGS` entries, no store migration. `chipRulerCals` stays exactly as
+it is and keeps being the one calibration map.
 
-**Files:**
-- Modify: `src/components/ChipRuler.tsx` (imports; `cals`/`legacy` at ~line 111-113; the adopt effect at ~line 148-158; `submitTyped` at ~line 305; `nextCalStep` at ~line 348-353)
-
-**Interfaces:**
-- Consumes: `activeSetup`, `withSetupCal` from Task 3; `Settings.chipRulerSetups` / `chipRulerSetupId` from Task 4.
-- Produces: nothing new; later tasks in this file rely on the locals `setups`, `setup`, `cals` and the helper `saveCal(cal)`.
-
-- [ ] **Step 1: Point the sheet at the active setup**
-
-In `src/components/ChipRuler.tsx`, add `activeSetup` and `withSetupCal` to the `from '../lib/chipRuler'` import.
-
-Replace:
-
-```ts
-  const cals = state.settings.chipRulerCals;
-  const legacy = state.settings.chipRuler;
-```
-
-with:
-
-```ts
-  /* Which case the phone is wearing. `screenKeyOf` below can see the glass and the
-     orientation on its own; the case is the half it cannot see, and it is the half
-     `zeroPx` is made of. Everything under here still deals in one per-screen map —
-     it is just this setup's map now. */
-  const setups = state.settings.chipRulerSetups ?? [];
-  const setup = activeSetup(setups, state.settings.chipRulerSetupId);
-  const cals = setup.cals;
-  const legacy = state.settings.chipRuler;
-```
-
-- [ ] **Step 2: Add one place that writes a calibration**
-
-Immediately after the `const cal = calibrationFor(cals, screen);` line, add:
-
-```ts
-  /** Store a calibration for the screen the sheet is on, in the setup it is using. */
-  const saveCal = (next: RulerCalibration) =>
-    dispatch({
-      type: 'UPDATE_SETTINGS',
-      patch: {
-        chipRulerSetups: withSetupCal(setups, setup.id, screen, next),
-        chipRulerSetupId: setup.id,
-        chipRuler: null,
-      },
-    });
-```
-
-Add `import type { RulerCalibration } from '../lib/chipRuler';` alongside the existing value import (or extend the existing `import type { Denomination } from '../types';` line with a second type-only import statement).
-
-- [ ] **Step 3: Route the three existing writes through it**
-
-Replace the body of the adopt effect:
-
-```ts
-  useEffect(() => {
-    if (adopted.current || !isCalibrated(legacy) || Object.keys(cals ?? {}).length > 0) return;
-    adopted.current = true;
-    dispatch({
-      type: 'UPDATE_SETTINGS',
-      patch: { chipRulerCals: withCalibration(cals, screen, legacy), chipRuler: null },
-    });
-  }, [legacy, cals, screen, dispatch]);
-```
-
-with:
-
-```ts
-  useEffect(() => {
-    if (adopted.current || !isCalibrated(legacy) || Object.keys(cals ?? {}).length > 0) return;
-    adopted.current = true;
-    dispatch({
-      type: 'UPDATE_SETTINGS',
-      patch: {
-        chipRulerSetups: withSetupCal(setups, setup.id, screen, legacy),
-        chipRulerSetupId: setup.id,
-        chipRuler: null,
-      },
-    });
-  }, [legacy, cals, screen, setups, setup.id, dispatch]);
-```
-
-The dispatch is written out here rather than calling `saveCal`, so the dependency list stays honest — `saveCal` closes over `setups` and `screen`, and a helper in the deps of an effect that runs once is a lie waiting to be believed.
-
-In `submitTyped`, replace:
-
-```ts
-        dispatch({ type: 'UPDATE_SETTINGS', patch: { chipRulerCals: withCalibration(cals, screen, next) } });
-```
-
-with:
-
-```ts
-        saveCal(next);
-```
-
-In `nextCalStep`, replace:
-
-```ts
-    dispatch({
-      type: 'UPDATE_SETTINGS',
-      patch: { chipRulerCals: withCalibration(cals, screen, solved), chipRuler: null },
-    });
-```
-
-with:
-
-```ts
-    saveCal(solved);
-```
-
-Remove `withCalibration` from the import list if nothing else in the file uses it (`grep -n withCalibration src/components/ChipRuler.tsx`).
-
-- [ ] **Step 4: Verify**
-
-```bash
-npm run build
-```
-
-Expected: no TypeScript errors, no unused-import errors.
-
-```bash
-npm run lint
-```
-
-Expected: clean.
-
-Then run the app and confirm the ruler is unchanged: `npm run dev`, open a player's stack → 📏 Measure, calibrate, measure a stack. An install that already had a calibration must **not** ask to calibrate again — that is the migration working.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add src/components/ChipRuler.tsx
-git commit -m "$(cat <<'EOF'
-refactor(ruler): the sheet writes into the active setup
-
-No behaviour change with one setup — the map it reads is the same map, reached
-through the case it belongs to. Three scattered dispatches become one saveCal(),
-so the next commit has a single place to add the setup switch to.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-EOF
-)"
-```
+(One line of this task survives and has moved into Task 9: `Settings.chipRulerCals`'s
+inline type has to admit the `rms` / `span` / `at` fields that Task 1 now writes into
+it, or the stored type is a lie about what is on disk.)
 
 ---
+
+### Task 5: CANCELLED — the sheet reads the active setup
+
+Cancelled by the 2026-09-05 scope change. `ChipRuler.tsx` keeps reading
+`state.settings.chipRulerCals` and dispatching `withCalibration` exactly as it does
+today. **Tasks 6, 7 and 9 must not introduce `saveCal`, `setups`, `setup` or
+`activeSetup`** — those were this task's output and it is not happening.
 
 ### Task 6: The bar snaps to the chip line
 
@@ -1155,8 +688,10 @@ EOF
 - Modify: `src/styles.css`
 
 **Interfaces:**
-- Consumes: `CALIBRATION_STEPS` (now length 3), `fitCalibration(samples, now?)`, `worstSample`, `spanFor` from Tasks 1 and 6.
-- Produces: the local `calCounts: number[]` / `calDrags: RulerSample[]` state, which Task 8's one-drag door replaces the contents of.
+- Consumes: `CALIBRATION_STEPS` (now length 3), `fitCalibration(samples, now?)`, `worstSample`, `spanFor` from Task 1; the `rawPx` state from Task 6.
+- Produces: nothing later tasks depend on. This is the last change to `ChipRuler.tsx`.
+
+**Do not introduce `saveCal`, `setups`, `setup` or `activeSetup`** — those belonged to the cancelled Task 5. The calibration is stored with the same `dispatch` + `withCalibration` this file already uses.
 
 - [ ] **Step 1: Replace the two-drag state**
 
@@ -1267,7 +802,10 @@ Replace the whole function with:
       return;
     }
 
-    saveCal(solved);
+    dispatch({
+      type: 'UPDATE_SETTINGS',
+      patch: { chipRulerCals: withCalibration(cals, screen, solved), chipRuler: null },
+    });
     setCalStep(null);
     setCalDrags([]);
     setRawPx(0);
@@ -1415,502 +953,135 @@ EOF
 
 ---
 
-### Task 8: The setup pill, the picker, and the one-drag door
+### Task 8: CANCELLED — the setup pill, the picker and the one-drag door
 
-**Files:**
-- Modify: `src/components/ChipRuler.tsx` (header JSX; new picker panel above `.ruler-strip`; calibration solve path)
-- Modify: `src/lib/i18n.ts` (`en` and `de`)
-- Modify: `src/styles.css`
-
-**Interfaces:**
-- Consumes: `newSetup`, `nextSetupId`, `renameSetup`, `rezero`, `setupsWithCal`, `calibrationFor` from Tasks 2 and 3; `saveCal`, `setups`, `setup` from Task 5; `calCounts`, `calDrags` from Task 7.
-- Produces: nothing consumed by later tasks.
-
-- [ ] **Step 1: State and helpers**
-
-Add `newSetup`, `nextSetupId`, `rezero`, `setupsWithCal` to the `from '../lib/chipRuler'` import. Add state beside the other calibration state:
-
-```ts
-  /** the setup list is open */
-  const [picking, setPicking] = useState(false);
-  /** naming a new setup — null when not */
-  const [newName, setNewName] = useState<string | null>(null);
-  /**
-   * Which setup is lending its chip height, or null for a full calibration.
-   *
-   * A case changes `zeroPx` and nothing else — `px` is the chips and the density of
-   * the glass, neither of which the case touches. So a second setup for the same
-   * chips is one equation in one unknown, and asking for three drags would be asking
-   * for work that has already been done.
-   */
-  const [carry, setCarry] = useState<string | null>(null);
-```
-
-Add helpers below `saveCal`:
-
-```ts
-  /** what to call a setup — the first one is unnamed in the store and named here */
-  const setupName = (s: RulerSetup) => s.name || t('ruler.setupFirst');
-  /** the setups that already know this screen and could lend their chip height */
-  const donors = setupsWithCal(setups, screen, setup.id);
-
-  /* `pickSetup`, not `useSetup`: `.oxlintrc.json` runs `react/rules-of-hooks` as an
-     error, and anything named `useX` is treated as a hook — this is called from
-     `onClick`, which would be "a hook called inside a callback". */
-  const pickSetup = (id: string, list = setups) => {
-    dispatch({ type: 'UPDATE_SETTINGS', patch: { chipRulerSetups: list, chipRulerSetupId: id } });
-    setPicking(false);
-    setNewName(null);
-    /* Same reset as folding the phone: a different case is a different offset, so the
-       bar stops meaning anything until it is dragged again. The logged stacks stay —
-       they are counts of chips, and no case changes how many chips were in a pile. */
-    setRawPx(0);
-    setDragPx(0);
-    setTouched(false);
-    setCalDrags([]);
-    setCalBad(null);
-    setCalCounts([...CALIBRATION_STEPS]);
-    setCalError(false);
-    setCalTooTall(false);
-    setLearn(null);
-    const next = calibrationFor(activeSetup(list, id).cals, screen);
-    setCalStep(calibrateOnly || !isCalibrated(next) ? 0 : null);
-    /* A setup that has never seen this screen is almost always the same chips in a
-       different case, so the cheap door is the default. Re-measuring one that IS
-       calibrated is the opposite: you are here because something is wrong, so it
-       starts from scratch. The lenders are computed against the setup being switched
-       TO, not the one being left — otherwise the setup you are coming from, which is
-       the most likely lender of all, would be the one excluded. */
-    const lenders = setupsWithCal(list, screen, id);
-    setCarry(!isCalibrated(next) && lenders.length ? lenders[0]!.id : null);
-  };
-
-  const createSetup = (name: string) => {
-    const id = nextSetupId(setups);
-    pickSetup(id, [...setups, newSetup(name, id)]);
-  };
-```
-
-Add `RulerSetup` to the type-only import from `../lib/chipRuler`.
-
-- [ ] **Step 2: The pill and the picker**
-
-Replace the `cr-prev` div in the header with:
-
-```tsx
-          <div className="cr-prev">
-            <span className="ruler-prev-txt">
-              {calibrating
-                ? t('ruler.calibrateStep', { i: (calStep ?? 0) + 1, n: calCounts.length })
-                : t('ruler.title')}
-            </span>
-            {/* The active setup's name, always on screen. A ruler measuring with the
-                wrong case is out by a constant on every stack, which is the one error
-                it cannot detect by looking at its own numbers — so it is made visible
-                rather than clever. */}
-            <button className="ruler-pill" onClick={() => setPicking((p) => !p)}>
-              ⌗ {setupName(setup)} ▾
-            </button>
-          </div>
-```
-
-Insert the picker immediately **after** the closing `</div>` of `.ruler-head` and **before** the `{calibrating ? (` block:
-
-```tsx
-      {picking && (
-        <div className="ruler-setups">
-          {setups.map((s) => (
-            <button
-              key={s.id}
-              className={`ruler-setup${s.id === setup.id ? ' on' : ''}`}
-              onClick={() => pickSetup(s.id)}
-            >
-              <span>{setupName(s)}</span>
-              <i>{calibrationFor(s.cals, screen) ? '✓' : '–'}</i>
-            </button>
-          ))}
-          {newName === null ? (
-            <button className="cr-btn ruler-setup-add" onClick={() => setNewName('')}>
-              ＋ {t('ruler.setupNew')}
-            </button>
-          ) : (
-            <form
-              className="ruler-type"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (newName.trim()) createSetup(newName);
-              }}
-            >
-              <input
-                className="input"
-                type="text"
-                autoFocus
-                maxLength={MAX_SETUP_NAME}
-                value={newName}
-                placeholder={t('ruler.setupName')}
-                onChange={(e) => setNewName(e.target.value)}
-              />
-              <button className="btn btn-primary" type="submit" disabled={!newName.trim()}>
-                {t('ruler.setupCreate')}
-              </button>
-            </form>
-          )}
-          <p className="faint ruler-setups-why">{t('ruler.setupWhy')}</p>
-        </div>
-      )}
-```
-
-Add `MAX_SETUP_NAME` to the `from '../lib/chipRuler'` import.
-
-- [ ] **Step 3: The one-drag door**
-
-Insert the door immediately after the `<p className="ruler-hint">` element inside the calibrating branch, wrapped so it only appears before the first drag:
-
-```tsx
-          {donors.length > 0 && taken(calDrags).length === 0 && (
-            <div className="ruler-door">
-              <button
-                className={`cr-btn${carry ? ' on' : ''}`}
-                onClick={() => setCarry(donors[0]!.id)}
-              >
-                {t('ruler.doorSame', { s: setupName(donors[0]!) })}
-              </button>
-              <button className={`cr-btn${carry ? '' : ' on'}`} onClick={() => setCarry(null)}>
-                {t('ruler.doorFull')}
-              </button>
-            </div>
-          )}
-```
-
-Make the count list follow the door — replace the `calCounts` initialiser usage in `nextCalStep`'s `missing` lookup by first constraining the list. Add, immediately above the `const missing = ...` line in `nextCalStep`:
-
-```ts
-    /* One drag when a chip height is being carried: `zeroPx = chips·px − y`, one
-       equation, one unknown. Three when it is not. */
-    const wanted = carry ? 1 : calCounts.length;
-```
-
-and change the two lines that follow to use it:
-
-```ts
-    const missing = calCounts.slice(0, wanted).findIndex((_, i) => !drags[i]);
-```
-
-Replace the solve, `const solved = fitCalibration(drags);`, with:
-
-```ts
-    const donor = carry ? calibrationFor(setupById(setups, carry)?.cals ?? {}, screen) : null;
-    const solved = donor ? rezero(donor.px, drags[0]!) : fitCalibration(drags);
-```
-
-Add `setupById` to the `from '../lib/chipRuler'` import. In the failure branch, guard the blame path so a single-drag re-zero never claims a "drag 2":
-
-```ts
-      const bad = donor ? -1 : worstSample(drags);
-```
-
-And make the header's Save/Next label respect the door — replace the expression added in Task 7 with:
-
-```tsx
-              {t(taken(calDrags).length + 1 >= (carry ? 1 : calCounts.length) ? 'ruler.calibrateSaveShort' : 'ruler.calibrateNext')}
-```
-
-Reset `carry` in `restartCalibration` and in the fold-change effect: add `setCarry(null);` to both.
-
-- [ ] **Step 4: Strings and style**
-
-`en`, beside the other `ruler.*` keys:
-
-```ts
-    'ruler.setupFirst': 'Standard',
-    'ruler.setupNew': 'New setup',
-    'ruler.setupName': 'Name it — “Blue case”',
-    'ruler.setupCreate': 'Create',
-    'ruler.setupWhy': 'A case changes how far the table sits below the glass. One setup per case, switched from here.',
-    'ruler.doorSame': 'Same chips as {s} — one drag',
-    'ruler.doorFull': 'Different chips too',
-```
-
-`de`:
-
-```ts
-    'ruler.setupFirst': 'Standard',
-    'ruler.setupNew': 'Neues Profil',
-    'ruler.setupName': 'Name — z. B. „Blaue Hülle“',
-    'ruler.setupCreate': 'Anlegen',
-    'ruler.setupWhy': 'Eine Hülle ändert, wie weit der Tisch unter dem Glas liegt. Ein Profil pro Hülle, hier umschaltbar.',
-    'ruler.doorSame': 'Gleiche Chips wie {s} — ein Zug',
-    'ruler.doorFull': 'Auch andere Chips',
-```
-
-`src/styles.css`, after the `.ruler-step` rules:
-
-```css
-/* The active case, on the line that was already there — no extra row height, and
-   nothing that could creep down towards the ladder. */
-.cr-prev { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.ruler-prev-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ruler-pill { flex: none; padding: 2px 8px; border-radius: 999px; font-size: 11.5px;
-  font-weight: 700; border: 1px solid var(--line); background: var(--surface-2);
-  color: var(--text-dim); max-width: 45%; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; }
-
-.ruler-setups { margin: 8px 16px 0; padding: 8px; border: 1px solid var(--line);
-  border-radius: var(--r-md); background: var(--surface-2); }
-.ruler-setup { display: flex; width: 100%; align-items: center; gap: 8px; padding: 8px 10px;
-  border: 1px solid transparent; border-radius: var(--r-sm); background: none;
-  color: inherit; font-size: 14px; text-align: left; }
-.ruler-setup > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; }
-.ruler-setup > i { font-style: normal; font-size: 12px; color: var(--text-faint); }
-.ruler-setup.on { border-color: var(--acc); background: var(--acc-wash); font-weight: 700; }
-.ruler-setup-add { width: 100%; margin-top: 4px; }
-.ruler-setups .ruler-type { margin: 6px 0 0; }
-.ruler-setups-why { font-size: 11.5px; line-height: 1.5; margin: 8px 2px 2px; }
-
-.ruler-door { display: flex; gap: 6px; margin: 8px 16px 0; }
-.ruler-door .cr-btn { flex: 1; height: auto; padding: 8px 10px; font-size: 12.5px;
-  line-height: 1.35; }
-.ruler-door .cr-btn.on { border-color: var(--acc); background: var(--acc-wash); font-weight: 700; }
-```
-
-- [ ] **Step 5: Verify**
-
-```bash
-npm test && npm run build && npm run lint
-```
-
-Expected: all clean.
-
-Then `npm run dev` and walk the whole flow:
-1. Ruler on a calibrated screen → the pill reads "Standard".
-2. Tap the pill → the list shows one setup with ✓ → `＋ New setup` → name it "Blue case" → Create.
-3. The sheet drops into calibration with the door showing, "Same chips as Standard — one drag" pre-selected, header button reading Save.
-4. One drag saves and returns to measuring; the pill now reads "Blue case".
-5. Tap the pill and switch back to Standard — no calibration is asked for, and any logged stacks are still in the strip.
-6. New setup again, choose "Different chips too" → the header reads Next and the flow is three drags.
-7. Nothing in the sheet is drawn below or over the ladder at any point.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/components/ChipRuler.tsx src/lib/i18n.ts src/styles.css
-git commit -m "$(cat <<'EOF'
-feat(ruler): pick the case from inside the sheet
-
-The active setup's name rides the subtitle line, so a ruler measuring with the
-wrong case is a visible mistake rather than a constant three chips added to
-every stack. A new setup takes one drag when the chips have not changed — px is
-the chips and the glass, zeroPx is the lip, and only the lip moved.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-EOF
-)"
-```
+Cancelled by the 2026-09-05 scope change at the top of this file. There is one
+calibration table, so there is nothing to pick between. No pill, no picker, no
+`pickSetup`, no `rezero`, no door.
 
 ---
 
-### Task 9: The Settings section
+### Task 9: The quality readout in Settings
+
+Three drags produce a residual, and the point of having one is that a person can see
+it. `20.8 px per chip · 70 px below the glass` is true and useless — two numbers
+nobody can act on. `±0.3 chips on a 20 stack · 14 Aug` is the thing that actually
+matters: how far off a stack is likely to read, and when that was last established.
 
 **Files:**
-- Modify: `src/screens/SettingsScreen.tsx` (`BeforeTheNight`, the ruler card at ~line 505-597)
+- Modify: `src/types.ts` (the `chipRuler` / `chipRulerCals` block at ~line 119-131)
+- Modify: `src/screens/SettingsScreen.tsx` (the `reading` helper inside `BeforeTheNight`, at ~line 505)
 - Modify: `src/lib/i18n.ts` (`en` and `de`)
-- Modify: `src/styles.css`
 
 **Interfaces:**
-- Consumes: every setups function from Task 3; the `rms`/`span`/`at` fields from Task 1; the `ruler.setupFirst` / `ruler.setupName` / `ruler.setupNew` / `ruler.setupCreate` i18n keys added in Task 8. **Task 8 must land first.**
+- Consumes: the `rms` / `span` / `at` fields on `RulerCalibration` from Task 1.
 - Produces: nothing.
 
-- [ ] **Step 1: Read the selected setup**
+**Do not introduce setups.** Tasks 3, 4, 5 and 8 are cancelled. There is no setup
+picker, no rename, no delete, and no new `Settings` field. The only structural change
+here is making the stored type admit three fields it already holds.
 
-In `src/screens/SettingsScreen.tsx`, extend the `from '../lib/chipRuler'` import with `activeSetup`, `dropSetup`, `newSetup`, `nextSetupId`, `renameSetup`, `withoutSetupCal`, and the type `RulerSetup` if not already imported.
+- [ ] **Step 1: Make the stored type honest**
 
-Replace:
+Task 1 made `fitCalibration` write `rms`, `span` and `at` into every calibration, and
+`normalizeCalibrations` now carries all three back off disk — but `Settings`'s inline
+type still describes a calibration as `{ px, zeroPx, samples? }`. That is a lie about
+what is on disk, and it is the type `SettingsScreen` is about to read the new fields
+through.
+
+In `src/types.ts`, add above the `Settings` interface:
 
 ```ts
-  const cals = state.settings.chipRulerCals;
+/** One screen's chip-ruler calibration as it is stored: CSS pixels per chip, how far
+ *  below the glass the table sits, the hand corrections it has learned from, and how
+ *  well its calibration drags agreed. Structurally the same as `RulerCalibration` in
+ *  lib/chipRuler.ts, written out here rather than imported so `Settings` stays a
+ *  plain description of what is on disk. */
+export interface StoredCalibration {
+  px: number;
+  zeroPx: number;
+  samples?: { y: number; chips: number }[];
+  /** how far the calibration drags fell from the fitted line, in chips (RMS) */
+  rms?: number;
+  /** the tallest stack that fit was anchored on */
+  span?: number;
+  /** when it was measured, ms since epoch */
+  at?: number;
+}
+```
+
+and use it in both ruler fields, replacing their inline shapes:
+
+```ts
+  chipRuler?: StoredCalibration | null;
+```
+
+```ts
+  chipRulerCals?: Record<string, StoredCalibration>;
+```
+
+Leave both doc comments as they are.
+
+- [ ] **Step 2: Replace the readout**
+
+In `src/screens/SettingsScreen.tsx`, replace the `reading` helper:
+
+```ts
+  const reading = (slot: RulerSlot) =>
+    slot.cal
+      ? t('settings.rulerReady', { px: slot.cal.px.toFixed(1), zero: Math.round(slot.cal.zeroPx) })
+      : t('settings.rulerNone');
 ```
 
 with:
-
-```ts
-  const setups = state.settings.chipRulerSetups ?? [];
-  const setup = activeSetup(setups, state.settings.chipRulerSetupId);
-  const cals = setup.cals;
-  /** the name field is open, and for which job — null when it is shut */
-  const [naming, setNaming] = useState<'rename' | 'new' | null>(null);
-  const [draft, setDraft] = useState('');
-  const setupName = (s: RulerSetup) => s.name || t('ruler.setupFirst');
-  const saveSetups = (list: RulerSetup[], id = setup.id) =>
-    dispatch({ type: 'UPDATE_SETTINGS', patch: { chipRulerSetups: list, chipRulerSetupId: id } });
-```
-
-Replace the `forget` helper's dispatch so it forgets within the selected setup only:
-
-```ts
-      onYes: () => saveSetups(withoutSetupCal(setups, setup.id, slot.key)),
-```
-
-- [ ] **Step 2: The quality readout**
-
-Replace the `reading` helper with:
 
 ```ts
   /**
    * What a measured slot says about itself.
    *
    * `20.8 px per chip · 70 px below the glass` was true and useless — two numbers
-   * nobody can act on. Three drags produce a residual, so the slot can report the
-   * thing that actually matters: how far off a stack is likely to read. Calibrations
-   * with no residual (a two-drag one from before this, a carried-px re-zero, a line
-   * slid onto a correction) fall back to the old line rather than showing a blank.
+   * nobody can act on, in units nobody measures chips in. Three drags produce a
+   * residual, so the slot can report the thing that matters instead: how far off a
+   * stack is likely to read. Calibrations with no residual fall back to the old line
+   * rather than showing a blank — a two-drag one from before this existed, or a line
+   * slid onto a single correction, genuinely has nothing to claim.
    */
   const reading = (slot: RulerSlot) => {
     if (!slot.cal) return t('settings.rulerNone');
     const { rms, span, at } = slot.cal;
-    const when = at ? new Date(at).toLocaleDateString(state.settings.language) : '';
     const body =
       rms !== undefined && span
         ? t('settings.rulerQuality', { rms: rms.toFixed(1), n: span })
         : t('settings.rulerReady', { px: slot.cal.px.toFixed(1), zero: Math.round(slot.cal.zeroPx) });
+    const when = at ? new Date(at).toLocaleDateString(state.settings.language) : '';
     return when ? `${body} · ${when}` : body;
   };
 ```
 
-- [ ] **Step 3: The setup head**
+`state` is already in scope in `BeforeTheNight` (it destructures `const { state, dispatch } = useStore();` at the top).
 
-Insert immediately after the `<p className="faint" ...>{t('settings.rulerDesc')}</p>` paragraph inside the ruler card:
+- [ ] **Step 3: Strings**
 
-```tsx
-        <div className="ruler-setup-bar">
-          <select
-            className="input"
-            value={setup.id}
-            onChange={(e) => saveSetups(setups, e.target.value)}
-            aria-label={t('settings.rulerSetup')}
-          >
-            {setups.map((s) => (
-              <option key={s.id} value={s.id}>{setupName(s)}</option>
-            ))}
-          </select>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => { setDraft(setup.name); setNaming('rename'); }}
-          >
-            {t('settings.rulerSetupRename')}
-          </button>
-          {setups.length > 1 && (
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() =>
-                confirm.ask({
-                  text: t('settings.rulerSetupDeleteConfirm', { s: setupName(setup) }),
-                  confirmLabel: t('settings.rulerSetupDelete'),
-                  danger: true,
-                  onYes: () => {
-                    const left = dropSetup(setups, setup.id);
-                    saveSetups(left, left[0]!.id);
-                  },
-                })
-              }
-            >
-              {t('settings.rulerSetupDelete')}
-            </button>
-          )}
-        </div>
-
-        {naming !== null && (
-          <form
-            className="ruler-setup-name"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const name = draft.trim();
-              if (!name) return;
-              if (naming === 'rename') {
-                saveSetups(renameSetup(setups, setup.id, name));
-              } else {
-                const id = nextSetupId(setups);
-                saveSetups([...setups, newSetup(name, id)], id);
-              }
-              setNaming(null);
-              setDraft('');
-            }}
-          >
-            <input
-              className="input"
-              type="text"
-              autoFocus
-              maxLength={MAX_SETUP_NAME}
-              value={draft}
-              placeholder={t('ruler.setupName')}
-              onChange={(e) => setDraft(e.target.value)}
-            />
-            <button className="btn btn-primary btn-sm" type="submit" disabled={!draft.trim()}>
-              {t(naming === 'rename' ? 'settings.rulerSetupRename' : 'ruler.setupCreate')}
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              type="button"
-              onClick={() => { setNaming(null); setDraft(''); }}
-            >
-              {t('settings.rulerSetupCancel')}
-            </button>
-          </form>
-        )}
-```
-
-and insert, immediately **before** the closing `</div>` of the ruler card (after the `settings.rulerCaseHint` paragraph):
-
-```tsx
-        <button
-          className="btn btn-ghost btn-sm ruler-setup-add"
-          onClick={() => { setDraft(''); setNaming('new'); }}
-        >
-          ＋ {t('ruler.setupNew')}
-        </button>
-```
-
-Add `MAX_SETUP_NAME` to the `from '../lib/chipRuler'` import.
-
-- [ ] **Step 4: Strings and style**
-
-`en`, beside the other `settings.ruler*` keys, replacing `settings.rulerDesc` and `settings.rulerForgetConfirm`:
+In `src/lib/i18n.ts`, add one key to the `en` dictionary beside the other
+`settings.ruler*` keys, and update `settings.rulerDesc` — calibration is three drags
+now, not two:
 
 ```ts
-    'settings.rulerDesc': 'A few drags teach the ruler how tall your chips are and how far below the glass the table sits. The second half is the case, so keep one setup per case — and one measurement per screen and per way up, since the phone rests on a different edge lying down.',
-    'settings.rulerSetup': 'Setup',
-    'settings.rulerSetupRename': 'Rename',
-    'settings.rulerSetupDelete': 'Delete',
-    'settings.rulerSetupCancel': 'Cancel',
-    'settings.rulerSetupDeleteConfirm': 'Delete “{s}” and everything measured with it?',
+    'settings.rulerDesc': 'Three drags teach the ruler how tall your chips are, and how far below the glass the table sits. It is one measurement per screen and per way up — the phone rests on a different edge lying down — and each one is kept until you replace it.',
     'settings.rulerQuality': '±{rms} chips on a {n} stack',
-    'settings.rulerForgetConfirm': 'Forget this screen’s calibration for this setup? The ruler will ask for the drags again the next time it is used this way up.',
 ```
 
-`de`:
+and the same two in `de`:
 
 ```ts
-    'settings.rulerDesc': 'Ein paar Züge zeigen dem Lineal, wie hoch deine Chips sind und wie weit der Tisch unter dem Glas liegt. Die zweite Hälfte ist die Hülle — also ein Profil pro Hülle, und eine Messung pro Bildschirm und pro Lage, denn quer steht das Handy auf einer anderen Kante.',
-    'settings.rulerSetup': 'Profil',
-    'settings.rulerSetupRename': 'Umbenennen',
-    'settings.rulerSetupDelete': 'Löschen',
-    'settings.rulerSetupCancel': 'Abbrechen',
-    'settings.rulerSetupDeleteConfirm': '„{s}“ und alles damit Gemessene löschen?',
+    'settings.rulerDesc': 'Drei Züge zeigen dem Lineal, wie hoch deine Chips sind und wie weit der Tisch unter dem Glas liegt. Eine Messung pro Bildschirm und pro Lage — quer steht das Handy auf einer anderen Kante — und jede bleibt gespeichert, bis du sie ersetzt.',
     'settings.rulerQuality': '±{rms} Chips bei {n} Stück',
-    'settings.rulerForgetConfirm': 'Kalibrierung dieses Bildschirms für dieses Profil verwerfen? Das Lineal fragt in dieser Lage wieder nach den Zügen.',
 ```
 
-`src/styles.css`, beside the `.ruler-slot` rules:
+Leave `settings.rulerReady` in both dictionaries — it is still the fallback for a
+calibration that has no residual.
 
-```css
-.ruler-setup-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.ruler-setup-bar .input { flex: 1; min-width: 0; }
-.ruler-setup-name { display: flex; gap: 8px; margin-bottom: 10px; }
-.ruler-setup-name .input { flex: 1; min-width: 0; }
-.ruler-setup-add { width: 100%; margin-top: 10px; }
-```
-
-- [ ] **Step 5: Verify**
+- [ ] **Step 4: Verify**
 
 ```bash
 npm test && npm run build && npm run lint
@@ -1919,23 +1090,25 @@ npm test && npm run build && npm run lint
 Expected: all clean.
 
 Then `npm run dev` → Settings → Before the night → Chip ruler:
-1. The dropdown lists every setup; picking one changes which calibrations the slots below show, and it is the same setup the ruler sheet opens with.
-2. `Rename` renames; `Delete` is hidden when there is only one setup and asks before deleting otherwise.
-3. `＋ New setup` creates one; its slots read "Not measured yet"; `Calibrate` opens the sheet, which offers the one-drag door because the other setup knows this screen.
-4. A slot calibrated with three drags reads `±0.3 chips on a 20 stack · <date>`; one migrated from before this work still reads the old `px`/`zeroPx` line rather than a blank.
-5. Turning the phone still switches which row says "now", and the other-screens list still appears for a Fold.
+1. A slot calibrated with three drags reads `±0.3 chips on a 20 stack · <today's date>`.
+2. A slot whose calibration predates this work (or one that has only ever been slid
+   onto a single correction) still reads the old `px` / `zeroPx` line rather than a
+   blank or a stray `±undefined`.
+3. Turning the phone still switches which row says "now", and the other-screens list
+   still appears on a folding phone. Nothing else in the card has changed.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/screens/SettingsScreen.tsx src/lib/i18n.ts src/styles.css
+git add src/types.ts src/screens/SettingsScreen.tsx src/lib/i18n.ts
 git commit -m "$(cat <<'EOF'
-feat(settings): set the ruler's cases up on a Tuesday
+feat(settings): the ruler reports what it is worth
 
-The card grows a setup picker, a rename and a delete, so the whole thing can be
-arranged in advance rather than discovered at a table. A measured slot now
-reports what it is worth — "±0.3 chips on a 20 stack" — instead of two numbers
-nobody can act on; a calibration from before the third drag keeps the old line.
+"20.8 px per chip · 70 px below the glass" was true and unusable — two numbers
+in units nobody measures chips in. The third drag produces a residual, so the
+slot can say how far off a stack is likely to read, and when that was last
+established. A calibration with no residual keeps the old line rather than
+claiming an accuracy it has never demonstrated.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
@@ -1946,8 +1119,14 @@ EOF
 
 ## Done when
 
-- `npm test` passes (`chipRuler.test.ts` and `settingsScope.test.ts` both extended).
+- `npm test` passes (`chipRuler.test.ts` extended in Tasks 1 and 2).
 - `npm run build` and `npm run lint` are clean.
-- An install that already had a calibration is never asked to calibrate again.
-- A second setup for the same chips costs one drag; switching between them mid-count is one tap and never touches the stacks already logged.
-- Nothing is drawn below the ladder or floating over its foot, at any window size, in any state of the sheet.
+- Calibration is three drags, each with a stack count the user can change, and a set
+  that does not describe one stack asks for the single drag that disagreed rather
+  than all three.
+- The bar draws on the chip line it will be read as.
+- A hand correction still teaches the ruler, and three corrections that disagree
+  refit it rather than silently sliding it.
+- Settings reports a calibration's error in chips, with the date it was taken.
+- Nothing is drawn below the ladder or floating over its foot, at any window size, in
+  any state of the sheet.

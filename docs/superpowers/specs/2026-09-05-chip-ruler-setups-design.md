@@ -212,3 +212,24 @@ An install with `chipRulerCals` gets one setup holding it, named from
 only the older single `chipRuler` keeps the existing adopt-on-open path, writing into the
 active setup instead of the bare map. Nothing is asked of the user and no calibration is
 lost.
+
+---
+
+## Superseded: setups (2026-09-05, after Task 1)
+
+The case is now glued to the phone permanently and there is one chip set, so the axis
+this design was built around no longer moves. Everything above about `RulerSetup`, the
+setup pill, the picker, the one-drag door and `rezero` is **not built** — see the scope
+change at the top of the implementation plan.
+
+What survives is the half that was never about the case: the third calibration drag,
+the residual it makes possible, editable stack counts, the blunder-naming redo, the
+bar that snaps to the chip line, and the `±n chips on an m stack` readout in Settings.
+
+One thing the third drag broke on its way in, and which is now its own task: the
+`MAX_RMS_CHIPS` gate is right for calibration drags and wrong for corrections. Three
+drags of one stack, taken in one moment, that disagree are a mis-drag and must be
+refused. Three corrections, made on separate evenings about a calibration already
+known to be wrong, are *supposed* to disagree — gating them silently hands back the
+calibration the user has been correcting. The gate belongs on the caller, not in the
+arithmetic.
