@@ -189,7 +189,20 @@ export default function ChipRuler({
     };
   }, []);
 
-  /** how far the bar sits above the bottom edge of the screen */
+  /**
+   * The bar, twice: where the finger actually is, and where the bar is drawn.
+   *
+   * They differ because the bar LOCKS to the chip line it will be read as. Rounding
+   * used to be something you discovered after logging a stack — the bar sat between
+   * two ticks and the number jumped on its own. Locked, the ladder shows the answer
+   * before it is committed, and the per-chip buzz already lands on the same edges.
+   *
+   * `rawPx` is what the maths gets. Snapping a CORRECTION would quantise it by up to
+   * half a chip, and a correction is the only calibration data that ever arrives in
+   * the range the counting really happens in — biasing it would be the one thing
+   * guaranteed not to fix a bad calibration.
+   */
+  const [rawPx, setRawPx] = useState(0);
   const [dragPx, setDragPx] = useState(0);
   /* Whether the bar means anything yet. It cannot be inferred from `dragPx`: the bar
      parked at the bottom still reads three or four chips, because the table is below
@@ -211,9 +224,9 @@ export default function ChipRuler({
   /** what the last correction did to the calibration, shown once and then forgotten */
   const [learn, setLearn] = useState<{ n: number; ok: boolean } | null>(null);
 
-  /* The drag, as a height above the bottom of the GLASS. `dragPx` on its own is a
+  /* The drag, as a height above the bottom of the GLASS. `rawPx` on its own is a
      height above the LADDER, and a calibration is not in those units. */
-  const dragAbs = dragPx + belowPx;
+  const dragAbs = rawPx + belowPx;
   const measured = !calibrating && touched ? chipsAt(dragAbs, cal) : 0;
   const capacity = calibrating ? 0 : rulerCapacity(trackPx + belowPx, cal);
   /** what has to be tapped rather than measured: the chips no drag can reach */
@@ -238,12 +251,20 @@ export default function ChipRuler({
     haptic(chips > 0 && chips % COLUMN_CHIPS === 0 ? BUZZ_COLUMN : BUZZ_CHIP);
   };
 
+  /** where the bar is DRAWN for a finger at `y`: on the chip line it reads as */
+  const snapped = (y: number) => {
+    if (calibrating || !isCalibrated(cal)) return y;
+    const locked = spanFor(chipsAt(y + belowPx, cal), cal) - belowPx;
+    return Math.max(0, Math.min(trackPx, locked));
+  };
+
   const moveTo = (clientY: number) => {
     const el = trackRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const y = Math.max(0, Math.min(rect.height, rect.bottom - clientY));
-    setDragPx(y);
+    setRawPx(y);
+    setDragPx(snapped(y));
     setTouched(true);
     setCalError(false);
     setCalTooTall(false);
@@ -277,7 +298,9 @@ export default function ChipRuler({
   const nudge = (by: number) => {
     if (!isCalibrated(cal) || !touched) return;
     const next = Math.max(0, chipsAt(dragAbs, cal) + by);
-    setDragPx(Math.max(0, Math.min(trackPx, spanFor(next, cal) - belowPx)));
+    const y = Math.max(0, Math.min(trackPx, spanFor(next, cal) - belowPx));
+    setRawPx(y);
+    setDragPx(y);
     buzzFor(next);
   };
 
@@ -314,6 +337,7 @@ export default function ChipRuler({
   const log = (chips: number) => {
     if (chips <= 0) return;
     setStacks((s) => [...s, chips]);
+    setRawPx(0);
     setDragPx(0);
     setTouched(false);
     if (buzz) haptic(16);
@@ -324,13 +348,14 @@ export default function ChipRuler({
     /* A stack taller than the ladder pins the bar at the ceiling, and the drag then
        says "this stack is exactly as tall as the screen" — a lie the fit cannot see
        through, and the fastest way to a calibration that reads 18 chips as 13. */
-    if (trackPx > 0 && dragPx >= trackPx - 2) {
+    if (trackPx > 0 && rawPx >= trackPx - 2) {
       setCalTooTall(true);
       return;
     }
     if (calStep === 0) {
       setCalFirst({ y: dragAbs, chips });
       setCalStep(1);
+      setRawPx(0);
       setDragPx(0);
       setTouched(false);
       haptic(12);
@@ -342,6 +367,7 @@ export default function ChipRuler({
       setCalError(true);
       setCalFirst(null);
       setCalStep(0);
+      setRawPx(0);
       setDragPx(0);
       setTouched(false);
       return;
@@ -351,6 +377,7 @@ export default function ChipRuler({
       patch: { chipRulerCals: withCalibration(cals, screen, solved), chipRuler: null },
     });
     setCalStep(null);
+    setRawPx(0);
     setDragPx(0);
     setTouched(false);
     haptic([12, 60, 12]);
@@ -367,6 +394,7 @@ export default function ChipRuler({
   useEffect(() => {
     if (knownScreen.current === screen) return;
     knownScreen.current = screen;
+    setRawPx(0);
     setDragPx(0);
     setTouched(false);
     setCalFirst(null);
@@ -381,6 +409,7 @@ export default function ChipRuler({
     setCalFirst(null);
     setCalError(false);
     setCalTooTall(false);
+    setRawPx(0);
     setDragPx(0);
     setTouched(false);
   };
