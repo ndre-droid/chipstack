@@ -2939,6 +2939,13 @@ input[type='color'] { cursor: pointer; }
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--acc); color: var(--on-acc); border: none; }
 .ts-play:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+/* the way back to the stand — quieter than play, it is a move, not a command */
+.ts-tv { width: 34px; height: 34px; flex: none; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--text-dim);
+  transition: color .15s, background .15s; }
+.ts-tv:hover { color: var(--text); background: var(--surface-3); }
+.ts-tv:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 
 /* ---- Table tab: the setup fold ---- */
 .setup-toggle { margin: 18px 2px 8px; }

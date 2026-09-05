@@ -198,6 +198,17 @@ export default function TableScreen() {
           >
             {running ? <IconPause size={17} /> : <IconPlay size={17} />}
           </button>
+          {/* Back onto the stand. The night is a loop — the phone stands on the table
+              showing the big screen, gets picked up for a rebuy or a counting round,
+              and goes back — and the way back used to be a card down the page. Here
+              it is next to the clock, so both halves of that loop are one tap. */}
+          <button
+            className="ts-tv"
+            onClick={() => setTv(true)}
+            aria-label={t('table.bigScreenShort')}
+          >
+            <IconExpand size={16} />
+          </button>
         </div>
       )}
 
