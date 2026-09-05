@@ -2043,7 +2043,10 @@ input[type='color'] { cursor: pointer; }
 /* TV: waiting-for-phone pairing banner — the code to type on the phone */
 .tv-pair {
   position: absolute; top: clamp(14px, 4vmin, 64px); left: 50%; transform: translateX(-50%); z-index: 4;
-  display: flex; align-items: center; gap: clamp(12px, 2.4vmin, 34px);
+  /* Wraps so the "wrong device" line can sit under the row rather than squeezing
+     it; with nothing to wrap it is the same single row it always was. */
+  display: flex; align-items: center; justify-content: center; flex-wrap: wrap;
+  gap: clamp(12px, 2.4vmin, 34px);
   background: var(--tv-panel); border: 1px solid var(--tv-line); border-radius: 18px;
   padding: clamp(10px, 1.6vmin, 20px) clamp(16px, 2.6vmin, 32px); max-width: 92vw;
 }
@@ -2067,6 +2070,9 @@ input[type='color'] { cursor: pointer; }
   background: #fff; padding: 6px; border-radius: 8px;
 }
 .tv-pair-qr span { color: var(--tv-dim); font-size: clamp(10px, 1.2vmin, 16px); text-align: center; }
+/* the way back to being a phone, for a device that became a TV by mistake */
+.tv-pair-wrong { flex-basis: 100%; color: var(--tv-dim); text-align: center;
+  font-size: clamp(11px, 1.3vmin, 18px); line-height: 1.4; max-width: 46ch; margin-inline: auto; }
 
 /* TV: the pairing QR on demand — the pairing banner disappears once a phone is
    connected, and a second phone (or a phone that lost the app) still needs it. */

@@ -7,6 +7,7 @@ import ChipStackViz from '../components/ChipStackViz';
 import { IconPlay, IconPause, IconChevron, IconReset } from '../components/Icons';
 import { useT, useFmt } from '../lib/i18n';
 import { useQrDataUrl } from '../lib/qr';
+import { immersiveAvailable, setImmersive } from '../lib/immersive';
 import { firebaseConfigured } from '../lib/firebaseConfig';
 import type { Unsubscribe } from 'firebase/firestore';
 import { secondsLeft as clockSecondsLeft, initialClock } from '../lib/clockLogic';
@@ -438,6 +439,11 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
   //                phone's data once a phone connects (data present in the doc).
   //  - isHostView: a controlling phone previewing its TV — read-only mirror.
   //  - standalone: no live session — runs entirely on its own local data/clock.
+  /* Whether this device has a table of its own — the honest test for "is this a
+     spare screen or the phone the night is being run on?". Read it only where the
+     device is NOT already a TV: a paired TV mirrors the phone's roster into its own
+     store (LIVE_APPLY_REMOTE below), so on that side of the line it says nothing. */
+  const hasOwnTable = ledger.length > 0;
   const isTv = firebaseConfigured && liveSessionRole === 'tv' && !!liveSessionCode;
   const isHostView = firebaseConfigured && liveSessionRole === 'host' && !!liveSessionCode;
   const synced = isTv || isHostView;
@@ -867,6 +873,16 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
     return () => root.removeAttribute('data-tv-full');
   }, []);
 
+  /* On the phone, the strip at the top and the pill at the bottom are Android's, not
+     the browser's, and no amount of web fullscreen reaches them — see lib/immersive.
+     A phone standing in for the television gets the whole panel; the bars come back
+     the moment the big screen closes. */
+  useEffect(() => {
+    if (!immersiveAvailable()) return;
+    setImmersive(true);
+    return () => setImmersive(false);
+  }, []);
+
   /* …and the honest fix for the other half of it: if that strip IS the browser's own
      chrome, only fullscreen removes it.
 
@@ -933,7 +949,7 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
      that never went fullscreen by itself, this is the way in. Not offered at all
      where the browser has no fullscreen API — an iOS home-screen app is already
      chromeless, and a button that cannot work is worse than no button. */
-  const canFullscreen = fullscreenSupported();
+  const canFullscreen = fullscreenSupported() && !immersiveAvailable();
 
   /* iOS/iPadOS Safari grants no element fullscreen at all, so an iPad standing in
      for the TV keeps its address bar — unless the page was installed to the home
@@ -1781,8 +1797,14 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
           <span className="tv-counting-step">{counting.index}/{counting.total}</span>
         </div>
       )}
-      {/* Standalone: offer to make this device the permanent TV */}
-      {firebaseConfigured && !deviceIsTv && !synced && (
+      {/* A SPARE screen — an old phone, a tablet, a browser on the television —
+          offers to become the table's permanent one. The device the night is being
+          run on does not: making it the TV means it stops being the phone and waits
+          for a second phone to drive it, which on a one-phone table is a dead end
+          (the pairing code, the QR, the whole handover). This screen is already
+          showing that device's own game with no pairing at all, which is what the
+          Table tab's "Big screen" button is for. */}
+      {firebaseConfigured && !deviceIsTv && !synced && !hasOwnTable && (
         <button className="tv-connect-pill use-tv" onClick={useAsTv}>📺 {t('tv.useAsTv')}</button>
       )}
 
@@ -1815,6 +1837,11 @@ export default function TvMode({ onClose }: { onClose: () => void }) {
               <span>{t('tv.scanToConnect')}</span>
             </div>
           )}
+          {/* …and the door back out. A screen with a roster on it is either a TV that
+              has been paired before or a phone that took a wrong turn, and the second
+              one has no phone coming to connect — so it should be told where the exit
+              is rather than left showing a code nobody will ever type. */}
+          {hasOwnTable && <div className="tv-pair-wrong">{t('tv.wrongDevice')}</div>}
         </div>
       )}
 
