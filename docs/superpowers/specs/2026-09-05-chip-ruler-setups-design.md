@@ -71,6 +71,16 @@ interface RulerCalibration {
 }
 ```
 
+The clock is a parameter, not a call: `fitCalibration(samples, now = Date.now())` and
+`rezero(px, sample, now = Date.now())` stamp `at` themselves, so a test can hand them a
+fixed number instead of stubbing the global. `teach` takes the same parameter and passes
+it down.
+
+`normalizeCalibrations` has to be taught all three fields. It rebuilds every calibration
+field by field — which is the point, since it is the gate against a hand-edited backup —
+so anything it does not name is dropped, and the readout would go blank after one
+restart. Each is carried only if it is still a number of the right sign.
+
 `fitCalibration(samples)` additionally computes, when it has three or more points:
 
 ```
@@ -80,8 +90,14 @@ span       = max(chips_i)
 ```
 
 It keeps every existing rejection (`MIN_PX_PER_CHIP`…`MAX_PX_PER_CHIP`, `MAX_ZERO_PX`, the
-negative-offset clamp) and gains one more: an `rms` above `MAX_RMS_CHIPS` (1.0) is not a
+negative-offset clamp) and gains one more: an `rms` above `MAX_RMS_CHIPS` is not a
 calibration, it is three drags that do not describe one stack.
+
+`MAX_RMS_CHIPS` is **half a chip**. Thumb wobble is two or three CSS px — about a tenth of
+a chip at a typical chip height — so half a chip accepts an ordinary set comfortably. It
+has to be this tight to be worth having: a single drag landing 40 px out among three (a
+mis-drag of about two chips) fits at roughly 0.9 chips RMS, and it drags `px` about 1%
+off and `zeroPx` 13 px off with it. A looser threshold would wave exactly that through.
 
 `worstSample(samples, cal)` returns the index of the largest residual, so the sheet can
 offer "redo drag 2" instead of restarting all three.
@@ -103,9 +119,12 @@ interface RulerSetup {
 with `newSetup(name, id)`, `setupById(setups, id)`, `activeSetup(setups, id)` (falls back
 to the first setup rather than returning null — the ruler must always have somewhere to
 write), `withSetupCal(setups, id, key, cal)`, `renameSetup`, `dropSetup` (refuses to drop
-the last one), `nextSetupId(setups)`, and `setupsFor(setups, id, key)` — the setups other
-than `id` that have a calibration for `key`, which is what the "same chips as…" picker
-lists.
+the last one), `nextSetupId(setups)`, `withoutSetupCal(setups, id, key)`, and
+`setupsWithCal(setups, key, exceptId)` — the setups other than `exceptId` that have a
+calibration for `key`, which is what the "same chips as…" picker lists. That last one is
+always asked about the setup being switched **to**, never the one being left: the setup
+you are coming from is the most likely lender of all, and excluding it would be exactly
+backwards.
 
 `normalizeSetups(rawSetups, legacyCals)` is the load-time gate: it validates every setup
 (a string id, a string name, `normalizeCalibrations` over its map), drops junk entry by
