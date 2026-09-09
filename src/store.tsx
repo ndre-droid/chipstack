@@ -604,6 +604,7 @@ function baseReducer(state: AppState, action: Action): AppState {
           cashOut: 0,
           chips: freshChips(state),
           stakeChips: freshChips(state),
+          countedAt: now,
         }));
       if (!add.length) return state;
       return {
@@ -614,6 +615,7 @@ function baseReducer(state: AppState, action: Action): AppState {
     }
     case 'LEDGER_SEAT_LINEUP': {
       // "same as last time" — by person where we still have one, by name otherwise
+      const now = Date.now();
       const seatedNames = new Set(state.ledger.map((p) => p.name.toLowerCase()));
       const add = state.lastLineup
         .filter((l) => !seatedNames.has(l.name.toLowerCase()))
@@ -626,6 +628,7 @@ function baseReducer(state: AppState, action: Action): AppState {
           cashOut: 0,
           chips: freshChips(state),
           stakeChips: freshChips(state),
+          countedAt: now,
         }));
       if (!add.length) return state;
       return { ...state, ledger: [...state.ledger, ...add] };
@@ -643,10 +646,12 @@ function baseReducer(state: AppState, action: Action): AppState {
             cashOut: 0,
             chips: freshChips(state),
             stakeChips: freshChips(state),
+            countedAt: Date.now(),
           },
         ],
       };
     case 'LEDGER_ADD_MANY': {
+      const now = Date.now();
       const add: LedgerPlayer[] = [];
       for (let i = 0; i < action.n; i++)
         add.push({
@@ -656,6 +661,7 @@ function baseReducer(state: AppState, action: Action): AppState {
           cashOut: 0,
           chips: freshChips(state),
           stakeChips: freshChips(state),
+          countedAt: now,
         });
       return { ...state, ledger: [...state.ledger, ...add] };
     }
@@ -674,9 +680,11 @@ function baseReducer(state: AppState, action: Action): AppState {
         ),
       };
     }
-    case 'LEDGER_SET_ALL_CHIPS':
+    case 'LEDGER_SET_ALL_CHIPS': {
       // one-tap "everyone starts with X" — fill every player's live stack at once
-      return { ...state, ledger: state.ledger.map((p) => ({ ...p, chips: action.chips })) };
+      const now = Date.now();
+      return { ...state, ledger: state.ledger.map((p) => ({ ...p, chips: action.chips, countedAt: now })) };
+    }
     case 'LEDGER_SET_CHIPS_MANY': {
       // a whole counting round commits in ONE dispatch → one render, one TV push
       const byId = new Map(action.entries.map((e) => [e.id, e.chips]));
@@ -686,16 +694,22 @@ function baseReducer(state: AppState, action: Action): AppState {
          trail than the rest, and the trend lines stopped being comparable (the
          "why does only half the table have a graph?" bug). An uncounted player
          carries their last known stack forward, which is exactly what is believed
-         about them at that moment. Players who are out keep their trail frozen. */
+         about them at that moment. Players who are out keep their trail frozen.
+
+         `countedAt` is the opposite: ONLY the ids in `entries` get it, because it
+         records the look and not the belief. That difference is what lets the table
+         be counted a player at a time — see `lib/countAge.ts`. */
       return {
         ...state,
         ledger: state.ledger.map((p) => {
           if (p.out || (p.cashOut || 0) > 0) return p;
-          const chips = byId.has(p.id) ? byId.get(p.id) : p.chips;
+          const counted = byId.has(p.id);
+          const chips = counted ? byId.get(p.id) : p.chips;
           return {
             ...p,
             chips,
             chipHistory: pushTrail(p.chipHistory, { at, chips: chips ?? 0 }),
+            countedAt: counted ? at : p.countedAt,
           };
         }),
       };
@@ -722,13 +736,15 @@ function baseReducer(state: AppState, action: Action): AppState {
                 chips: freshChips(state),
                 stakeChips: freshChips(state),
                 chipHistory: undefined,
+                countedAt: Date.now(),
                 knockouts: 0,
               }
             : p,
         ),
       };
-    case 'LEDGER_RESET_ALL':
+    case 'LEDGER_RESET_ALL': {
       // same, for everyone — keeps the people (names, emojis), drops the night's numbers
+      const now = Date.now();
       return {
         ...state,
         counting: null,
@@ -741,12 +757,23 @@ function baseReducer(state: AppState, action: Action): AppState {
           chips: freshChips(state),
           stakeChips: freshChips(state),
           chipHistory: undefined,
+          countedAt: now,
           knockouts: 0,
         })),
       };
+    }
     case 'LEDGER_CLEAR_CHIPS':
-      // only the stack figures — buy-ins and cash-outs stay untouched
-      return { ...state, ledger: state.ledger.map((p) => ({ ...p, chips: undefined, chipHistory: undefined })) };
+      // only the stack figures — buy-ins and cash-outs stay untouched. The age goes
+      // with them: an age without a number behind it is a claim about nothing.
+      return {
+        ...state,
+        ledger: state.ledger.map((p) => ({
+          ...p,
+          chips: undefined,
+          chipHistory: undefined,
+          countedAt: undefined,
+        })),
+      };
     case 'LEDGER_REMOVE':
       return { ...state, ledger: state.ledger.filter((p) => p.id !== action.id) };
     case 'LEDGER_SETTLE_ALL': {

@@ -15,10 +15,10 @@ import { netOf } from '../lib/settle';
 import { useBackHandler } from '../lib/backHandler';
 import { haptic } from '../lib/platform';
 import PeoplePicker from './PeoplePicker';
+import { ageLabel, oldestCountedAt, rowAgeOf, STALE_MS } from '../lib/countAge';
 import type { LedgerSnapshot } from '../types';
 
 /** how old the newest count may get before the roster nudges you to count again */
-const STALE_MINUTES = 25;
 /** how long the undo offer stays up after a counting round */
 const UNDO_MS = 8000;
 
@@ -109,13 +109,21 @@ function PlayerRoster({
     undoTimer.current = window.setTimeout(() => setUndo(null), UNDO_MS);
   };
 
-  /** newest counting round across the table, in minutes ago (null = never counted) */
-  const lastCountAt = ledger.reduce<number | null>((newest, p) => {
-    const last = p.chipHistory?.[p.chipHistory.length - 1]?.at;
-    return last && (newest === null || last > newest) ? last : newest;
-  }, null);
-  const countedMinsAgo = lastCountAt === null ? null : Math.floor((Date.now() - lastCountAt) / 60000);
-  const stale = ledger.length > 0 && (countedMinsAgo === null || countedMinsAgo >= STALE_MINUTES);
+  /* How current the table is — read off the OLDEST stack still in play, never the
+     newest. Reporting the newest is what made counting one player at a time
+     invisible: a single count flipped this line to "just now" while five stacks were
+     an hour old. `null` = somebody in play has never been counted. See
+     `lib/countAge.ts` for why the age is `countedAt` and not the trail. */
+  const now = Date.now();
+  const oldestAt = oldestCountedAt(ledger);
+  const oldestAge = oldestAt === null ? null : Math.max(0, now - oldestAt);
+  const stale = ledger.length > 0 && (oldestAge === null || oldestAge >= STALE_MS);
+  const tableAgeText = (() => {
+    if (oldestAge === null) return t('roster.neverCounted');
+    if (oldestAge < 60_000) return t('roster.countedJustNow');
+    const a = ageLabel(oldestAge);
+    return t(a.unit === 'h' ? 'roster.oldestAgoH' : 'roster.oldestAgoMin', { n: a.n });
+  })();
 
   /** Who is winning right now — the phone gets the same crown the TV shows. */
   const inPlayCounted = ledger.filter((p) => !p.out && (p.chips || 0) > 0);
@@ -309,6 +317,18 @@ function PlayerRoster({
               {shown.map((p) => {
                 const gone = !!p.out;
                 const cashedOut = (p.cashOut || 0) > 0;
+                /* Passive by design: a row says how old its own stack figure is only
+                   once that figure has gone stale, so a table counted a moment ago
+                   carries no age text at all and the ages surface one at a time as
+                   the night goes on. Nothing here is tappable — counting a player is
+                   already one tap on the stack itself. */
+                const rowAge = rowAgeOf(p, now);
+                const rowAgeText = (() => {
+                  if (rowAge === 'hidden') return null;
+                  if (rowAge === 'never') return t('roster.rowNeverCounted');
+                  const a = ageLabel(rowAge);
+                  return t(a.unit === 'h' ? 'roster.rowAgeH' : 'roster.rowAgeMin', { n: a.n });
+                })();
                 const net = (p.cashOut || 0) - (p.buyIn || 0);
                 return (
                   <div className={`pr-row ${gone ? 'is-out' : ''}`} key={p.id}>
@@ -425,6 +445,8 @@ function PlayerRoster({
                         </>
                       )}
                     </div>
+
+                    {rowAgeText && <div className="pr-row-age">{rowAgeText}</div>}
 
                     {menuId === p.id && (
                       <div className="pr-menu">
@@ -612,7 +634,10 @@ function PlayerRoster({
               <button className="btn btn-ghost btn-sm" onClick={addPlayer}>
                 <IconPlus size={15} /> {t('roster.addPlayer')}
               </button>
-              <button className={`btn btn-sm ${stale ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setRound(true)}>
+              {/* Never the primary button any more. Walking the table is an event that
+                  stops the game, so the screen asking for it is the reason it never
+                  happens; the round stays available and stops being the suggestion. */}
+              <button className="btn btn-sm btn-ghost" onClick={() => setRound(true)}>
                 🧮 {t('roster.countRound')}
               </button>
               <button
@@ -684,13 +709,7 @@ function PlayerRoster({
               </div>
             )}
 
-            <div className={`pr-age ${stale ? 'is-stale' : ''}`}>
-              {countedMinsAgo === null
-                ? t('roster.neverCounted')
-                : countedMinsAgo < 1
-                  ? t('roster.countedJustNow')
-                  : t('roster.countedAgo', { n: countedMinsAgo })}
-            </div>
+            <div className={`pr-age ${stale ? 'is-stale' : ''}`}>{tableAgeText}</div>
 
             <div className="pr-totals">
               <span>{isCash ? t('table.onTablePool') : t('table.poolTotal')} <b>{money(pool, currency)}</b></span>

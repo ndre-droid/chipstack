@@ -320,6 +320,12 @@ export interface LedgerPlayer {
   /** One entry per counting round, oldest first — drives the stack sparkline. Always
    *  spans the WHOLE session: past the cap it is thinned, not truncated (see pushTrail). */
   chipHistory?: { at: number; chips: number }[];
+  /** epoch ms when this stack was last *known* — somebody counted it, or it was dealt
+   *  out as a starting stack. Deliberately NOT the last `chipHistory` point: a count
+   *  stamps a trail point onto every playing player so the sparklines stay the same
+   *  length and comparable, and those carried-forward points are the last belief about
+   *  a stack, not a look at it. Undefined = never known. See `lib/countAge.ts`. */
+  countedAt?: number;
   /** The stack (in chip-units) they held the moment their LAST buy-in landed — the
    *  baseline for "how are they doing with the money they put in most recently".
    *  `buyIn` is cumulative, so a player who rebought after busting reads as deeply

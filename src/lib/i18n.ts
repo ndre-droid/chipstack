@@ -533,7 +533,11 @@ const dict: Record<Lang, Record<string, string>> = {
 
     'roster.neverCounted': 'Stacks not counted yet',
     'roster.countedJustNow': 'Counted just now',
-    'roster.countedAgo': 'Counted {n} min ago',
+    'roster.oldestAgoMin': 'Oldest count {n} min ago',
+    'roster.oldestAgoH': 'Oldest count {n} h ago',
+    'roster.rowAgeMin': '{n} min old',
+    'roster.rowAgeH': '{n} h old',
+    'roster.rowNeverCounted': 'not counted',
     'roster.countSaved': 'Counting round saved',
     'roster.undo': 'Undo',
 
@@ -1507,7 +1511,11 @@ const dict: Record<Lang, Record<string, string>> = {
 
     'roster.neverCounted': 'Stacks noch nicht gezählt',
     'roster.countedJustNow': 'Gerade gezählt',
-    'roster.countedAgo': 'Vor {n} Min gezählt',
+    'roster.oldestAgoMin': 'Ältester Stand vor {n} Min',
+    'roster.oldestAgoH': 'Ältester Stand vor {n} Std',
+    'roster.rowAgeMin': '{n} Min alt',
+    'roster.rowAgeH': '{n} Std alt',
+    'roster.rowNeverCounted': 'nicht gezählt',
     'roster.countSaved': 'Zähl-Runde gespeichert',
     'roster.undo': 'Rückgängig',
 
