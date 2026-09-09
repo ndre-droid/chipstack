@@ -14,6 +14,7 @@ import Onboarding from '../components/Onboarding';
 import ChipRuler from '../components/ChipRuler';
 import Panes from '../components/Panes';
 import { forgetCalibration, readScreenShape, rulerSlots, type RulerSlot } from '../lib/chipRuler';
+import { readScreen, reportLines } from '../lib/screenReport';
 
 const CURRENCIES = ['€', '$', '£', 'zł', 'Fr'];
 const UNIT_PRESETS = [
@@ -402,6 +403,9 @@ export default function SettingsScreen() {
                     {backupMsg && <p className="faint" style={{ fontSize: 12.5, margin: '10px 2px 0' }}>{backupMsg}</p>}
                   </div>
 
+                  <div className="section-label">{t('settings.screen')}</div>
+                  <ScreenCard />
+
                   <div className="section-label">{t('settings.data')}</div>
                   <div className="card">
                     <div className="flex-between">
@@ -436,6 +440,78 @@ export default function SettingsScreen() {
     </div>
   );
 }
+/**
+ * What this screen measures, live.
+ *
+ * A diagnostic, deliberately read-only: the layout thresholds and the ruler's
+ * calibration slots are keyed off numbers this device reports, and until those
+ * numbers have been READ off the device in hand, every threshold is a guess
+ * borrowed from a different phone. Copy hands the whole block over as text so it
+ * can be pasted somewhere rather than transcribed off a photo.
+ *
+ * It re-reads on resize AND on the layout attribute changing, because the two
+ * are not the same event: unfolding fires `resize`, but the fold animation
+ * writes `data-layout` inside a view transition a beat later, and a card that
+ * only listened to `resize` would show the old pane count for as long as the
+ * fade lasts.
+ */
+function ScreenCard() {
+  const t = useT();
+  const [report, setReport] = useState(() => readScreen());
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const read = () => setReport(readScreen());
+    window.addEventListener('resize', read);
+    window.addEventListener('orientationchange', read);
+    const observer = new MutationObserver(read);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-layout', 'data-panes'],
+    });
+    return () => {
+      window.removeEventListener('resize', read);
+      window.removeEventListener('orientationchange', read);
+      observer.disconnect();
+    };
+  }, []);
+
+  const lines = reportLines(report);
+  const asText = lines.map(([k, v]) => `${k}: ${v}`).join('\n');
+
+  return (
+    <div className="card">
+      <p className="faint" style={{ fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.6 }}>
+        {t('settings.screenDesc')}
+      </p>
+      <div style={{ display: 'grid', gap: 6, fontVariantNumeric: 'tabular-nums' }}>
+        {lines.map(([k, v]) => (
+          <div key={k} className="flex-between" style={{ fontSize: 13 }}>
+            <span className="faint">{k}</span>
+            <span style={{ fontWeight: 700 }}>{v}</span>
+          </div>
+        ))}
+      </div>
+      <button
+        className="btn btn-ghost btn-sm"
+        style={{ marginTop: 12, width: '100%' }}
+        onClick={() => {
+          void navigator.clipboard?.writeText(asText).then(
+            () => {
+              haptic(10);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1600);
+            },
+            () => setCopied(false),
+          );
+        }}
+      >
+        {copied ? t('settings.screenCopied') : t('settings.screenCopy')}
+      </button>
+    </div>
+  );
+}
+
 /**
  * The two things that used to happen at the worst possible moment.
  *
