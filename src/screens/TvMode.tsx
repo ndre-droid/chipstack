@@ -17,6 +17,7 @@ import { queueClock } from '../lib/liveSyncQueue';
 import { getLocalClock, setLocalClock } from '../lib/localClock';
 import { handoutAmountOf, handoutBlindOf, handoutStack, liveBaseValue, startingStackOf } from '../lib/startingStack';
 import { autoTvScale, clampTvScale, tvGpuBudget, TV_SCALE_MIN, TV_SCALE_MAX, TV_SCALE_STEP } from '../lib/tvScale';
+import { ageLabel, oldestCountedAt, STALE_MS } from '../lib/countAge';
 import {
   TV_COLS,
   TV_MIN_H,
@@ -438,13 +439,19 @@ export default function TvMode({ onClose, onCount }: { onClose: () => void; onCo
   const denominations = state.denominations;
   const ledger = state.ledger;
   const counting = state.counting;
-  // age of the newest counting round — the break banner nudges when it goes stale
-  const lastCountAt = ledger.reduce<number | null>((newest, p) => {
-    const last = p.chipHistory?.[p.chipHistory.length - 1]?.at;
-    return last && (newest === null || last > newest) ? last : newest;
-  }, null);
-  const countedMinsAgo = lastCountAt === null ? null : Math.floor((Date.now() - lastCountAt) / 60000);
-  const countStale = ledger.length > 0 && (countedMinsAgo === null || countedMinsAgo >= 25);
+  /* How current the stacks are — the break banner nudges when they go stale. Read
+     off the OLDEST stack in play and off `countedAt`, exactly as the phone's roster
+     does, so the two screens cannot disagree about the same table. The trail is the
+     wrong source: a count stamps a point onto every playing player, so it reports
+     the last belief about a stack rather than the last look. See `lib/countAge.ts`. */
+  const oldestCount = oldestCountedAt(ledger);
+  const countAge = oldestCount === null ? null : Math.max(0, Date.now() - oldestCount);
+  const countStale = ledger.length > 0 && (countAge === null || countAge >= STALE_MS);
+  const countCue = (() => {
+    if (countAge === null) return t('tv.countNever');
+    const a = ageLabel(countAge);
+    return t(a.unit === 'h' ? 'tv.countAgoH' : 'tv.countAgo', { n: a.n });
+  })();
 
   // Role model:
   //  - isTv:       this device shows a pairing code, owns the clock, mirrors the
@@ -2002,7 +2009,7 @@ export default function TvMode({ onClose, onCount }: { onClose: () => void; onCo
               {/* A break is when everyone is up anyway — the ideal moment to recount. */}
               {onBreak && !counting && countStale && (
                 <div className="tv-colorup">
-                  🧮 {countedMinsAgo === null ? t('tv.countNever') : t('tv.countAgo', { n: countedMinsAgo })}
+                  🧮 {countCue}
                 </div>
               )}
               {onBreak && houseRules.length > 0 && (

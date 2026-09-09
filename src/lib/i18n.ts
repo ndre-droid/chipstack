@@ -623,7 +623,8 @@ const dict: Record<Lang, Record<string, string>> = {
     'ruler.learnBad': 'Logged {n}, but that is too far off to learn from — calibrate again.',
 
     'tv.counting': 'Counting stacks',
-    'tv.countAgo': 'Last stack count was {n} min ago — good moment to recount',
+    'tv.countAgo': 'The oldest stack was counted {n} min ago — good moment to recount',
+    'tv.countAgoH': 'The oldest stack was counted {n} h ago — good moment to recount',
     'tv.countNever': 'Stacks have not been counted yet — good moment to start',
 
 
@@ -1601,7 +1602,8 @@ const dict: Record<Lang, Record<string, string>> = {
     'ruler.learnBad': '{n} eingetragen, aber das ist zu weit weg zum Lernen — bitte neu kalibrieren.',
 
     'tv.counting': 'Stacks zählen',
-    'tv.countAgo': 'Letzte Zählung vor {n} Min — guter Moment zum Nachzählen',
+    'tv.countAgo': 'Ältester Stand vor {n} Min — guter Moment zum Nachzählen',
+    'tv.countAgoH': 'Ältester Stand vor {n} Std — guter Moment zum Nachzählen',
     'tv.countNever': 'Stacks noch nicht gezählt — guter Moment dafür',
 
 
