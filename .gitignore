@@ -48,3 +48,9 @@ koffer.png
 # the raw chip export (33 MB of OBJ); the app ships the slimmed public/models/chip.glb,
 # regenerated with scripts/slim-chip-glb.mjs
 3D chip design/
+
+# Playwright (browser smoke tests) — reports and traces are per-run
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
