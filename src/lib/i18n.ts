@@ -960,6 +960,25 @@ const dict: Record<Lang, Record<string, string>> = {
     'settings.chipAnim.all': 'Everywhere',
     'settings.chipAnimNote': 'When a stack grows, the new chips appear above it and drop on; when it shrinks, they lift off again. Most visible on the Plan screen, where the chip-mix slider moves the stacks while you watch — and on the big screen, which follows that slider as you drag it. Per device: a slow TV stick can be set to Off on its own.',
 
+    /* --- the crash screen (components/ErrorBoundary) --- */
+    'crash.title': 'ChipStack stopped',
+    'crash.body': 'Something in the app threw an error and the screen could not be drawn. Your chips, players and season are still on this device.',
+    'crash.retry': 'Try again',
+    'crash.reload': 'Reload',
+    'crash.update': 'Get the latest version',
+    'crash.updateHint': 'Reload uses the copy already on the phone. Getting the latest version clears it and fetches a fresh one — that needs the internet once.',
+    'crash.stillBroken': 'Still broken after a reload? Save a copy of your data first, then start from a clean slate.',
+    'crash.save': 'Save my data',
+    'crash.saved': 'Saved. Restore it from Settings once the app runs again.',
+    'crash.saveFailed': 'The file could not be written. Try the reload above first.',
+    'crash.fresh': 'Start fresh',
+    'crash.freshConfirm': 'Tap again to confirm',
+    'crash.freshHint': 'Starting fresh sets the app back to its defaults. Nothing is deleted — the old data stays on this device under a recovery key.',
+    'crash.details': 'Technical details',
+    'crash.compactTitle': 'The big screen stopped',
+    'crash.compactBody': 'The rest of the app is still running — the phone keeps the night.',
+    'crash.back': 'Back to the phone',
+
   },
   de: {
     'nav.plan': 'Plan',
@@ -1910,6 +1929,25 @@ const dict: Record<Lang, Record<string, string>> = {
     'settings.chipAnim.plan': 'Nur Plan',
     'settings.chipAnim.all': 'Überall',
     'settings.chipAnimNote': 'Wächst ein Stapel, erscheinen die neuen Chips darüber und fallen darauf; schrumpft er, heben sie wieder ab. Am deutlichsten im Plan-Tab, wo der Chip-Mix-Regler die Stapel live verschiebt — und auf dem großen Bildschirm, der diesem Regler live folgt. Pro Gerät: ein langsamer TV-Stick kann einzeln auf Aus gestellt werden.',
+
+    /* --- der Absturz-Bildschirm (components/ErrorBoundary) --- */
+    'crash.title': 'ChipStack ist stehengeblieben',
+    'crash.body': 'In der App ist ein Fehler aufgetreten, der Bildschirm konnte nicht gezeichnet werden. Chips, Spieler und Saison liegen weiterhin auf diesem Gerät.',
+    'crash.retry': 'Nochmal versuchen',
+    'crash.reload': 'Neu laden',
+    'crash.update': 'Neueste Version holen',
+    'crash.updateHint': 'Neu laden nimmt die Kopie, die schon auf dem Handy liegt. Die neueste Version zu holen löscht sie und lädt eine frische — dafür braucht es einmal Internet.',
+    'crash.stillBroken': 'Auch nach dem Neuladen kaputt? Erst eine Kopie der Daten sichern, dann sauber neu anfangen.',
+    'crash.save': 'Daten sichern',
+    'crash.saved': 'Gesichert. In den Einstellungen wiederherstellen, sobald die App wieder läuft.',
+    'crash.saveFailed': 'Die Datei konnte nicht geschrieben werden. Erst das Neuladen oben probieren.',
+    'crash.fresh': 'Neu anfangen',
+    'crash.freshConfirm': 'Zum Bestätigen nochmal tippen',
+    'crash.freshHint': 'Neu anfangen setzt die App auf die Voreinstellungen zurück. Gelöscht wird nichts — die alten Daten bleiben unter einem Wiederherstellungs-Schlüssel auf diesem Gerät.',
+    'crash.details': 'Technische Details',
+    'crash.compactTitle': 'Der große Bildschirm ist stehengeblieben',
+    'crash.compactBody': 'Der Rest der App läuft weiter — das Handy hält den Abend.',
+    'crash.back': 'Zurück zum Handy',
 
   },
 };

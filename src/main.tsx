@@ -19,9 +19,14 @@ import '@fontsource/oswald/latin-600.css';
 import '@fontsource/oswald/latin-700.css';
 import './styles.css';
 import App from './App.tsx';
+import ErrorBoundary from './components/ErrorBoundary.tsx';
 
+/* The boundary sits OUTSIDE App on purpose: App mounts the store, and a state this
+   build cannot load is the crash most worth surviving. See components/ErrorBoundary. */
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );

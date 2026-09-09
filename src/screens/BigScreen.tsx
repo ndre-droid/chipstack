@@ -1,4 +1,5 @@
 import { Suspense, lazy } from 'react';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 /**
  * The big screen, split out of the boot path.
@@ -21,10 +22,19 @@ import { Suspense, lazy } from 'react';
  */
 const TvMode = lazy(() => import('./TvMode'));
 
+/**
+ * Its own boundary, so the big screen can fail without taking the phone with it —
+ * including the case this `lazy()` introduces: a chunk that will not load (a cache
+ * evicted while offline) throws right here, and the root boundary would answer that
+ * by replacing the whole app with a crash page mid-night. A dashboard that dies is
+ * an inconvenience; a phone that dies is the game.
+ */
 export default function BigScreen({ onClose, onCount }: { onClose: () => void; onCount?: () => void }) {
   return (
-    <Suspense fallback={<div className="tv" aria-hidden />}>
-      <TvMode onClose={onClose} onCount={onCount} />
-    </Suspense>
+    <ErrorBoundary compact where="tv" onDismiss={onClose}>
+      <Suspense fallback={<div className="tv" aria-hidden />}>
+        <TvMode onClose={onClose} onCount={onCount} />
+      </Suspense>
+    </ErrorBoundary>
   );
 }

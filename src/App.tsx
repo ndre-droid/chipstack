@@ -94,6 +94,14 @@ const storedView = (): Tab | null => {
 };
 
 export default function App() {
+  /* `?crash=1` throws on purpose, so the recovery screen can be SEEN on the device it
+     was written for. A phone on the felt and a TV on the wall both have no devtools
+     and no way to stage a real crash — the same reason the build stamp exists (see
+     vite.config.ts). Costs one query-string read; ships because the thing it proves
+     only matters in the hands. */
+  if (new URLSearchParams(window.location.search).has('crash')) {
+    throw new Error('ChipStack: deliberate crash (?crash=1) — this is the recovery screen.');
+  }
   return (
     <StoreProvider>
       <AppShell />

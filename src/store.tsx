@@ -6,6 +6,7 @@ import { applySharedSettings, shareableSettings } from './lib/settingsScope';
 import { normalizeCalibrations } from './lib/chipRuler';
 import { DEFAULT_TV_TEXT_SCALE, isDefaultTvLayout, normalizeTvLayout, normalizeTvTextScale } from './lib/tvLayout';
 import { pushTrail } from './lib/chipTrail';
+import { STATE_KEY } from './lib/stateKey';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -834,7 +835,9 @@ function baseReducer(state: AppState, action: Action): AppState {
   }
 }
 
-const KEY = 'chipstack.state.v1';
+/* The address of the data, kept in its own module: the crash screen has to reach the
+   stored state at a moment when this file is what is broken. See lib/stateKey. */
+const KEY = STATE_KEY;
 
 /**
  * Merge saved state over current defaults so a user's chips / settings / session
