@@ -11,6 +11,20 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
+/* Type stripping arrived in Node 22.6. On anything older every file below fails with
+   `bad option: --experimental-strip-types`, one line per test, and the real cause is
+   nowhere in the output — which is exactly how CI ran zero of these tests while
+   reporting a plain failure. Say it once, up front, instead. */
+const MIN_NODE = 22;
+const major = Number(process.versions.node.split('.')[0]);
+if (major < MIN_NODE) {
+  console.error(
+    `These tests are TypeScript run directly by Node, which needs Node ${MIN_NODE}+ ` +
+      `(--experimental-strip-types). This is Node ${process.versions.node}.`,
+  );
+  process.exit(1);
+}
+
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dir = join(root, 'src', 'lib');
 const files = readdirSync(dir)
