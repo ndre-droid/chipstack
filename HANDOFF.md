@@ -18,7 +18,20 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-09-05 from `main` @ `e9a1476`**, 4.94 MB (5,179,356 B),
+  (**CURRENT — rebuilt 2026-09-12 from `main` @ `b3fcd21`**, 4.95 MB (5,188,107 B),
+  run `34695572148`: the opened screen gets a column for the answer — components/Support.tsx
+  moves the one thing you keep looking at into a ~208px pinned column on a Fold standing up,
+  which puts the page back at about the width the cards were drawn for and ends the stretched
+  controls the wide layout had been showing; both panes scroll on their own lying down; the
+  level-end alert now carries `allowWhileIdle` so it can actually wake a sleeping phone (it was
+  being scheduled on `set(AlarmManager.RTC)`, which cannot); focus rings on every control
+  instead of six; 44px targets for the roster row's wide controls; TvBroadcast off the boot path
+  (main chunk 181 -> 172 kB gzip). Pages run `34695569867` green from the same commit, so
+  **APK / `main` / Pages are IN SYNC**. Download verified: `200`,
+  `application/vnd.android.package-archive`, 5,188,107 B.
+  **NOT SEEN ON THE PHYSICAL FOLD 8 YET** — and the level-end notification is still unproven on
+  real hardware, which is now worth retesting because the bug under it has been fixed.
+  Previous build: 2026-09-05 from `main` @ `e9a1476`, 4.94 MB (5,179,356 B),
   run `33962084043`: a television that was paired once can pair again — the big screen
   showing last week's table while the phone had six new names on it was never a sync
   failure, it was a laptop that had silently stopped being the TV (`deviceIsTv` false,
@@ -446,12 +459,15 @@ break length + auto-break every N, blinds (edit/add/remove), players & pool (ren
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
 
-### Recent work 2026-09-12 (the opened screen, and an alert that actually wakes the phone) — NOT COMMITTED
+### Recent work 2026-09-12 (the opened screen, and an alert that actually wakes the phone) — `67c2c7c` + `b3fcd21`, SHIPPED
 
 Brief: "improve the app, front end, backend, make it perfect — and consider it is used on the
 Fold 8." Three lanes were chosen from an audit: **the unfolded screen's UI** (the user's own
 words: "atm doesnt look clean"), **native reliability**, and **a11y + bundle**. The Firestore
-lane was offered and declined. Nothing here is committed or shipped yet.
+lane was offered and declined. **Shipped**: pushed to `main` (`b3fcd21`), Pages run `34695569867`
+green, APK run `34695572148` green — APK / `main` / Pages all built from `b3fcd21`. Download
+verified: `200`, `application/vnd.android.package-archive`, 5,188,107 B.
+**NOT SEEN ON THE PHYSICAL FOLD 8 YET.**
 
 #### 1. The side column — what "doesn't look clean" actually was
 
