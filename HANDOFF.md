@@ -27,7 +27,8 @@ sound would hijack the user's Sonos).
   being scheduled on `set(AlarmManager.RTC)`, which cannot); focus rings on every control
   instead of six; 44px targets for the roster row's wide controls; TvBroadcast off the boot path
   (main chunk 181 -> 172 kB gzip). Pages run `34695569867` green from the same commit, so
-  **APK / `main` / Pages are IN SYNC**. Download verified: `200`,
+  **APK / `main` / Pages are IN SYNC** — anything on `main` above `b3fcd21` is this file only,
+  which is not part of the bundle. Download verified: `200`,
   `application/vnd.android.package-archive`, 5,188,107 B.
   **NOT SEEN ON THE PHYSICAL FOLD 8 YET** — and the level-end notification is still unproven on
   real hardware, which is now worth retesting because the bug under it has been fixed.
