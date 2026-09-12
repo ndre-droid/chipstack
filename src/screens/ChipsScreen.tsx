@@ -6,6 +6,7 @@ import { useT, useFmt } from '../lib/i18n';
 import { Toggle } from '../components/Toggle';
 import { useConfirm } from '../components/Confirm';
 import { CHIP_SET_PRESETS, denomsFromPreset } from '../lib/chipSetPresets';
+import Support from '../components/Support';
 
 export default function ChipsScreen() {
   const { state, dispatch } = useStore();
@@ -141,24 +142,29 @@ export default function ChipsScreen() {
         )}
       </div>
 
-      <div className="card">
-        <div className="flex-between">
-          <div>
-            <div className="faint" style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {t('chips.onTable')}
+      {/* What is in the box, in total. Every row below changes it, so on a window
+          with a side column it moves there and stays in view while the nine
+          denominations are edited. See components/Support.tsx. */}
+      <Support name="chips">
+        <div className="card box-total">
+          <div className="flex-between">
+            <div>
+              <div className="faint" style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {t('chips.onTable')}
+              </div>
+              <div style={{ fontSize: 26, fontWeight: 800, marginTop: 2 }}>
+                {fmtMoney(totalMoney, settings.currency)}
+              </div>
             </div>
-            <div style={{ fontSize: 26, fontWeight: 800, marginTop: 2 }}>
-              {fmtMoney(totalMoney, settings.currency)}
-            </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div className="muted" style={{ fontSize: 13, fontWeight: 700 }}>{totalChips} {t('plan.chips')}</div>
-            <div className="faint" style={{ fontSize: 12, fontWeight: 600 }}>
-              {t('chips.active', { a: active.length, t: denominations.length })}
+            <div className="box-total-side">
+              <div className="muted" style={{ fontSize: 13, fontWeight: 700 }}>{totalChips} {t('plan.chips')}</div>
+              <div className="faint" style={{ fontSize: 12, fontWeight: 600 }}>
+                {t('chips.active', { a: active.length, t: denominations.length })}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </Support>
 
       {/* Wrapped, so the list can become two columns on a screen with room for
           them — nine cards is a long scroll on a panel that is mostly empty to

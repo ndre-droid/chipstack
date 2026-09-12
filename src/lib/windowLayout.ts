@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * Which shape the window is: a phone, or something with room to spare.
@@ -56,7 +56,26 @@ export interface WindowShape {
 
 const WIDE = '(min-width: 600px) and (min-height: 600px)';
 const TWO_PANE = '(min-aspect-ratio: 1 / 1) and (min-width: 800px) and (min-height: 520px)';
+/**
+ * Wide enough to take 208px off the side and still leave a page.
+ *
+ * Its own threshold rather than `WIDE`, because the two answer different
+ * questions. `WIDE` asks whether the tabs can leave the bottom edge, which they
+ * can at 600dp; this asks whether there is a PAGE left after the rail (80), the
+ * screen's padding (48), the column (208) and the gutter (20) — 356dp of
+ * furniture. At 600dp that leaves 244dp of page, narrower than the phone the
+ * cards were drawn for, which is the mistake this whole section exists to undo.
+ * At 720 it leaves 364, and a Fold standing up (757 by the second-hand numbers)
+ * leaves about 400 — a phone's width, which is the target.
+ */
+const SIDE = '(min-width: 720px) and (min-height: 600px)';
 const CALM = '(prefers-reduced-motion: reduce)';
+
+/** Whether the window is the middle shape: a side column, and not two panes. */
+function hasSideColumn(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia(SIDE).matches && !window.matchMedia(TWO_PANE).matches;
+}
 
 /** What the window is now. */
 function measure(): WindowShape {
@@ -141,6 +160,50 @@ function sync() {
     const now = measure();
     if (!same(now, drawn())) apply(now);
   }, 500);
+}
+
+/**
+ * Whether this window has a SIDE COLUMN — a narrow second column beside the page,
+ * for the one thing on a screen you keep looking at while you work the rest.
+ *
+ * Exactly the middle shape: wide enough for the rail, not wide enough for two
+ * equal panes. That is a Fold standing up, and it is the shape the app spends
+ * most of a game night in. Below it (a phone) there is no room; above it
+ * (a Fold lying down) `<Panes>` already splits the page properly and a third
+ * column on top of two would be a stripe.
+ *
+ * Read from the same two media queries the attributes are written from rather
+ * than from the attributes themselves — a component that re-renders on a media
+ * query cannot be a frame behind the stylesheet, and the answer decides where a
+ * subtree is MOUNTED, which CSS cannot do for it. See `components/Support.tsx`.
+ */
+export function useSideColumn(): boolean {
+  const [on, setOn] = useState(hasSideColumn);
+
+  useEffect(() => {
+    const queries = [window.matchMedia(SIDE), window.matchMedia(TWO_PANE)];
+    const read = () => setOn(hasSideColumn());
+    for (const mq of queries) {
+      if (mq.addEventListener) mq.addEventListener('change', read);
+      else mq.addListener(read);
+    }
+    /* Same backstop as `useWindowLayout`: a webview resized from outside can
+       reflow without ever firing the media query. Undebounced on purpose — this
+       one only calls `setState` with a boolean that is usually unchanged, which
+       React drops, and being late here means the side column is empty for a
+       frame. */
+    window.addEventListener('resize', read);
+    read();
+    return () => {
+      for (const mq of queries) {
+        if (mq.removeEventListener) mq.removeEventListener('change', read);
+        else mq.removeListener(read);
+      }
+      window.removeEventListener('resize', read);
+    };
+  }, []);
+
+  return on;
 }
 
 /** Call once, high in the tree. */

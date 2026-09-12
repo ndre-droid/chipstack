@@ -306,6 +306,23 @@ a { color: inherit; }
   -webkit-backdrop-filter: blur(14px) saturate(1.2);
   border-bottom: 1px solid var(--line-soft);
 }
+/* ---- Keyboard focus, everywhere ----
+   Six controls out of three hundred and fifty had a focus ring, which meant a
+   keyboard — a Fold with its cover closed and a Bluetooth keyboard, a switch
+   device, anyone who simply tabs — moved through this app invisibly.
+
+   `:where()` so the whole thing has ZERO specificity: every hand-written focus
+   rule in this stylesheet still wins over it, and so does every `:focus` that
+   replaces the ring with something better (the inputs light their border). This
+   is the floor, not a decision about any particular control.
+
+   `:focus-visible`, not `:focus`: a ring on a mouse click is noise, and it was
+   the reason rings got switched off one at a time in the first place. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
 .app-header .logo-mark { width: 24px; height: 24px; flex-shrink: 0; border-radius: 7px; }
 .app-header .wordmark { font-size: 16px; font-weight: 680; letter-spacing: -0.03em; font-family: var(--font-display); }
 .app-header .wordmark b { color: var(--acc); font-weight: 680; }
@@ -682,6 +699,10 @@ input[type='number'] { -moz-appearance: textfield; }
   text-transform: uppercase; color: var(--text-faint);
 }
 .hero-sub { font-family: var(--mono); font-size: 12px; color: var(--text-dim); margin-top: 5px; font-variant-numeric: tabular-nums; }
+/* The count and the depth, side by side on their baselines. Its own class rather
+   than the generic `.flex-between` because it has a second arrangement — stacked,
+   in the side column, where 208px will not hold both on one line. */
+.hero-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
 
 /* value composition bar */
 .valbar { display: flex; height: 7px; gap: 2px; margin: 14px 0 4px; }
@@ -1130,7 +1151,9 @@ input[type='color'] { cursor: pointer; }
   flex: 1; background: none; border: none; color: var(--text);
   font-size: 14px; font-weight: 600; padding: 4px 0;
 }
-.ledger-name:focus { outline: none; }
+/* It is a button drawn as a plain name, so it has no border to light up the way
+   the number fields beside it do — it takes the ring. */
+.ledger-name:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; border-radius: 4px; }
 .seat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
 .seat {
   display: flex; flex-direction: column; gap: 2px;
@@ -1144,6 +1167,8 @@ input[type='color'] { cursor: pointer; }
    CASH — ledger
    ============================================================ */
 .stat-row { display: flex; }
+/* the chip count and how many denominations are in play, beside the box's value */
+.box-total-side { text-align: right; }
 .stat { flex: 1; display: flex; flex-direction: column; gap: 3px; }
 .stat + .stat { border-left: 1px solid var(--line-soft); padding-left: 14px; }
 .stat:not(:last-child) { padding-right: 14px; }
@@ -3026,6 +3051,39 @@ input[type='color'] { cursor: pointer; }
 }
 .pr-stack { min-height: 34px; padding: 6px 10px; }
 
+/* The same trick for the row's WIDE controls, which the 44px square above does
+   not fit: they are long enough already and only ever too short. The target
+   grows down the middle to 44px and the drawn box does not move.
+
+   Vertical only, deliberately. These sit in a row a few pixels from their
+   neighbours, and a target that grew sideways would reach over the one next to
+   it — a rebuy that sometimes opens the stack editor is worse than a rebuy that
+   is 26px tall. Height is where the misses actually are.
+
+   Measured at the table: rebuy 61x26, the sort cycle 49x20, the stack figure
+   99x34, the level stepper 30x28.
+
+   The player's NAME is not in this list and cannot be: it ellipsises, which means
+   `overflow: hidden`, which clips a pseudo-element back to the box it was meant to
+   grow past. At 284x29 it is over the 24px floor and the width does the work, so
+   it is left alone rather than given a target that silently does nothing. */
+.pr-rebuy, .pr-sort, .pr-stack, .stepper.sm > button { position: relative; }
+.pr-rebuy::after,
+.pr-sort::after,
+.pr-stack::after,
+.stepper.sm > button::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
+}
+/* The stepper's two buttons have the level's name between them, so there is room
+   to take the width as well — they are the smallest targets in the app at 30x28. */
+.stepper.sm > button::after { left: -6px; right: -6px; }
+
 /* how long ago the last push actually landed — "synced" alone hides a stale link */
 .sync-age { margin-left: auto; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 
@@ -3056,6 +3114,10 @@ input[type='color'] { cursor: pointer; }
 .cf-play:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; }
 /* the sticky-bar time is the way in, so it has to look pressable */
 .ts-time-btn { background: none; border: none; padding: 0 2px; font: inherit; color: inherit; cursor: pointer; }
+/* Play and "back to the stand" are one group only where the strip is a column —
+   see `.support-table`. In the strip they are two more items on the row, which is
+   what `display: contents` leaves them as. */
+.ts-actions { display: contents; }
 
 /* ---- Landscape on a phone: the chrome gets out of the way ---- */
 @media (orientation: landscape) and (max-height: 540px) {
@@ -3428,7 +3490,9 @@ input[type='color'] { cursor: pointer; }
   margin-inline: auto;
 }
 /* the clock band still bleeds into the page's own padding, as on the phone */
-:root[data-layout='wide'] .table-sticky { margin-inline: -24px; }
+/* `> div` so this reaches the bar on the PAGE and not the copy that moved
+   into the side column, which has a card of its own to sit inside. */
+:root[data-layout='wide'] .screen > div .table-sticky { margin-inline: -24px; }
 
 /* The bottom bar, stood on its end. Same four buttons — only the axis, the
    pressed state and the edge it borders change. */
@@ -3570,6 +3634,172 @@ input[type='color'] { cursor: pointer; }
   color: var(--text-faint); margin-bottom: 4px; }
 
 /* ============================================================
+   The side column — the Fold standing up
+   ============================================================
+   Wide enough for the rail, not wide enough for two equal panes: that is a Fold
+   held upright, and it is the shape the app spends most of a game night in. The
+   room it has is real (about 630px of page against a phone's 412) but it is not
+   two columns' worth, and pouring the phone's cards into all of it was the whole
+   complaint — a 592px row holding four pills of three characters each, a label
+   and its stepper 450px apart, a full-width bar for one button.
+
+   So ~210px comes off the side for the one thing on the screen you keep looking
+   at while you work the rest, and the page goes back to about the width the cards
+   were actually drawn for. The stretching stops as a consequence of the layout
+   rather than as forty tuned rules.
+
+   The column is a slot in each `<main class="screen">`; a screen fills it by
+   wrapping that element in `<Support>`, which MOVES it there rather than drawing
+   a second copy. A screen that fills nothing leaves the aside empty, `:empty`
+   takes it out of the layout, and `:has()` keeps that screen on one column.
+   See components/Support.tsx and lib/windowLayout.ts (`useSideColumn`). */
+:root { --support-w: 208px; }
+
+.screen-support:empty { display: none; }
+
+/* Off the column, the wrapper is not in the layout at all — the phone's box tree
+   is the one it always was. */
+.support-inline { display: contents; }
+
+/* On it, the moved block has left its card behind and needs one of its own. */
+.support-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 14px;
+}
+
+/* ---- Plan: the answer ----
+   208px will not hold "43 chips" and "100 BB" on one line, so the pair stacks and
+   the depth loses its right alignment with it — a right-aligned label under a
+   left-aligned number reads as two unrelated facts. The count also comes down a
+   step: at 40px it is the loudest thing on the screen, which is right when it
+   sits at the top of the page and wrong when it is pinned beside it. */
+.support-plan .hero-head { flex-direction: column; align-items: stretch; gap: 10px; }
+.support-plan .hero-depth { text-align: left; }
+.support-plan .big-num { font-size: 34px; }
+.support-plan .hero-sub { margin-top: 8px; line-height: 1.5; }
+.support-plan .stack-viz { margin-bottom: 0; }
+
+/* ---- Table: the clock, stood up ----
+   The strip is a phone's answer to "where does a clock go in a 412px column":
+   along the top, small, and stuck there. Given a column of its own it stops being
+   a strip — the parts it was squeezing onto one line get a line each, and the time
+   goes up to a size that can be read from across the table, which is where the
+   person looking at it is sitting.
+
+   The card it lands in is the panel, so the strip drops its own: no sticky (the
+   whole column is pinned), no bleed margins (there is no page padding to cancel),
+   no blur over content that is no longer behind it, and no rule underneath. */
+.support-table { padding: 16px 14px; }
+.support-table .table-sticky {
+  position: static;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  backdrop-filter: none;
+  border-bottom: none;
+}
+/* The spacer pushed the clock to the far end of a row. There is no row. */
+.support-table .table-sticky .spacer { display: none; }
+.support-table .ts-level { font-size: 11.5px; }
+.support-table .ts-blinds { font-size: 19px; }
+/* Read from across a table, not from the hand holding the phone. Tabular figures
+   already, so it does not jiggle as the seconds run down. */
+.support-table .ts-time { font-size: 44px; line-height: 1; }
+.support-table .ts-time-btn { padding: 0; text-align: left; width: 100%; }
+/* Play is the one thing pressed mid-hand, so it grows with the column and takes
+   the width; the way back to the stand stays a quiet round button beside it. */
+.support-table .ts-play { width: auto; flex: 1; height: 44px; border-radius: 12px; }
+.support-table .ts-tv { width: 44px; height: 44px; }
+.support-table .ts-stats { align-items: flex-start; font-size: 11.5px; gap: 2px; }
+.support-table .ts-latereg { align-self: flex-start; }
+.support-table .ts-actions { display: flex; gap: 10px; }
+/* The strip's reading order was set by a row with a spacer in the middle of it.
+   Down a column the order is what you look at first: what level it is, how long
+   is left, how to stop it — then the two facts you glance at between hands. */
+/* ---- Cash: the three figures ----
+   A row of three across 208px gives each of them 60, which is not a column of
+   figures, it is three cropped ones. Down a column instead, and the dividers that
+   were separating columns become the rules between rows. */
+.support-cash .stat-row { flex-direction: column; gap: 10px; }
+.support-cash .stat { flex: none; }
+.support-cash .stat + .stat { border-left: none; padding-left: 0; border-top: 1px solid var(--line-soft); padding-top: 10px; }
+.support-cash .stat:not(:last-child) { padding-right: 0; }
+/* The card and its label came over together; the label carried the margin it had
+   as the first thing on a page. */
+.support-cash .section-label { margin-top: 0; }
+/* The card is the whole panel here — it does not need a second border inside one. */
+.support-cash .card { background: none; border: none; padding: 0; margin: 0; }
+
+/* ---- Chips: what is in the box ----
+   Same story: the count and the "5 of 9 in play" line sat to the RIGHT of the
+   total because there was a card's width to put them in. In a column they go
+   under it, and right-aligning them there would only make a ragged edge. */
+.support-chips .flex-between { flex-direction: column; align-items: stretch; gap: 10px; }
+.support-chips .box-total-side { text-align: left; }
+.support-chips .card { background: none; border: none; padding: 0; margin: 0; }
+
+.support-table .ts-main { order: 1; }
+.support-table .ts-time { order: 2; }
+.support-table .ts-actions { order: 3; }
+.support-table .ts-latereg { order: 4; }
+.support-table .ts-stats { order: 5; }
+
+/* `.is-active` is not decoration here: every screen the user has opened stays
+   mounted and is hidden with `display: none`, so a bare `.screen` selector setting
+   `display: grid` un-hides all four of them on top of each other. */
+:root[data-layout='wide']:not([data-panes='2']) .screen.is-active:has(> .screen-support:not(:empty)) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--support-w);
+  column-gap: 20px;
+  /* Without this the aside stretches to the height of a 2500px page and its
+     sticky box has nothing left to slide inside. */
+  align-items: start;
+}
+
+/* The page itself is already capped for reading width; inside the main track the
+   cap no longer binds, and the auto margins would only re-centre it against the
+   aside. Left-aligned so the column keeps a straight edge with the rail. */
+:root[data-layout='wide']:not([data-panes='2']) .screen.is-active:has(> .screen-support:not(:empty)) > div {
+  margin-inline: 0;
+}
+
+/* A full-bleed bar belongs to the PAGE, and the page is now one column of two —
+   so it bleeds into the screen's own padding on the outside only, and stops at
+   the gutter rather than sliding under the aside.
+
+   The `> div` matters: the side column is a SIBLING of the page, and the clock
+   strip is the element that moves into it — without it this rule reaches the copy
+   in the column and pulls it 24px out through its own card. */
+:root[data-layout='wide']:not([data-panes='2']) .screen.is-active:has(> .screen-support:not(:empty)) > div .table-sticky {
+  margin-inline: -24px 0;
+}
+
+:root[data-layout='wide']:not([data-panes='2']) .screen > .screen-support {
+  position: sticky;
+  top: 0;
+  /* Its own scrollbar rather than a cap it can overflow: the column holds the
+     answer, and an answer whose last line cannot be reached is not one. Measured
+     against `--vvh`, the VISIBLE window, so a keyboard shortens it instead of
+     hiding its bottom. */
+  max-height: calc(
+    var(--vvh, 100dvh) - var(--header-h) - var(--safe-t) - var(--safe-b) - var(--screen-pt) - 24px
+  );
+  overflow-y: auto;
+  /* `overflow-y` alone computes the other axis to `auto` too, which puts a
+     sideways scrollbar under a column whose contents are never wider than it. */
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ============================================================
    Two columns — the Fold opened out and turned on its side
    ============================================================
    The medium rules above are for the panel STANDING UP, where one column is
@@ -3621,7 +3851,7 @@ input[type='color'] { cursor: pointer; }
 
 /* A full-bleed bar — the clock strip — is a property of the PAGE, not of a
    column, so it stays outside the panes and keeps bleeding into the padding. */
-:root[data-panes='2'] .table-sticky { margin-inline: -24px; }
+:root[data-panes='2'] .screen > div .table-sticky { margin-inline: -24px; }
 
 /* The first card in each column starts at the same height. A section label
    carries a top margin that the first one in a column must not add to, or the
@@ -3655,7 +3885,15 @@ input[type='color'] { cursor: pointer; }
 .table-screen { --pane-top: 0px; }
 .table-screen.has-clockbar { --pane-top: calc(var(--clockbar-h) - var(--screen-pt)); }
 
-:root[data-panes='2'] .panes-sticky > .pane:first-child {
+/* BOTH columns, not just the pinned one.
+   Two columns of different lengths inside one page scroll is a single-scrollbar
+   layout wearing two columns: reaching the bottom of the long one drags the short
+   one off the top and leaves half the panel empty, and the page ends in as much
+   blank as the difference between them. Each column owning its scroll is what
+   two columns means — and it is what the Table tab's left column has been doing
+   on its own since it was pinned. `panes-sticky` now says only which column is
+   the one you keep looking at; the scrolling belongs to both. */
+:root[data-panes='2'] .panes > .pane {
   position: sticky;
   top: var(--pane-top, 0px);
   max-height: calc(

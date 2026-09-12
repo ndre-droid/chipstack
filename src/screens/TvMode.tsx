@@ -2072,7 +2072,7 @@ export default function TvMode({ onClose, onCount }: { onClose: () => void; onCo
           <>
             <button onClick={() => goLevel(levelIdx - 1)} aria-label={t('table.prevLevel')}><span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}><IconChevron size={22} /></span></button>
             <button onClick={resetLevel} aria-label={t('tv.resetLevel')}><IconReset size={20} /></button>
-            <button className="tv-play" onClick={togglePlay}>{running ? <IconPause size={30} /> : <IconPlay size={30} />}</button>
+            <button className="tv-play" onClick={togglePlay} aria-label={running ? t('table.pause') : t('table.play')}>{running ? <IconPause size={30} /> : <IconPlay size={30} />}</button>
             <button onClick={() => goLevel(levelIdx + 1)} aria-label={t('table.nextLevelBtn')}><IconChevron size={22} /></button>
             {onBreak ? (
               <button className="tv-txt tv-exit" onClick={cancelBreak}>{t('tv.cancelBreak')}</button>

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../store';
 import { IconPlay, IconPause, IconReset, IconChevron, IconDice, IconExpand } from '../components/Icons';
@@ -6,7 +6,18 @@ import BigScreen from './BigScreen';
 import RemoteControl from './RemoteControl';
 import ConnectToTv from './ConnectToTv';
 import StartingStack from '../components/StartingStack';
-import TvBroadcast from '../components/TvBroadcast';
+/**
+ * The big screen's own settings — text size, which panels are shown, the
+ * background. Off the boot path, because it carries the whole catalogue of TV
+ * backgrounds (32 kB, 9 kB of the gzipped bundle) for a panel that is only ever
+ * read on a night when there IS a television in the room, and it sits below the
+ * fold of the tab it lives on either way.
+ *
+ * Lazy rather than conditional: it is still rendered every time, so nothing about
+ * when it appears changes — only when its code is fetched, which offline is a
+ * read from the service worker's cache.
+ */
+const TvBroadcast = lazy(() => import('../components/TvBroadcast'));
 import PlayerRoster from '../components/PlayerRoster';
 import BlindStepper from '../components/BlindStepper';
 import { Toggle } from '../components/Toggle';
@@ -22,9 +33,17 @@ import ClockFocus from '../components/ClockFocus';
 import TableTools from '../components/TableTools';
 import JoinRequests from '../components/JoinRequests';
 import Panes from '../components/Panes';
+import Support from '../components/Support';
 import BreakAt from '../components/BreakAt';
 import { haptic } from '../lib/platform';
-import { cancelLevelAlert, levelAlertsAvailable, requestLevelAlerts, scheduleLevelAlert } from '../lib/levelAlert';
+import {
+  askForExactAlerts,
+  cancelLevelAlert,
+  exactAlertsAllowed,
+  levelAlertsAvailable,
+  requestLevelAlerts,
+  scheduleLevelAlert,
+} from '../lib/levelAlert';
 import { lateRegState } from '../lib/lateReg';
 
 const fmt = (s: number) => {
@@ -75,6 +94,11 @@ export default function TableScreen() {
      the clock itself. */
   const backToBigScreen = useCallback(() => setTv(true), []);
   const [alertDenied, setAlertDenied] = useState(false);
+  /* Whether the alert will land AT the deadline or merely near it. Undefined until
+     asked, so the row says nothing rather than flashing a warning it has not
+     checked yet. Re-read when the app comes back to the front, because the only way
+     to grant this one is to leave for the system settings and return. */
+  const [exactOk, setExactOk] = useState<boolean | undefined>(undefined);
   const [setupOpen, setSetupOpen] = useState(false);
 
   /* A phone propped up on the table IS the clock when there's no TV, and it went to
@@ -100,6 +124,19 @@ export default function TableScreen() {
     );
   }, [alerts, running, clock.onBreak, clock.periodEndsAt, levelIdx, blindLevels, t]);
   useEffect(() => () => void cancelLevelAlert(), []);
+  useEffect(() => {
+    if (!alerts || !levelAlertsAvailable()) {
+      setExactOk(undefined);
+      return;
+    }
+    const read = () => {
+      if (document.visibilityState === 'hidden') return;
+      void exactAlertsAllowed().then(setExactOk);
+    };
+    read();
+    document.addEventListener('visibilitychange', read);
+    return () => document.removeEventListener('visibilitychange', read);
+  }, [alerts]);
   // the big screen is a full-screen overlay: back leaves it, it doesn't leave the app
   useBackHandler(tv, () => setTv(false));
 
@@ -169,7 +206,14 @@ export default function TableScreen() {
 
   return (
     <div className={`table-screen${showSticky ? ' has-clockbar' : ''}`}>
+      {/* The clock. On a phone it is a strip stuck to the top of the page, which is
+          the most a 412px column can give it. On a window with a side column it
+          moves there and stands up: the level and the blinds, the time at the size
+          you can read across a table, and the two buttons the night is actually run
+          from. Same element, same state, same sticky behaviour — it simply stops
+          being a strip. See components/Support.tsx. */}
       {showSticky && (
+        <Support name="table">
         <div className="table-sticky">
           <div className="ts-main">
             <span className="ts-level">
@@ -200,25 +244,32 @@ export default function TableScreen() {
           >
             {fmt(seconds)}
           </button>
-          <button
-            className="ts-play"
-            onClick={() => send(togglePlayPause(clock))}
-            aria-label={running ? t('table.pause') : t('table.play')}
-          >
-            {running ? <IconPause size={17} /> : <IconPlay size={17} />}
-          </button>
-          {/* Back onto the stand. The night is a loop — the phone stands on the table
-              showing the big screen, gets picked up for a rebuy or a counting round,
-              and goes back — and the way back used to be a card down the page. Here
-              it is next to the clock, so both halves of that loop are one tap. */}
-          <button
-            className="ts-tv"
-            onClick={() => setTv(true)}
-            aria-label={t('table.bigScreenShort')}
-          >
-            <IconExpand size={16} />
-          </button>
+          {/* `display: contents` on a phone, so the two buttons stay where they have
+              always been in the strip; a real row only in the side column, where the
+              strip is a column and they would otherwise stack. */}
+          <div className="ts-actions">
+            <button
+              className="ts-play"
+              onClick={() => send(togglePlayPause(clock))}
+              aria-label={running ? t('table.pause') : t('table.play')}
+            >
+              {running ? <IconPause size={17} /> : <IconPlay size={17} />}
+            </button>
+            {/* Back onto the stand. The night is a loop — the phone stands on the
+                table showing the big screen, gets picked up for a rebuy or a
+                counting round, and goes back — and the way back used to be a card
+                down the page. Here it is next to the clock, so both halves of that
+                loop are one tap. */}
+            <button
+              className="ts-tv"
+              onClick={() => setTv(true)}
+              aria-label={t('table.bigScreenShort')}
+            >
+              <IconExpand size={16} />
+            </button>
+          </div>
         </div>
+        </Support>
       )}
 
       {/* Two columns once the panel is wide enough to hold them — the table on the
@@ -293,8 +344,23 @@ export default function TableScreen() {
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{t('table.levelAlert')}</div>
                       <div className="faint" style={{ fontSize: 12 }}>
-                        {alertDenied ? t('table.levelAlertDenied') : t('table.levelAlertHint')}
+                        {alertDenied
+                          ? t('table.levelAlertDenied')
+                          : alerts && exactOk === false
+                            ? t('table.levelAlertInexact')
+                            : t('table.levelAlertHint')}
                       </div>
+                      {/* Only once the answer is known and it is "no". Granting this
+                          means a trip to the system settings, so it is offered where
+                          the consequence is written rather than buried in Settings. */}
+                      {alerts && exactOk === false && (
+                        <button
+                          className="link-btn"
+                          onClick={() => void askForExactAlerts().then(setExactOk)}
+                        >
+                          {t('table.levelAlertExact')}
+                        </button>
+                      )}
                     </div>
                     <div className="spacer" />
                     <Toggle
@@ -346,7 +412,9 @@ export default function TableScreen() {
                 fold: they are the one thing here you reach for DURING a night (the text is
                 too small, the panels want moving), and two taps to get at them is one too
                 many. */}
-            <TvBroadcast />
+            <Suspense fallback={null}>
+              <TvBroadcast />
+            </Suspense>
 
             {/* Everything you set once and stop touching, folded away so the running game
                 is what fills the screen. Open by default until anybody has sat down. */}

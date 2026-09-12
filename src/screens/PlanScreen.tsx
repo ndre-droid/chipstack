@@ -15,6 +15,7 @@ import { useT, useFmt } from '../lib/i18n';
 import { Toggle } from '../components/Toggle';
 import MoneyInput from '../components/MoneyInput';
 import StackTuner from '../components/StackTuner';
+import Support from '../components/Support';
 
 export default function PlanScreen() {
   const { state, dispatch } = useStore();
@@ -239,28 +240,41 @@ export default function PlanScreen() {
 
           {/* ================ RESULT HERO — the answer ================ */}
           <div className="result-hero">
-            <div className="hero-eyebrow">
-              {tuned ? t('table.handoutTitle') : t('plan.eachPlayer')}
-            </div>
-            <div className="flex-between" style={{ alignItems: 'flex-end' }}>
-              <div className="big-num">
-                {heroChips} <small>{t('plan.chips')}</small>
+            {/* The answer itself — how many chips, how deep, what that is worth.
+                It is what the rest of this screen is FOR, and on a window with a
+                side column it moves there and stops scrolling away while the
+                controls that change it are worked. See components/Support.tsx;
+                on a phone this renders exactly where it is written. */}
+            <Support name="plan">
+              <div className="hero-eyebrow">
+                {tuned ? t('table.handoutTitle') : t('plan.eachPlayer')}
               </div>
-              <div className="hero-depth">
-                <div className="n">
-                  {bbCount}
-                  <span> BB</span>
+              <div className="hero-head">
+                <div className="big-num">
+                  {heroChips} <small>{t('plan.chips')}</small>
                 </div>
-                <div className="l">{t('plan.bbDeep')}</div>
+                <div className="hero-depth">
+                  <div className="n">
+                    {bbCount}
+                    <span> BB</span>
+                  </div>
+                  <div className="l">{t('plan.bbDeep')}</div>
+                </div>
               </div>
-            </div>
-            <div className="hero-sub">
-              {fmtMoney(heroTotal * unit, cur)} · {num(heroTotal)} pts · {heroUsed.length}{' '}
-              {t(heroUsed.length === 1 ? 'plan.denomOne' : 'plan.denomMany')}
-              {edited && !tuned && <span className="badge-soft" style={{ marginLeft: 8 }}>{t('plan.edited')}</span>}
-            </div>
+              <div className="hero-sub">
+                {fmtMoney(heroTotal * unit, cur)} · {num(heroTotal)} pts · {heroUsed.length}{' '}
+                {t(heroUsed.length === 1 ? 'plan.denomOne' : 'plan.denomMany')}
+                {edited && !tuned && <span className="badge-soft" style={{ marginLeft: 8 }}>{t('plan.edited')}</span>}
+              </div>
 
-            <ChipStackViz denoms={heroUsed} counts={heroCounts} surface="plan" roomyChipSize={104} />
+              {/* The picture travels with the number it illustrates. It also has to:
+                  the spread reserves a chip's height above itself for the pile to
+                  fall through, and with the heading gone that reserve would be the
+                  first thing in the card — 55px of nothing above a slider. In the
+                  side column it sits under the figures, where reserved space reads
+                  as the space between a heading and an image. */}
+              <ChipStackViz denoms={heroUsed} counts={heroCounts} surface="plan" roomyChipSize={104} />
+            </Support>
 
             {/* small-chip slider — lives with the visual it controls. It shapes the PLAN,
                 so it steps aside while the card is showing some other amount: a mid-game

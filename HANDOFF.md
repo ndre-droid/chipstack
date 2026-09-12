@@ -446,6 +446,150 @@ break length + auto-break every N, blinds (edit/add/remove), players & pool (ren
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
 
+### Recent work 2026-09-12 (the opened screen, and an alert that actually wakes the phone) — NOT COMMITTED
+
+Brief: "improve the app, front end, backend, make it perfect — and consider it is used on the
+Fold 8." Three lanes were chosen from an audit: **the unfolded screen's UI** (the user's own
+words: "atm doesnt look clean"), **native reliability**, and **a11y + bundle**. The Firestore
+lane was offered and declined. Nothing here is committed or shipped yet.
+
+#### 1. The side column — what "doesn't look clean" actually was
+
+Measured on the unfolded Fold shape (757x840): the page column is 629px wide and the CONTENT
+inside it is still phone-sized. Not broken — stretched. Four buy-in pills 190px wide for three
+characters of text, "BUILT FOR" and its stepper 450px apart, a section label and its hint 600px
+apart, a 629px-wide bar for one button. The wide layout had widened the CONTAINER and never
+re-laid-out the interiors.
+
+The fix is structural rather than forty tuned rules. **`components/Support.tsx`** is a slot: a
+screen wraps the one thing you keep looking at while you work the rest, and on a window that is
+wide enough for a rail but not for two equal panes, that element MOVES into a ~208px column
+pinned beside the page. Two things follow from it:
+
+- the answer stops scrolling away, and
+- the page goes back to ~400px — the width the cards were actually drawn for — so the stretching
+  disappears as a consequence of the layout.
+
+MOVED, never copied: the aside holds the element the screen already had, so there is no second
+source for "how many chips does everyone start with" to drift from.
+
+What each screen puts in it:
+- **Plan** — the eyebrow, `43 chips`, `100 BB`, the `€20 · 2,000 pts · 4 denominations` line, and
+  the chip spread. The spread had to come too: it reserves a chip's height above itself for the
+  pile to fall through, and with the heading gone that reserve was 55px of nothing at the top of
+  the card.
+- **Table** — the clock strip, stood up: level and blinds, the time at 44px, play + "back to the
+  stand" as a row, then avg BB and players left. Same element, same state; it simply stops being
+  a strip.
+- **Chips** — the box total (value, chip count, N of M active).
+- **Cash** — bought in / cashed out / on table, stacked with rules between them.
+
+Mechanics worth knowing:
+- The slot is **per screen**, not per app. App.tsx keeps every visited screen mounted, so one
+  shared slot would be written by four screens at once. Each `<main class="screen">` owns an
+  `<aside class="screen-support">` and only the one on top is visible — no liveness signal needed.
+- The ref callback for that aside **must be stable per view**. An inline arrow re-attaches every
+  render (null -> element -> render -> null ...) and this shipped once as "Maximum update depth
+  exceeded". See `slotRef` in App.tsx.
+- `.screen` is `display: none` for inactive screens, so the grid rule that makes the side column
+  MUST carry `.is-active` — a bare `.screen` selector un-hides all four on top of each other.
+- The full-bleed rules for `.table-sticky` needed `> div` added: the aside is a SIBLING of the
+  page, and without it the moved clock was pulled 24px out through its own card.
+- Threshold: `useSideColumn` uses its own query, `(min-width: 720px) and (min-height: 600px)`,
+  NOT the 600dp `wide` one. At 600dp there are 244dp of page left after the rail, the padding,
+  the column and the gutter — narrower than a phone, which is the mistake the whole thing exists
+  to undo.
+
+#### 2. Two panes now scroll independently (landscape)
+
+`:root[data-panes='2'] .panes > .pane` — both columns, not just the pinned one. Two columns of
+different lengths inside ONE page scroll is a single-scrollbar layout wearing two columns:
+reaching the bottom of the long one drags the short one off the top. `panes-sticky` now says only
+WHICH column is the one you keep looking at; the scrolling belongs to both.
+
+#### 3. The level-end notification was scheduled in a way that cannot wake a phone
+
+This is the "still unproven on a real phone" item from earlier passes, and there was a real bug
+under it. `scheduleLevelAlert` never passed `allowWhileIdle`, and `SCHEDULE_EXACT_ALARM` was
+declared nowhere. Capacitor's ladder (`LocalNotificationManager.setExactIfPossible`):
+
+    exact permitted + allowWhileIdle -> setExactAndAllowWhileIdle(RTC_WAKEUP)
+    exact permitted                  -> setExact(RTC)
+    not permitted   + allowWhileIdle -> setAndAllowWhileIdle(RTC_WAKEUP)
+    not permitted                    -> set(RTC)          <- where we were
+
+`SCHEDULE_EXACT_ALARM` is denied by default to anything targeting Android 13+, so the bottom rung
+was the live one: `RTC` without `_WAKEUP` does not wake a sleeping device, and a plain `set` is
+inexact as well. A level ending with the phone face-down in a pocket — the entire point of the
+feature — would be announced whenever the phone next woke up for its own reasons.
+
+- `allowWhileIdle: true` moves it to `RTC_WAKEUP` and out of doze even with no permission.
+- `SCHEDULE_EXACT_ALARM` is now declared, which is what makes the system's "alarms & reminders"
+  screen exist for this app; the Table tab's own switch offers the trip there
+  (`exactAlertsAllowed` / `askForExactAlerts`, re-read on `visibilitychange`) and says
+  "Android can hold it back a few minutes." while it is not granted.
+- `ic_stat_chipstack.xml` — Android tints the SILHOUETTE of a notification icon, so the default
+  (the launcher tile) posts a white square. The mark reduced to three bare pills. Wired up with
+  `iconColor` in capacitor.config.ts.
+- `levelAlertPayload()` is pure and exported, and `lib/levelAlert.test.ts` asserts the one thing
+  a device cannot be asked about in CI: that `allowWhileIdle` is set.
+
+#### 4. a11y and the bundle
+
+- **Keyboard focus, everywhere.** Six controls out of ~355 had a focus ring. One zero-specificity
+  `:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible` rule is the
+  floor now; every hand-written focus rule still wins over it. `.ledger-name` had `outline: none`
+  with nothing in its place and now takes the ring.
+- **Touch targets.** The existing invisible-44px-square trick (`.pr-more`, `.pr-emoji`, ...) was
+  extended to the row's WIDE controls, which that square does not fit: rebuy (61x26), the sort
+  cycle (49x20), the stack figure (99x34), the level stepper (30x28). Vertical only — these sit a
+  few pixels from their neighbours and a sideways target would steal their taps. Verified by
+  hit-testing 16px outside each box, and by firing a real rebuy from the expanded area.
+  **The player's NAME is deliberately not in that list**: it ellipsises, so `overflow: hidden`
+  clips the pseudo-element away. At 284x29 it clears the 24px floor and the width does the work.
+- TvMode's play/pause button had no `aria-label`. It does now.
+- **Bundle**: `TvBroadcast` is lazy. It carries the whole TV background catalogue (32 kB source)
+  for a panel only read on a night when there IS a television in the room, and it sits below the
+  fold either way. Main chunk **181.0 -> 172.0 kB gzip**. Nothing else in the boot path was worth
+  splitting — `three` and `TvMode` were already off it, and `i18n` is synchronous everywhere.
+
+#### Files
+
+New: `components/Support.tsx`, `lib/levelAlert.test.ts`,
+`android/app/src/main/res/drawable/ic_stat_chipstack.xml`.
+Changed: `App.tsx`, `lib/windowLayout.ts` (`useSideColumn`, `SIDE`), `lib/levelAlert.ts`,
+`screens/PlanScreen.tsx`, `screens/TableScreen.tsx`, `screens/ChipsScreen.tsx`,
+`screens/CashScreen.tsx`, `screens/TvMode.tsx`, `lib/i18n.ts` (2 keys x 2 languages),
+`styles.css`, `capacitor.config.ts`, `android/app/src/main/AndroidManifest.xml`.
+
+#### NOT done, deliberately
+
+**The SDK half of the native lane.** `compileSdk`/`targetSdk` are still 34 and Capacitor is still
+6, while a Fold 8 runs Android 16. Doing it properly is Capacitor 6 -> 7 (AGP 8.7.2, Java 21, a CI
+workflow change), targetSdk 36, and the edge-to-edge enforcement that comes with targetSdk 35+ —
+which will push the header under the status bar unless the WebView's insets are wired, and that
+cannot be verified anywhere but on the device. It is its own pass with its own APK round, and
+stacking it on top of an unreviewed layout change would make a bad failure hard to bisect.
+
+#### Testing note
+
+The browser pane's viewport emulation does NOT reliably dispatch `resize` or fire media-query
+listeners when the size is changed from outside. The attributes then look stuck (`wide/1` at
+933px) and it reads exactly like a layout bug. Dispatching `new Event('resize')` by hand settles
+it. `lib/windowLayout.ts` already carries the resize backstop for the same reason.
+
+#### What to ask after the Fold 8 has seen it
+
+1. **The screen report** (Settings). Every threshold in the app was set from second-hand numbers.
+   Read the lines for both screens, both ways up, and set `SIDE`, `WIDE` and `TWO_PANE` from them.
+2. Standing up: does the answer column look right beside the page, and is ~400px of page enough?
+3. The clock panel with a game actually running — is 44px readable from across the table?
+4. Lying down: do the two columns scroll independently without fighting each other?
+5. The level-end notification, for real: switch it on, start the clock, lock the phone, wait.
+   Then grant "alarms & reminders" and check the difference.
+
+---
+
 ### Recent work 2026-09-04 (what the user has entered must survive an update) — `c9f8540`
 
 The user asked to make sure their own data — chip box, saved setups, people, the season

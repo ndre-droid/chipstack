@@ -19,6 +19,7 @@ import { warmChip3d } from './lib/chip3d';
 import { useVisualViewportHeight } from './lib/viewport';
 import { useWindowLayout } from './lib/windowLayout';
 import GuestView from './screens/GuestView';
+import { SupportSlot } from './components/Support';
 
 type Tab = 'plan' | 'chips' | 'table' | 'cash';
 type View = Tab | 'settings';
@@ -224,6 +225,28 @@ function AppShell() {
      scroll offset, so it is saved and restored by hand here. */
   const [visited, setVisited] = useState<View[]>([view]);
   const scrollRefs = useRef<Partial<Record<View, HTMLElement | null>>>({});
+
+  /* Where each screen's side column renders, once the element exists. Held in
+     state rather than a ref because a portal target has to be known during a
+     render to be used in one, and the element is not there on the first pass —
+     a ref would leave the column empty until something else happened to
+     re-render. Written through an identity check, so the ref callback settles
+     after exactly one extra render per screen and never loops. */
+  const [supportSlots, setSupportSlots] = useState<Partial<Record<View, HTMLElement | null>>>({});
+  /* One callback per screen, kept for the life of the app. An inline arrow here is
+     an infinite loop and not a subtle one: React detaches a ref whose identity
+     changed and re-attaches the new one, so a fresh arrow every render means
+     null -> element -> render -> null -> element, which is exactly the "Maximum
+     update depth exceeded" this first shipped as. */
+  const slotRefs = useRef<Partial<Record<View, (el: HTMLElement | null) => void>>>({});
+  const slotRef = (v: View) => {
+    const made = slotRefs.current[v];
+    if (made) return made;
+    const fn = (el: HTMLElement | null) =>
+      setSupportSlots((prev) => (prev[v] === el ? prev : { ...prev, [v]: el }));
+    slotRefs.current[v] = fn;
+    return fn;
+  };
   const scrollTops = useRef<Partial<Record<View, number>>>({});
 
   // Recorded as it happens, NOT when the tab changes: `display: none` has already
@@ -406,7 +429,14 @@ function AppShell() {
           {/* Always wrapped, never conditionally — swapping the element type here
               would remount the screen and throw away exactly what keeping it mounted
               was for. See ScreenStore. */}
-          <ScreenStore live={v === view}>{SCREENS[v]}</ScreenStore>
+          <SupportSlot.Provider value={supportSlots[v] ?? null}>
+            <ScreenStore live={v === view}>{SCREENS[v]}</ScreenStore>
+          </SupportSlot.Provider>
+          {/* The side column this screen's `<Support>` renders into on a window wide
+              enough for one. Empty on a phone and in the two-pane layout, and an
+              empty aside takes no space (`:empty`), so this costs those layouts
+              nothing. See components/Support.tsx. */}
+          <aside className="screen-support" ref={slotRef(v)} />
         </main>
       ))}
 

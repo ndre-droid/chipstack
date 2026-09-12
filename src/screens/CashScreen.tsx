@@ -9,6 +9,7 @@ import CarryCard from '../components/CarryCard';
 import Timeline from '../components/Timeline';
 import NightAwards from '../components/NightAwards';
 import Panes from '../components/Panes';
+import Support from '../components/Support';
 import { useConfirm } from '../components/Confirm';
 
 /**
@@ -145,26 +146,31 @@ export default function CashScreen() {
       <Panes
         left={
           <>
-          <div className="section-label">
-            {t('cash.moneyInPlay')}
-            <span className="hint">{ledger.length} {t('cash.players').toLowerCase()}</span>
-          </div>
-          <div className="card">
-            <div className="stat-row">
-              <div className="stat">
-                <div className="k">{t('cash.boughtIn')}</div>
-                <div className="v">{fmtMoney(totalIn, cur)}</div>
-              </div>
-              <div className="stat">
-                <div className="k">{t('cash.cashedOut')}</div>
-                <div className="v">{fmtMoney(totalOut, cur)}</div>
-              </div>
-              <div className="stat">
-                <div className="k">{t('cash.onTable')}</div>
-                <div className="v" style={{ color: 'var(--acc)' }}>{fmtMoney(totalIn - totalOut, cur)}</div>
+          {/* The three figures the night is settled against. Every row underneath
+              moves one of them, so on a window with a side column they move there
+              and stop scrolling away. See components/Support.tsx. */}
+          <Support name="cash">
+            <div className="section-label">
+              {t('cash.moneyInPlay')}
+              <span className="hint">{ledger.length} {t('cash.players').toLowerCase()}</span>
+            </div>
+            <div className="card">
+              <div className="stat-row">
+                <div className="stat">
+                  <div className="k">{t('cash.boughtIn')}</div>
+                  <div className="v">{fmtMoney(totalIn, cur)}</div>
+                </div>
+                <div className="stat">
+                  <div className="k">{t('cash.cashedOut')}</div>
+                  <div className="v">{fmtMoney(totalOut, cur)}</div>
+                </div>
+                <div className="stat">
+                  <div className="k">{t('cash.onTable')}</div>
+                  <div className="v" style={{ color: 'var(--acc)' }}>{fmtMoney(totalIn - totalOut, cur)}</div>
+                </div>
               </div>
             </div>
-          </div>
+          </Support>
 
           <div className="section-label">
             {t('cash.perPlayer')}
