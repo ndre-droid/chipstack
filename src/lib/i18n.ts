@@ -988,6 +988,9 @@ const dict: Record<Lang, Record<string, string>> = {
     'crash.compactBody': 'The rest of the app is still running — the phone keeps the night.',
     'crash.back': 'Back to the phone',
 
+    'table.levelAlertInexact': 'Android can hold it back a few minutes.',
+    'table.levelAlertExact': 'Allow exact timing',
+
   },
   de: {
     'nav.plan': 'Plan',
@@ -1966,6 +1969,9 @@ const dict: Record<Lang, Record<string, string>> = {
     'crash.compactTitle': 'Der große Bildschirm ist stehengeblieben',
     'crash.compactBody': 'Der Rest der App läuft weiter — das Handy hält den Abend.',
     'crash.back': 'Zurück zum Handy',
+
+    'table.levelAlertInexact': 'Android kann sie um einige Minuten verzögern.',
+    'table.levelAlertExact': 'Genaue Zeit erlauben',
 
   },
 };

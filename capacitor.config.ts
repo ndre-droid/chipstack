@@ -29,6 +29,23 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
     hostname: 'localhost',
   },
+  plugins: {
+    /**
+     * The level-end alert's appearance in the status bar and the shade.
+     *
+     * `smallIcon` is not optional in practice: Android tints the icon's silhouette,
+     * so the default (the launcher tile, gradients and all) posts a plain white
+     * square. `ic_stat_chipstack` is the mark reduced to what survives that — see
+     * android/app/src/main/res/drawable/ic_stat_chipstack.xml.
+     *
+     * `iconColor` is the app's default amber (`--acc-bright`), which is what tints
+     * the icon on Android 12 and up.
+     */
+    LocalNotifications: {
+      smallIcon: 'ic_stat_chipstack',
+      iconColor: '#f0b429',
+    },
+  },
 };
 
 export default config;

@@ -68,4 +68,21 @@
     <!-- Haptics. navigator.vibrate() is a silent no-op in the WebView without this,
          which is why the ruler's per-chip buzz never fired in the APK. -->
     <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- The level-end alert wants to fire AT the deadline, not near it.
+         POST_NOTIFICATIONS, WAKE_LOCK and RECEIVE_BOOT_COMPLETED are merged in from
+         the local-notifications plugin's own manifest; this one is not, because it
+         is a restricted permission an app has to ask for deliberately.
+
+         Android denies it by default to anything targeting 13 or later, and the
+         user grants it from the system's "alarms & reminders" screen — the app
+         offers that route from the alert's own switch (see lib/levelAlert.ts,
+         askForExactAlerts). Declaring it is what makes that screen exist for this
+         app at all; without the declaration the setting is simply absent.
+
+         Not granted is a working state, not a broken one: the notification still
+         carries allowWhileIdle, so it wakes the phone out of doze either way. The
+         permission only buys the difference between "at 20:00" and "within a few
+         minutes of 20:00". -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 </manifest>
