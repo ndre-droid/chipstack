@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        The shell behind the webview, and the system bars around it.
+
+        Matches `backgroundColor` in capacitor.config.ts. Every skin in the app is
+        dark — the app is looked at in a dim room with cards on the table — so the
+        bars follow the darkest of them rather than trying to track the active skin,
+        which the native side cannot see.
+    -->
+    <color name="chipstackShell">#0a0a0c</color>
+</resources>

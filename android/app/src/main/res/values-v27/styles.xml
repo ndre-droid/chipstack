@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Light icons in the system bars, from Android 8.1 up.
+
+    Split out of values/styles.xml rather than guarded in place: the attributes are
+    API 23 (`windowLightStatusBar`) and API 27 (`windowLightNavigationBar`) and this
+    app's floor is 22, so the base theme must not mention them. Everything below 27
+    keeps the platform default, which on those versions is light icons anyway.
+
+    Both are false because the bars are painted `@color/chipstackShell` — asking for
+    dark icons on a near-black bar would make them disappear.
+-->
+<resources>
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:background">@drawable/splash</item>
+        <item name="android:statusBarColor">@color/chipstackShell</item>
+        <item name="android:navigationBarColor">@color/chipstackShell</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

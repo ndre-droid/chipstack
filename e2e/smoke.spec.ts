@@ -133,3 +133,71 @@ test('the recovery screen hands back the data it could not draw', async ({ page 
   expect(file.suggestedFilename()).toMatch(/^chipstack-\d{4}-\d{2}-\d{2}\.json$/);
   await expect(page.locator('.crash-hint.good')).toBeVisible();
 });
+
+/**
+ * The Fold lying down: two columns, and a dialog that has to be above both.
+ *
+ * Its own viewport, because `data-panes='2'` is the only shape where this can
+ * break — `lib/windowLayout.ts` asks for landscape, 800dp of width and 520dp of
+ * height, and the phone project above is none of those.
+ */
+test.describe('two columns', () => {
+  test.use({ viewport: { width: 1000, height: 755 } });
+
+  test('a sheet opened from one column is above the other one', async ({ page }) => {
+    /* THE regression, and it shipped. `position: sticky` creates a stacking
+       context; every sheet in this app is `position: fixed` and rendered from
+       inside the column it was opened from. Making both columns sticky — so each
+       could scroll on its own — trapped the sheet inside the left one, and the
+       right column, later in the DOM, painted its blind ladder and its TV panel
+       straight across the dialog. `z-index` could not fix it: a trapped element
+       cannot be raised out of its trap, which is why this asserts what is ON TOP
+       at a point rather than what any z-index says. */
+    await page.goto('/');
+    await expect(page.locator(':root[data-panes="2"]')).toHaveCount(1);
+    await seatFour(page);
+
+    await page.locator('main.is-active').getByRole('button', { name: 'Add player' }).click();
+    const sheet = page.locator('.cr-sheet');
+    await expect(sheet).toBeVisible();
+
+    // A point over the right-hand column, level with the middle of the dialog.
+    const box = await sheet.boundingBox();
+    if (!box) throw new Error('the sheet has no box');
+    const y = Math.round(box.y + box.height / 2);
+    const x = Math.round(page.viewportSize()!.width * 0.62);
+
+    const onTop = await page.evaluate(
+      ([px, py]) => {
+        const el = document.elementFromPoint(px, py);
+        return { insideSheet: !!el?.closest('.cr-sheet'), got: el?.className ?? null };
+      },
+      [x, y],
+    );
+    expect(onTop.insideSheet, `the right column is painting over the dialog: ${onTop.got}`).toBe(true);
+  });
+
+  test('each column scrolls itself, and the page behind them does not', async ({ page }) => {
+    /* The other half of the same rule: the columns are sized to the window so the
+       PAGE has nothing left to scroll. When that arithmetic is wrong the outer
+       scroll comes back, and a few stray pixels of it are enough to drag the
+       clock strip off the top while a column is being read. */
+    await page.goto('/');
+    await seatFour(page);
+    await armClock(page);
+
+    const m = await page.evaluate(() => {
+      const screen = document.querySelector('main.screen.is-active') as HTMLElement;
+      const panes = [...screen.querySelectorAll('.panes > .pane')] as HTMLElement[];
+      return {
+        page: { scroll: screen.scrollHeight, client: screen.clientHeight },
+        panes: panes.map((p) => ({ h: Math.round(p.getBoundingClientRect().height), content: p.scrollHeight })),
+      };
+    });
+
+    expect(m.panes.length).toBe(2);
+    // one pixel of slack for sub-pixel rounding of the strip's border
+    expect(m.page.scroll, 'the page itself is scrolling behind the columns').toBeLessThanOrEqual(m.page.client + 1);
+    for (const p of m.panes) expect(p.h, 'a column collapsed instead of filling the window').toBeGreaterThan(200);
+  });
+});

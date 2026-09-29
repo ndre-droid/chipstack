@@ -16,7 +16,24 @@
     </style>
 
 
+    <!--
+        The theme the activity actually runs under.
+
+        The system bars are set here because they were not set anywhere: this theme
+        descends from a LIGHT one, so Android painted the navigation bar white and
+        left a bright strip under a dark app, the full width of the screen. It is
+        most obvious on a big screen — the Fold unfolded is where it was reported —
+        and it is not something the web layer can reach, because the bars are the
+        window's, not the page's.
+
+        The two colours are API 21 attributes and minSdkVersion is 22, so they live
+        here. Telling the system to draw the ICONS in those bars light is API 23 and
+        27, which is newer than this app's floor — those two go in values-v27 so a
+        build against an older device configuration never sees them.
+    -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <item name="android:statusBarColor">@color/chipstackShell</item>
+        <item name="android:navigationBarColor">@color/chipstackShell</item>
     </style>
 </resources>

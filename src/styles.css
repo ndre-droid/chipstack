@@ -3575,7 +3575,16 @@ input[type='color'] { cursor: pointer; }
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   overflow: hidden;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  /* Two shadows, and the second one is the scrim.
+     On a phone this sheet IS the screen, so there is nothing behind it to dim.
+     Floated in the middle of a Fold there is a whole app behind it, and without
+     a scrim a modal dialog reads as one more panel that happens to overlap the
+     others — which is exactly how this was reported. A spread shadow larger than
+     any viewport dims everything outside the panel without a second element to
+     position, and it cannot be out-stacked the way a sibling overlay can. */
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.45),
+    0 0 0 100vmax color-mix(in srgb, #000 58%, transparent);
 }
 
 /* ...except the chip ruler, which is an INSTRUMENT and not a dialog. Its scale
@@ -3822,10 +3831,37 @@ input[type='color'] { cursor: pointer; }
 :root[data-panes='2'] .panes {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: start;
   column-gap: 22px;
+  /* The two columns are as tall as the window and each scrolls inside itself, so
+     the page behind them does not scroll at all. `stretch` rather than `start`:
+     with a height on the grid, a column that stretches is the scrollport, and a
+     column that does not is a short box with a scrollbar in the middle of it.
+     Nothing in a pane paints a background, so a stretched empty column is
+     invisible. See the height below for where the number comes from. */
+  align-items: stretch;
+  /* The window, less everything that is not these two columns: the header, the
+     device's safe areas, whatever the clock strip has already taken
+     (`--pane-top`, 0 when there is no strip), and the screen's own padding top
+     and bottom. Getting this exactly right is what stops the PAGE scrolling
+     behind two columns that scroll themselves — 30px of outer scroll is enough
+     to drag the strip off the top while a column is being read. */
+  height: calc(
+    var(--vvh, 100dvh) - var(--header-h) - var(--safe-t) - var(--safe-b)
+      - var(--pane-top, 0px) - var(--screen-pt) - 24px
+  );
 }
-:root[data-panes='2'] .pane { display: block; min-width: 0; }
+:root[data-panes='2'] .pane {
+  display: block;
+  min-width: 0;
+  /* a grid item will not shrink below its content without this, and then both
+     columns overflow instead of scrolling */
+  min-height: 0;
+  overflow-y: auto;
+  /* `overflow-y` alone computes the other axis to `auto` too, which puts a
+     sideways scrollbar under a column whose contents are never wider than it. */
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
 
 /* The chip box is a list of nine near-identical cards — the one place a second
    column is worth having without a `<Panes>` split, because the reading order
@@ -3858,55 +3894,44 @@ input[type='color'] { cursor: pointer; }
    two columns start a few pixels apart and look like a mistake. */
 :root[data-panes='2'] .pane > :first-child { margin-top: 0; }
 
-/* ---- A column that stays put while the other one scrolls ----
+/* ---- Two columns that scroll on their own ----
    The Table tab's left column is the night itself — the buy-in stack and the
-   roster — and the right one is a long scroll of setup. Scrolling the right one
-   used to carry the left one off the top with it and leave half the panel empty,
-   which is the shape this was reported for. Sticky inside the scrollport (the
-   `.screen`, which is what has `overflow-y: auto`) pins it there instead.
+   roster — and the right one is a long scroll of setup. One page scroll for both
+   means reaching the bottom of the long one carries the short one off the top and
+   leaves half the panel empty, and the page ends in as much blank as the
+   difference between them. So the grid above is given the window's height and
+   each column scrolls inside itself; see `.panes`.
 
-   It gets its own scrollbar rather than a cap it can overflow: a full table is
-   taller than a Fold lying down, and a pinned column you cannot reach the bottom
-   of is worse than one that scrolls away. `overscroll-behavior: contain` stops
-   the page taking over when the roster hits its end.
+   **It must NOT be done with `position: sticky`, and that is not a style
+   preference.** `sticky` creates a stacking context. Every sheet in this app is
+   `position: fixed` and rendered where it is opened from — inside a pane — so a
+   sticky pane traps it: its `z-index: 60` stops meaning anything outside that
+   pane, and the OTHER pane, later in the DOM, paints straight over the top of it.
+   That shipped once. On a Fold lying down, opening "who is playing?" from the
+   roster drew the blind ladder and the TV panel across the dialog, and raising
+   the sheet to `z-index: 999999` changed nothing, because a trapped element
+   cannot be raised out of its trap.
 
-   The offset is the clock strip, which is sticky at the top of the SAME
-   scrollport — nothing else is above it, so `--clockbar-h` is the whole story,
-   and it is 0 on the nights the strip is not drawn (a cash game with no timer).
-   The cap comes off `--vvh`, the VISIBLE window, so a keyboard shortens the
-   column instead of hiding its bottom. */
+   The height comes off `--vvh`, the VISIBLE window, so a keyboard shortens the
+   columns instead of hiding their bottoms. The offset is the clock strip, which
+   is sticky at the top of the same scrollport — nothing else is above it, so
+   `--clockbar-h` is the whole story, and it is 0 on the nights the strip is not
+   drawn (a cash game with no timer). `overscroll-behavior: contain` stops the
+   page taking over when a column hits its end. */
 .table-screen { --clockbar-h: 0px; }
 /* 36px of controls between 10px of padding, plus the rule underneath */
 .table-screen.has-clockbar { --clockbar-h: 58px; }
-/* Where the pinned column starts. The strip is stuck one `--screen-pt` ABOVE the
-   scrollport's padding box (it cancels that padding, see `.table-sticky`), so the
-   column below it starts that much higher too. With no strip the column keeps the
-   page's own top padding and the offset is nothing. */
+/* How much of the window the strip has already taken before the columns start.
+   The strip is stuck one `--screen-pt` ABOVE the scrollport's padding box (it
+   cancels that padding, see `.table-sticky`), so the columns below it start that
+   much higher too. With no strip they keep the page's own top padding and the
+   offset is nothing. */
 .table-screen { --pane-top: 0px; }
-.table-screen.has-clockbar { --pane-top: calc(var(--clockbar-h) - var(--screen-pt)); }
-
-/* BOTH columns, not just the pinned one.
-   Two columns of different lengths inside one page scroll is a single-scrollbar
-   layout wearing two columns: reaching the bottom of the long one drags the short
-   one off the top and leaves half the panel empty, and the page ends in as much
-   blank as the difference between them. Each column owning its scroll is what
-   two columns means — and it is what the Table tab's left column has been doing
-   on its own since it was pinned. `panes-sticky` now says only which column is
-   the one you keep looking at; the scrolling belongs to both. */
-:root[data-panes='2'] .panes > .pane {
-  position: sticky;
-  top: var(--pane-top, 0px);
-  max-height: calc(
-    var(--vvh, 100dvh) - var(--header-h) - var(--safe-t) - var(--safe-b) - var(--pane-top, 0px) - 12px
-  );
-  overflow-y: auto;
-  /* `overflow-y` alone computes the other axis to `auto` as well, and the cards
-     round a few pixels wider than the box once a vertical scrollbar is inside it
-     — a sideways scrollbar under a pinned column, for nothing. Nothing in here
-     is meant to be wider than its column. */
-  overflow-x: hidden;
-  overscroll-behavior: contain;
-}
+/* `+ 12px` is the strip's own margin-bottom, and `- var(--screen-pt)` is the
+   page padding its negative top margin cancels. Both belong here: this value is
+   the total the strip costs the columns below it, and leaving the margin out put
+   12px of page scroll back underneath two columns that scroll themselves. */
+.table-screen.has-clockbar { --pane-top: calc(var(--clockbar-h) + 12px - var(--screen-pt)); }
 
 /* The choice grids opened out once already for the medium layout; inside a
    half-width column they are back to roughly phone width, so they go back to

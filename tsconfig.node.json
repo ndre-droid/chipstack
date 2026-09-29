@@ -2,7 +2,11 @@
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
     "target": "es2023",
-    "lib": ["ES2023"],
+    /* DOM is here for the browser tests, not for the build scripts. A Playwright
+       spec runs in Node, but the callback inside `page.evaluate` runs in the page
+       and talks to `document` — and it is type-checked in this project, which
+       otherwise has no idea the DOM exists. */
+    "lib": ["ES2023", "DOM"],
     "types": ["node"],
     "skipLibCheck": true,
 

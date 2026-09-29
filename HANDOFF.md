@@ -460,6 +460,88 @@ break length + auto-break every N, blinds (edit/add/remove), players & pool (ren
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
 
+### Recent work 2026-09-29 (the dialog the two columns were painting over) — HOTFIX
+
+Reported from the Fold with one screenshot: "still pretty buggy". Opening "Wer spielt mit?" from
+the roster on a Fold lying down drew the blind ladder, the blind levels, the TV panel and the
+setup row straight across the dialog, and a white strip sat under the whole app.
+
+#### The stacking bug — caused by the previous pass, and it shipped
+
+`position: sticky` **creates a stacking context.** The 2026-09-12 pass made BOTH `.pane`s sticky so
+each could scroll on its own. Every sheet in this app (`.cr-sheet`, `.sheet-overlay`) is
+`position: fixed` and rendered from inside the column it was opened from — so the sheet was trapped
+inside the left pane, its `z-index: 60` stopped meaning anything outside that pane, and the right
+pane, later in the DOM, painted over it.
+
+Before the pass the right pane was static, so it painted below positioned elements and the overlay
+worked **by luck**. The pass did not create the fragility, it removed the luck.
+
+Proved rather than assumed, in the browser:
+- raising the sheet to `z-index: 999999` changed nothing (a trapped element cannot be raised out of
+  its trap — this is the tell for a stacking-context bug, and it is worth remembering);
+- setting both panes to `position: static` made the sheet win the same point immediately.
+
+**Fix:** independent scrolling without `sticky`. `.panes` is given the window's height and each
+`.pane` owns an `overflow-y: auto`. No positioning, so no stacking context, so nothing traps a
+fixed overlay. The height is
+`--vvh - --header-h - --safe-t - --safe-b - --pane-top - --screen-pt - 24px`, which is the window
+less everything that is not those two columns; get it wrong and the PAGE scrolls behind two columns
+that scroll themselves, and a few stray pixels of that drag the clock strip off the top while a
+column is being read. `--pane-top` gained the strip's own 12px margin for the same reason.
+
+#### Two more things the screenshot showed
+
+- **The wide-layout dialog had no scrim.** On a phone `.cr-sheet` IS the screen, so there is nothing
+  behind it; floated in the middle of a Fold there is a whole app behind it, and without dimming a
+  modal reads as one more panel that happens to overlap. Done as a second `box-shadow` with a
+  `100vmax` spread rather than a scrim element — no extra DOM, and it cannot be out-stacked the way
+  a sibling overlay can.
+- **The white strip under the app is the system navigation bar.** `AppTheme.NoActionBarLaunch`
+  descends from a Light theme and never set a bar colour, so Android painted the navigation bar
+  white under a dark app, full width. `@color/chipstackShell` (`#0a0a0c`, matching
+  capacitor.config.ts) is now set for both bars; `windowLight*Bar` are API 23/27 attributes and
+  minSdk is 22, so those two live in `values-v27/styles.xml`.
+  **UNVERIFIED** — it cannot be reproduced anywhere but on the device.
+
+#### The regression test
+
+`e2e/smoke.spec.ts` gained a `two columns` describe at a 1000x755 viewport (the phone project is
+none of landscape, 800dp wide or 520dp tall, so this shape was untested):
+
+1. a sheet opened from one column is above the other one — asserts what is TOPMOST at a point over
+   the right column, not what any z-index claims, because z-index is exactly what lies here;
+2. each column scrolls itself and the page behind them does not.
+
+Both failed against the shipped build and pass against the fix — red then green by accident, which
+is the proof that matters. `tsconfig.node.json` gained `DOM` to its `lib`: a spec runs in Node but
+the callback inside `page.evaluate` runs in the page.
+
+#### Two environment traps found on the way
+
+- **`npm run lint` cannot run on this machine.** oxlint's native binding is blocked:
+  `ERR_DLOPEN_FAILED: An Application Control policy has blocked this file` — the same policy as the
+  blocked `.pyd` in the emoji-font script. The package and version are correct and reinstalling does
+  not help. CI runs lint on Linux and gates the Pages deploy.
+- **Playwright reuses a preview server that is already listening** (`reuseExistingServer` off CI). A
+  stray `vite preview` on 4173 serves a stale `dist/`, and the suite then reports failures that were
+  already fixed. Kill anything on 4173 before believing an e2e result.
+
+#### Files
+
+`src/styles.css`, `e2e/smoke.spec.ts`, `tsconfig.node.json`,
+`android/app/src/main/res/values/styles.xml`, `android/app/src/main/res/values/colors.xml` (new),
+`android/app/src/main/res/values-v27/styles.xml` (new).
+
+#### Still to check on the Fold 8
+
+1. The dialog over two columns — the thing that was reported.
+2. Whether the white strip under the app is gone.
+3. Everything from the 2026-09-12 pass that has still never been seen on hardware, and the screen
+   report from Settings.
+
+---
+
 ### Recent work 2026-09-12 (the opened screen, and an alert that actually wakes the phone) — `67c2c7c` + `b3fcd21`, SHIPPED
 
 Brief: "improve the app, front end, backend, make it perfect — and consider it is used on the
