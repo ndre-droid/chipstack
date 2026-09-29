@@ -35,6 +35,16 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Empty on purpose. The action's default is `tools platform-tools`, and
+          # `tools` is the OBSOLETE SDK Tools package — Google removed it from the
+          # repository, so `sdkmanager tools` now fails outright and takes the whole
+          # job with it ("Warning: Failed to find package 'tools'", exit code 1).
+          # This broke a build that had changed nothing on the Android side.
+          # The runner image already ships a complete Android SDK, and Gradle pulls
+          # whatever platform and build-tools this project pins, so there is nothing
+          # for this step to install — it only has to exist so ANDROID_HOME is set.
+          packages: ''
 
       - name: Generate stable signing keystore (once)
         env:
