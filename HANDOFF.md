@@ -18,7 +18,19 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-09-12 from `main` @ `b3fcd21`**, 4.95 MB (5,188,107 B),
+  (**CURRENT — rebuilt 2026-09-29 from `main` @ `2899ec6`**, 4.95 MB (5,188,322 B),
+  run `36580684295`: the hotfix for the pass below — a dialog opened on a Fold lying down was
+  being painted over by the other column (`position: sticky` on both panes created a stacking
+  context and trapped every `position: fixed` sheet inside the pane it was opened from), the
+  wide-layout dialog gained the scrim it never had, and the system navigation bar stopped being
+  white under a dark app. Covered by two new e2e tests at a 1000x755 viewport that failed against
+  the build below and pass against this one. The APK job also had to be fixed first: it installs
+  the SDK `tools` package, which Google has removed, and had started failing on the runner's
+  schedule rather than on any change of ours. Pages run `36580681699` green from the same commit,
+  so **APK / `main` / Pages are IN SYNC**. Download verified: `200`,
+  `application/vnd.android.package-archive`, 5,188,322 B.
+  **THE NAVIGATION-BAR COLOUR IS UNVERIFIED** — it cannot be reproduced off the device.
+  Previous build: 2026-09-12 from `main` @ `b3fcd21`, 4.95 MB (5,188,107 B),
   run `34695572148`: the opened screen gets a column for the answer — components/Support.tsx
   moves the one thing you keep looking at into a ~208px pinned column on a Fold standing up,
   which puts the page back at about the width the cards were drawn for and ends the stretched
@@ -460,7 +472,7 @@ break length + auto-break every N, blinds (edit/add/remove), players & pool (ren
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
 
-### Recent work 2026-09-29 (the dialog the two columns were painting over) — HOTFIX
+### Recent work 2026-09-29 (the dialog the two columns were painting over) — `a150ec9` + `2899ec6`, SHIPPED
 
 Reported from the Fold with one screenshot: "still pretty buggy". Opening "Wer spielt mit?" from
 the roster on a Fold lying down drew the blind ladder, the blind levels, the TV panel and the
