@@ -97,6 +97,16 @@ export interface Settings {
   tvBackground: string | null; // optional custom TV background image (data URL)
   tvBackgroundFocus: { x: number; y: number } | null; // salience focal point (0..100%) for smart placement
   tvBackgroundTone: number | null; // mean luminance 0..1 of the background, drives scrim strength
+  /**
+   * A video from the gallery, playing behind the big screen on THIS device.
+   *
+   * An id into the local video store (lib/photoStore), never the file itself: a
+   * video is tens of megabytes and the live session travels in a Firestore document
+   * that caps at 1 MiB. So this one genuinely cannot reach a paired television —
+   * that screen keeps whatever picture `tvBackground` holds, and this plays on
+   * whatever device is showing big-screen mode.
+   */
+  tvBackgroundVideo: string | null;
   appearance: Appearance;   // system / light / dark — applies to the minimal skin
   chipArt: ChipArt;         // chip face art style
   /** How a chip is drawn: 'vector' is the hand-built SVG chip; 'render3d' renders

@@ -15,47 +15,47 @@ import { useEffect, useState } from 'react';
  *
  * Crossing this line buys the rail and a wider column, and nothing else: 832dp
  * standing up is the MEDIUM class, where the guidance is a navigation rail and
- * ONE pane, and forcing two columns on it gives two columns narrower than the
- * phone the app was designed for. Two panes are a separate question with a
- * separate threshold — see `PaneCount` below.
+ * ONE pane. Whether a side column comes off it is a separate question with a
+ * separate threshold — see `SideColumn` below.
  */
 export type WindowLayout = 'compact' | 'wide';
 
 /**
- * ...and, separately, whether there is room for TWO columns of cards.
+ * ...and, separately, whether the page gets a SIDE COLUMN, and how wide.
  *
  * A second attribute rather than a third value of the first one, deliberately.
  * Every wide rule in the stylesheet — the rail, the header, the grids that open
- * out — is true of both shapes, and a third value would mean rewriting all of
- * them to match two things instead of one. `data-panes` is written by the same
- * `apply()` inside the same view transition, so the two never disagree and the
- * fold still animates as one movement.
+ * out — is true of every wide shape, and a third value would mean rewriting all
+ * of them. `data-side` is written by the same `apply()` inside the same view
+ * transition, so the two never disagree and the fold still animates as one
+ * movement.
  *
- * The test is ORIENTATION first and width second, which is not the obvious way
- * round. Material's expanded boundary is 840dp, and keying off that alone puts
- * the decision a few pixels from a Fold's inner screen in PORTRAIT — reported
- * anywhere from 750 to 832dp depending on the device and the system bars — so a
- * hair either way silently decides whether the cards are drawn in one column or
- * two. Which way up the panel is held is not marginal: lying down it is around
- * 933dp and standing up it is not, on every folding phone there is.
+ * - `narrow`: a Fold standing up (~757x840). ~208px comes off the side for the
+ *   one thing you keep looking at, and the page drops back to a phone's width.
+ * - `wide`: a panel lying LANDSCAPE — a Fold 7 on its side, and a Fold 8 held
+ *   normally, whose 4:3 inner screen is ~932x700dp. The column grows to ~300px
+ *   and takes more of the screen's answer (the Table's starting stack joins the
+ *   clock), and the page is still ONE column of about a phone's width.
  *
- * So: landscape, at least 800dp of width, at least 520dp of height. Portrait
- * never splits, whatever it measures — that was the earlier attempt at two
- * columns, and at 832dp both of them came out narrower than the phone the cards
- * were drawn for. The height floor is what keeps ordinary phones out: an S22 on
- * its side is ~800x360 and a Fold's COVER screen is ~960x412, both well under
- * it, and a screen with 500dp of height has no room for two stacks of cards
- * however wide it is.
+ * There used to be a two-equal-columns shape here. The user tried it on the
+ * Fold and turned it down (2026-09-30): the night reads as one list with the
+ * clock beside it, not as two halves of a form.
+ *
+ * The landscape test is ORIENTATION first and width second: landscape, at least
+ * 800dp of width, at least 520dp of height. Its height floor sits BELOW `WIDE`'s
+ * 600 on purpose — a Fold 8 with Screen zoom or three-button navigation lands at
+ * ~816x580, and that is still a big landscape panel, not a phone on its side
+ * (an S22 is ~800x360, a Fold's cover screen ~960x412; both stay under it).
  */
-export type PaneCount = 1 | 2;
+export type SideColumn = 'none' | 'narrow' | 'wide';
 
 export interface WindowShape {
   layout: WindowLayout;
-  panes: PaneCount;
+  side: SideColumn;
 }
 
 const WIDE = '(min-width: 600px) and (min-height: 600px)';
-const TWO_PANE = '(min-aspect-ratio: 1 / 1) and (min-width: 800px) and (min-height: 520px)';
+const LANDSCAPE = '(min-aspect-ratio: 1 / 1) and (min-width: 800px) and (min-height: 520px)';
 /**
  * Wide enough to take 208px off the side and still leave a page.
  *
@@ -71,19 +71,20 @@ const TWO_PANE = '(min-aspect-ratio: 1 / 1) and (min-width: 800px) and (min-heig
 const SIDE = '(min-width: 720px) and (min-height: 600px)';
 const CALM = '(prefers-reduced-motion: reduce)';
 
-/** Whether the window is the middle shape: a side column, and not two panes. */
-function hasSideColumn(): boolean {
-  if (typeof window === 'undefined' || !window.matchMedia) return false;
-  return window.matchMedia(SIDE).matches && !window.matchMedia(TWO_PANE).matches;
+const matches = (q: string) => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(q).matches;
+
+function sideColumn(): SideColumn {
+  if (matches(LANDSCAPE)) return 'wide';
+  return matches(SIDE) ? 'narrow' : 'none';
 }
 
 /** What the window is now. */
 function measure(): WindowShape {
-  if (typeof window === 'undefined' || !window.matchMedia) return { layout: 'compact', panes: 1 };
-  return {
-    layout: window.matchMedia(WIDE).matches ? 'wide' : 'compact',
-    panes: window.matchMedia(TWO_PANE).matches ? 2 : 1,
-  };
+  const side = sideColumn();
+  /* A side column IMPLIES the wide chrome. LANDSCAPE's height floor (520) sits
+     under WIDE's (600), and without this a Fold 8 at ~816x580 drew the page with
+     the phone's bottom tab bar floating across it. */
+  return { layout: side !== 'none' || matches(WIDE) ? 'wide' : 'compact', side };
 }
 
 /** What the page is currently drawn as. Read back from the DOM rather than kept
@@ -93,16 +94,16 @@ function drawn(): WindowShape {
   const d = document.documentElement.dataset;
   return {
     layout: d.layout === 'wide' ? 'wide' : 'compact',
-    panes: d.panes === '2' ? 2 : 1,
+    side: d.side === 'wide' || d.side === 'narrow' ? d.side : 'none',
   };
 }
 
-const same = (a: WindowShape, b: WindowShape) => a.layout === b.layout && a.panes === b.panes;
+const same = (a: WindowShape, b: WindowShape) => a.layout === b.layout && a.side === b.side;
 
 function apply(shape: WindowShape) {
   const d = document.documentElement.dataset;
   d.layout = shape.layout;
-  d.panes = String(shape.panes);
+  d.side = shape.side;
 }
 
 /* Written at import time, before React renders anything: the first paint is
@@ -163,33 +164,27 @@ function sync() {
 }
 
 /**
- * Whether this window has a SIDE COLUMN — a narrow second column beside the page,
- * for the one thing on a screen you keep looking at while you work the rest.
+ * Which side column this window has, if any — `components/Support.tsx` moves a
+ * screen's answer into it.
  *
- * Exactly the middle shape: wide enough for the rail, not wide enough for two
- * equal panes. That is a Fold standing up, and it is the shape the app spends
- * most of a game night in. Below it (a phone) there is no room; above it
- * (a Fold lying down) `<Panes>` already splits the page properly and a third
- * column on top of two would be a stripe.
- *
- * Read from the same two media queries the attributes are written from rather
- * than from the attributes themselves — a component that re-renders on a media
- * query cannot be a frame behind the stylesheet, and the answer decides where a
- * subtree is MOUNTED, which CSS cannot do for it. See `components/Support.tsx`.
+ * Read from the media queries the attribute is written from rather than from the
+ * attribute itself — a component that re-renders on a media query cannot be a
+ * frame behind the stylesheet, and the answer decides where a subtree is
+ * MOUNTED, which CSS cannot do for it.
  */
-export function useSideColumn(): boolean {
-  const [on, setOn] = useState(hasSideColumn);
+export function useSideColumn(): SideColumn {
+  const [side, setSide] = useState(sideColumn);
 
   useEffect(() => {
-    const queries = [window.matchMedia(SIDE), window.matchMedia(TWO_PANE)];
-    const read = () => setOn(hasSideColumn());
+    const queries = [window.matchMedia(SIDE), window.matchMedia(LANDSCAPE)];
+    const read = () => setSide(sideColumn());
     for (const mq of queries) {
       if (mq.addEventListener) mq.addEventListener('change', read);
       else mq.addListener(read);
     }
     /* Same backstop as `useWindowLayout`: a webview resized from outside can
        reflow without ever firing the media query. Undebounced on purpose — this
-       one only calls `setState` with a boolean that is usually unchanged, which
+       one only calls `setState` with a value that is usually unchanged, which
        React drops, and being late here means the side column is empty for a
        frame. */
     window.addEventListener('resize', read);
@@ -203,13 +198,13 @@ export function useSideColumn(): boolean {
     };
   }, []);
 
-  return on;
+  return side;
 }
 
 /** Call once, high in the tree. */
 export function useWindowLayout() {
   useEffect(() => {
-    const queries = [window.matchMedia(WIDE), window.matchMedia(TWO_PANE)];
+    const queries = [window.matchMedia(WIDE), window.matchMedia(SIDE), window.matchMedia(LANDSCAPE)];
     const onChange = () => sync();
 
     /* Two ways in, because neither one is enough on its own.

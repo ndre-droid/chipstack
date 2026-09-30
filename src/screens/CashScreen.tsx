@@ -8,7 +8,6 @@ import PayoutCard from '../components/PayoutCard';
 import CarryCard from '../components/CarryCard';
 import Timeline from '../components/Timeline';
 import NightAwards from '../components/NightAwards';
-import Panes from '../components/Panes';
 import Support from '../components/Support';
 import { useConfirm } from '../components/Confirm';
 
@@ -141,11 +140,7 @@ export default function CashScreen() {
 
   return (
     <div>
-      {/* Money in and who has it on the left; the settle-up and the night's
-          record on the right. Contiguous, so a phone sees the same order. */}
-      <Panes
-        left={
-          <>
+      <>
           {/* The three figures the night is settled against. Every row underneath
               moves one of them, so on a window with a side column they move there
               and stop scrolling away. See components/Support.tsx. */}
@@ -228,10 +223,6 @@ export default function CashScreen() {
 
           {!isCash && pool > 0 && <PayoutCard pool={pool} entrants={ledger.length} />}
 
-          </>
-        }
-        right={
-          <>
           <div className="section-label">
             {t('cash.whoPays')}
             <span className="hint">{provisional ? t('cash.provisional') : t('cash.final')}</span>
@@ -316,9 +307,7 @@ export default function CashScreen() {
           <Timeline />
           <CarryCard />
           <SeasonLeague />
-          </>
-        }
-      />
+      </>
       {confirm.node}
     </div>
   );

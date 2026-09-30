@@ -34,6 +34,9 @@ export default function ChipsScreen() {
         <span className="hint">{t('chips.hint')}</span>
       </div>
 
+      {/* Which box is on the table. On a landscape Fold the switcher joins the box
+          total in the side column, so the page is the chip list and nothing else. */}
+      <Support name="chipset" wideOnly>
       {/* A box that came out of a shop has a known contents list — no reason to make
           anyone type nine values, colours and counts before the app can answer. */}
       {presetsOpen && (
@@ -141,6 +144,7 @@ export default function ChipsScreen() {
           </div>
         )}
       </div>
+      </Support>
 
       {/* What is in the box, in total. Every row below changes it, so on a window
           with a side column it moves there and stays in view while the nine
@@ -166,10 +170,6 @@ export default function ChipsScreen() {
         </div>
       </Support>
 
-      {/* Wrapped, so the list can become two columns on a screen with room for
-          them — nine cards is a long scroll on a panel that is mostly empty to
-          the right. One column everywhere else; see `.denom-list` in
-          styles.css. */}
       <div className="denom-list">
         {sorted.map((d) => {
         const chipMoney = d.value * settings.unitValue;

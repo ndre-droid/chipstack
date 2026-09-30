@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense, useCallback, useEffect, useState } from 'react';
+import { memo, Suspense, useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../store';
 import { IconPlay, IconPause, IconReset, IconChevron, IconDice, IconExpand } from '../components/Icons';
@@ -17,7 +17,8 @@ import StartingStack from '../components/StartingStack';
  * when it appears changes — only when its code is fetched, which offline is a
  * read from the service worker's cache.
  */
-const TvBroadcast = lazy(() => import('../components/TvBroadcast'));
+const TvBroadcast = lazyChunk('tvBroadcast', () => import('../components/TvBroadcast'));
+import { lazyChunk } from '../lib/lazyChunk';
 import PlayerRoster from '../components/PlayerRoster';
 import BlindStepper from '../components/BlindStepper';
 import { Toggle } from '../components/Toggle';
@@ -32,7 +33,6 @@ import { useBackHandler } from '../lib/backHandler';
 import ClockFocus from '../components/ClockFocus';
 import TableTools from '../components/TableTools';
 import JoinRequests from '../components/JoinRequests';
-import Panes from '../components/Panes';
 import Support from '../components/Support';
 import BreakAt from '../components/BreakAt';
 import { haptic } from '../lib/platform';
@@ -272,22 +272,15 @@ export default function TableScreen() {
         </Support>
       )}
 
-      {/* Two columns once the panel is wide enough to hold them — the table on the
-          left, everything you set up on the right. The split is contiguous, so on a
-          phone this is the same order it has always been; see Panes.tsx.
-
-          The roster ends the left column because the left column is PINNED: the
-          right one is a long scroll of setup, and who is still in and how deep they
-          are is what you want to keep looking at while you read it. */}
-      <Panes
-        stickyLeft
-        left={
-          <>
+      <>
             {/* Connect to the TV — type the code the TV shows, right here on the Table tab */}
             <ConnectToTv />
 
-            {/* The stack everyone gets for the buy-in */}
-            <StartingStack levelIdx={levelIdx} />
+            {/* The stack everyone gets for the buy-in. On a landscape Fold it joins
+                the clock in the side column, so the page opens on the players. */}
+            <Support name="stack" wideOnly>
+              <StartingStack levelIdx={levelIdx} />
+            </Support>
 
             {/* Anybody who scanned the code on the TV and typed their own name. */}
             <JoinRequests />
@@ -298,10 +291,6 @@ export default function TableScreen() {
               countRequest={countReq}
               onCountClosed={backToBigScreen}
             />
-          </>
-        }
-        right={
-          <>
             {/* Side pots and colouring up — the two calculations the table argues about. */}
             <button className="btn btn-ghost btn-block btn-sm tools-btn" onClick={() => setTools(true)}>
               🃏 {t('tools.open')}
@@ -427,9 +416,7 @@ export default function TableScreen() {
                 </p>
               )}
             </SetupSection>
-          </>
-        }
-      />
+      </>
 
       {tools && <TableTools onClose={() => setTools(false)} />}
 

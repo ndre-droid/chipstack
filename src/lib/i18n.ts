@@ -991,6 +991,15 @@ const dict: Record<Lang, Record<string, string>> = {
     'table.levelAlertInexact': 'Android can hold it back a few minutes.',
     'table.levelAlertExact': 'Allow exact timing',
 
+    'settings.index': 'Sections',
+    'settings.chooseVideo': 'Choose a video',
+    'settings.replaceVideo': 'Replace the video',
+    'settings.bgVideoHint': 'Plays behind the big screen on this device — the phone propped up, or the laptop. A paired TV keeps the picture above.',
+    'settings.bgVideoOnHint': 'Playing behind the big screen on this device. A paired TV still shows the picture above.',
+    'settings.bgVideoTooBig': 'That video is over {mb} MB. Pick a shorter one.',
+    'settings.bgVideoWrongType': 'That file isn\'t a video.',
+    'settings.bgVideoErr': 'That video couldn\'t be read.',
+
   },
   de: {
     'nav.plan': 'Plan',
@@ -1972,6 +1981,15 @@ const dict: Record<Lang, Record<string, string>> = {
 
     'table.levelAlertInexact': 'Android kann sie um einige Minuten verzögern.',
     'table.levelAlertExact': 'Genaue Zeit erlauben',
+
+    'settings.index': 'Abschnitte',
+    'settings.chooseVideo': 'Video auswählen',
+    'settings.replaceVideo': 'Video ersetzen',
+    'settings.bgVideoHint': 'Läuft hinter dem großen Bild auf diesem Gerät — dem aufgestellten Handy oder dem Laptop. Ein gekoppelter Fernseher behält das Bild von oben.',
+    'settings.bgVideoOnHint': 'Läuft hinter dem großen Bild auf diesem Gerät. Ein gekoppelter Fernseher zeigt weiterhin das Bild von oben.',
+    'settings.bgVideoTooBig': 'Das Video ist über {mb} MB groß. Nimm ein kürzeres.',
+    'settings.bgVideoWrongType': 'Diese Datei ist kein Video.',
+    'settings.bgVideoErr': 'Das Video konnte nicht gelesen werden.',
 
   },
 };

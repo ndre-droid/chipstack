@@ -9,6 +9,7 @@ import { useT, useFmt } from '../lib/i18n';
 import { useQrDataUrl } from '../lib/qr';
 import { immersiveAvailable, setImmersive } from '../lib/immersive';
 import { firebaseConfigured } from '../lib/firebaseConfig';
+import { useBackgroundVideo } from '../lib/tvVideo';
 import { hasOwnTable as ownTable } from '../lib/tvRole';
 import type { Unsubscribe } from 'firebase/firestore';
 import { secondsLeft as clockSecondsLeft, initialClock } from '../lib/clockLogic';
@@ -371,7 +372,7 @@ export default function TvMode({ onClose, onCount }: { onClose: () => void; onCo
   const t = useT();
   const { money, num } = useFmt();
   const { blindLevels } = state.session;
-  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvRosterSort, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack, tvStartStackHidden, tableFromMirror, bountyMode, bountyAmount, customAccent, tvPenalties, tvHouseRules, showTrend, language } = state.settings;
+  const { minutesPerLevel, currency, unitValue, skin, tvSkin, accents, tvQuips, tvCustomQuips, tvShowPlayers, tvRosterSort, tvShowPayouts, tvShowBustOrder, breakMinutes, breakEvery, tvBackground, tvBackgroundFocus, tvBackgroundTone, tvBackgroundVideo, deviceIsTv, liveSessionCode, liveSessionRole, gameMode, cashUseTimer, tvShowStartStack, tvStartStackHidden, tableFromMirror, bountyMode, bountyAmount, customAccent, tvPenalties, tvHouseRules, showTrend, language } = state.settings;
 
   /* Display size. Per-device and deliberately NOT part of LiveData: the laptop
      acting as the big screen needs its own zoom, and a phone must not shrink it.
@@ -430,8 +431,16 @@ export default function TvMode({ onClose, onCount }: { onClose: () => void; onCo
   const breakMins = breakMinutes ?? 5;
   // per-photo smart placement: crop toward the subject, keep it clear, and nudge the
   // clock to the calm side; brighter photos get a stronger scrim so text stays legible.
-  const focus = tvBackgroundFocus ?? { x: 50, y: 50 };
-  const scrim = tvBackgroundTone == null ? 0.5 : Math.max(0.32, Math.min(0.74, 0.3 + tvBackgroundTone * 0.5));
+  /* A gallery video, if this device has one. Device-local and unsynced by nature —
+     see Settings.tvBackgroundVideo — so a paired television is unaffected and goes
+     on showing the picture below. */
+  const bgVideo = useBackgroundVideo(tvBackgroundVideo);
+  const focus = bgVideo?.focus ?? tvBackgroundFocus ?? { x: 50, y: 50 };
+  const toneOf = bgVideo ? bgVideo.tone : tvBackgroundTone;
+  const scrim = toneOf == null ? 0.5 : Math.max(0.32, Math.min(0.74, 0.3 + toneOf * 0.5));
+  /* Both paths light the same `has-bg` styling, the same scrim and the same
+     subject-aware layout; only the thing behind them differs. */
+  const hasBg = !!bgVideo || !!tvBackground;
   const focusV = focus.y < 42 ? 'top' : focus.y > 58 ? 'bottom' : 'mid'; // where the subject sits vertically
   const effTvSkin = (tvSkin ?? 'match') === 'match' ? skin ?? 'minimal' : (tvSkin as Exclude<typeof tvSkin, 'match'>);
   const tvAccent = accents?.[effTvSkin] ?? 'amber';
@@ -1780,10 +1789,10 @@ export default function TvMode({ onClose, onCount }: { onClose: () => void; onCo
 
   return (
     <div
-      className={`tv ${tvBackground ? 'has-bg' : ''}`}
+      className={`tv ${hasBg ? 'has-bg' : ''}`}
       data-tv-skin={effTvSkin}
       data-tv-accent={tvAccent}
-      data-tv-focus-v={tvBackground ? focusV : undefined}
+      data-tv-focus-v={hasBg ? focusV : undefined}
       data-tv-compact={tvCompact ? '' : undefined}
       data-tv-gpu={gpu}
       style={{
@@ -1791,7 +1800,10 @@ export default function TvMode({ onClose, onCount }: { onClose: () => void; onCo
         // per-role text size, on top of whatever the layout already worked out
         ...tvTextVars(textScale),
         ...(accentStyle ?? {}),
-        ...(tvBackground
+        /* The video is an ELEMENT, not a background-image — a `<video>` cannot be
+           one — so when it is showing, the painted background is skipped and only
+           the shared variables are set. */
+        ...(tvBackground && !bgVideo
           ? {
               // Quoted on purpose: the generated SVG presets are data URLs that
               // still contain raw ' characters (encodeURIComponent leaves them),
@@ -1804,9 +1816,34 @@ export default function TvMode({ onClose, onCount }: { onClose: () => void; onCo
               ['--tv-scrim']: scrim,
             }
           : {}),
+        ...(bgVideo
+          ? {
+              backgroundPosition: `${focus.x}% ${focus.y}%`,
+              ['--tv-focus-x']: `${focus.x}%`,
+              ['--tv-focus-y']: `${focus.y}%`,
+              ['--tv-scrim']: scrim,
+            }
+          : {}),
       } as CSSProperties}
     >
-      {tvBackground && <div className="tv-bg-scrim" />}
+      {/* Muted is not a preference, it is the autoplay policy — and it is also the
+          app's rule: the big screen never makes a sound, because the television's
+          speakers are the room's. `playsInline` keeps iOS from taking it
+          fullscreen over the clock. `disablePictureInPicture` and no controls: it
+          is scenery, not something to interact with. */}
+      {bgVideo && (
+        <video
+          className="tv-bg-video"
+          src={bgVideo.url}
+          autoPlay
+          muted
+          loop
+          playsInline
+          disablePictureInPicture
+          aria-hidden
+        />
+      )}
+      {hasBg && <div className="tv-bg-scrim" />}
 
       {/* Corner status pill */}
       {firebaseConfigured && isTv && (

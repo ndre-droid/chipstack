@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import Support from '../components/Support';
+import SettingsIndex from '../components/SettingsIndex';
 import { useStore } from '../store';
 import Chip from '../components/Chip';
 import { chip3dSupported, clearChipCache } from '../lib/chip3d';
@@ -12,7 +14,6 @@ import { haptic, hapticBackend } from '../lib/platform';
 import { ACCENT_SWATCHES, SKIN_STYLES, accentColor } from '../lib/skins';
 import Onboarding from '../components/Onboarding';
 import ChipRuler from '../components/ChipRuler';
-import Panes from '../components/Panes';
 import { forgetCalibration, readScreenShape, rulerSlots, type RulerSlot } from '../lib/chipRuler';
 import { readScreen, reportLines } from '../lib/screenReport';
 
@@ -62,12 +63,13 @@ export default function SettingsScreen() {
 
   return (
     <div>
-      {/* Two columns of settings once there is room for them — the split is
-          contiguous, so on a phone this is the same list in the same order.
-          See components/Panes.tsx. */}
-      <Panes
-        left={
-          <>
+      <>
+                  {/* A jump list in the side column of a landscape Fold — nothing at all
+                      anywhere else. See components/SettingsIndex.tsx. */}
+                  <Support name="index" columnOnly wideOnly>
+                    <SettingsIndex />
+                  </Support>
+
                   <BeforeTheNight />
 
                   <div className="section-label">{t('settings.language')}</div>
@@ -215,10 +217,6 @@ export default function SettingsScreen() {
                   {/* Vibration, with a way to prove it. It went unnoticed-dead in the APK for
                       months because a failed buzz looks exactly like a buzz nobody asked for —
                       so the test button says which path it took, not just "done". */}
-          </>
-        }
-        right={
-          <>
                   <div className="section-label">{t('settings.haptics')}</div>
                   <div className="card">
                     <div className="chip-toggle-row">
@@ -429,9 +427,7 @@ export default function SettingsScreen() {
                     </div>
                   </div>
 
-          </>
-        }
-      />
+      </>
 
       <p className="faint" style={{ fontSize: 12, textAlign: 'center', marginTop: 20 }}>
         {t('settings.footer')}
@@ -452,7 +448,7 @@ export default function SettingsScreen() {
  * It re-reads on resize AND on the layout attribute changing, because the two
  * are not the same event: unfolding fires `resize`, but the fold animation
  * writes `data-layout` inside a view transition a beat later, and a card that
- * only listened to `resize` would show the old pane count for as long as the
+ * only listened to `resize` would show the old side column for as long as the
  * fade lasts.
  */
 function ScreenCard() {
@@ -467,7 +463,7 @@ function ScreenCard() {
     const observer = new MutationObserver(read);
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['data-layout', 'data-panes'],
+      attributeFilter: ['data-layout', 'data-side'],
     });
     return () => {
       window.removeEventListener('resize', read);

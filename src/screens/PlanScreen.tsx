@@ -10,7 +10,6 @@ import Chip from '../components/Chip';
 import ChipStackViz from '../components/ChipStackViz';
 import { IconPlus, IconTrash, IconCheck, IconAlert, IconSpark, IconChevron, IconLock, IconShare } from '../components/Icons';
 import ShareSheet from '../components/ShareSheet';
-import Panes from '../components/Panes';
 import { useT, useFmt } from '../lib/i18n';
 import { Toggle } from '../components/Toggle';
 import MoneyInput from '../components/MoneyInput';
@@ -213,12 +212,7 @@ export default function PlanScreen() {
 
   return (
     <div>
-      {/* The answer on the left, the questions on the right — a plan and the
-          inputs that made it, side by side once there is room. Contiguous, so
-          a phone still reads result-then-inputs top to bottom. */}
-      <Panes
-        left={
-          <>
+      <>
           {/* ---------------- Top bar: save / share / presets ---------------- */}
           <div className="preset-bar">
             <button className="preset-save" onClick={savePreset}>
@@ -351,6 +345,9 @@ export default function PlanScreen() {
             </div>
           )}
 
+          {/* Whether the box can deal it. On a landscape Fold it sits under the answer
+              in the side column: every control on the page can flip it. */}
+          <Support name="feas" wideOnly>
           {starting.feasible ? (
             <div className="feas ok">
               <IconCheck size={18} /> {t('plan.enoughChips', { n: startingStacks })}
@@ -374,6 +371,7 @@ export default function PlanScreen() {
               ))}
             </ul>
           )}
+          </Support>
 
           {/* live-adjust editor */}
           <div className="section-label">
@@ -502,10 +500,6 @@ export default function PlanScreen() {
             </>
           )}
 
-          </>
-        }
-        right={
-          <>
           {/* ================ SESSION SETUP — the inputs ================ */}
           <div className="section-label" style={{ marginTop: 26 }}>
             {t('plan.sessionSetup')}
@@ -789,9 +783,7 @@ export default function PlanScreen() {
             )}
 
           </div>
-          </>
-        }
-      />
+      </>
 
 
       {shareOpen && (

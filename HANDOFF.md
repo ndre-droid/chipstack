@@ -472,6 +472,121 @@ break length + auto-break every N, blinds (edit/add/remove), players & pool (ren
 **Bust/Back-in**, add/remove), TV design (skin incl. Match + accent), toggles for players/payouts/
 bust-order/quips + custom-quips editor. TV displays: payout split, knocked-out order, break cue.
 
+### Recent work 2026-09-30 (the Fold 8, and no more two columns)
+
+**The Fold 8's inner screen is 4:3 and lies LANDSCAPE in the normal hold** (2448x1848, about
+932x700dp at the Fold 7's density — an estimate until the user reads Settings -> Screen on the
+device). So the old "lying down" shape was going to be its everyday shape.
+
+**Two equal columns are gone, at every size.** Mockups of four options (artifact
+https://claude.ai/artifact/4maP2s27Wk8AdzmPkvSfYd); the user rejected two columns "in general"
+and chose B. `components/Panes.tsx` and the whole `data-panes` CSS block are deleted.
+`lib/windowLayout.ts` now writes `data-side` = `none | narrow | wide`:
+- `narrow` (Fold standing up) — the 208px `Support` column, as before.
+- `wide` (landscape, >=800 wide, >=520 tall) — a 300px column and one ~484px page. A side
+  column always forces the wide chrome: at 816x580 the phone tab bar used to float over the page.
+
+What each tab pins in the wide column (`<Support>`; `wideOnly` = only the 300px one;
+`columnOnly` = renders nothing off the column; several per screen, ordered by
+`.screen-support > .support-<name> { order }` because portals append in mount order):
+Table = clock (60px time) + starting stack, page opens on the players. Plan = the answer
+(count and BB on one line again) + the enough-chips check. Chips = box total + the chip-set
+switcher. Cash = money in play. Settings = a jump index built from the page's own
+`.section-label`s (components/SettingsIndex.tsx) — it scrolls the screen directly, because
+`scrollIntoView` also scrolled the document and slid the app under its sticky header.
+
+**Bugs fixed on the way** (found by driving the app at Fold 8 sizes):
+- The wide-layout dialog scrim was a box-shadow: it dimmed but caught no taps, so a tap beside
+  an open sheet (even the counting round) reached players, blinds and the rail. Now a
+  transparent `position: fixed` `::before` INSIDE the sheet's stacking context catches them.
+- A big screen that failed to load showed its crash card below the window — invisible.
+  `.crash-compact` is now fixed over the window.
+- A stale page after a deploy asked for chunks that no longer exist and `lazy()` cached the
+  rejection forever. `lib/lazyChunk.ts` reloads once per chunk (flag per chunk in
+  sessionStorage), then lets the crash card show.
+- The video picker could hang on "…" forever when the webview never decoded the clip: an 8s
+  deadline, one settle, and the frame is sampled on `seeked` (loadeddata was frame 0).
+
+Tests: 34 unit files; e2e 12 (landscape Fold 932x680: players first + column contents, each
+tab's pinned block + index jump, sheet above column, taps caught by the scrim; 816x580 rail).
+**Run e2e with `--workers=1` on this PC** — Folding@home/NordVPN starve 8 parallel browsers
+and the clock tests time out; serially all 12 pass.
+**NOT SEEN ON THE PHYSICAL FOLD 8 YET.**
+
+---
+
+### Recent work 2026-09-30 (a video from the gallery behind the big screen) — step one of two
+
+Asked: "is it possible for the TV mode to have a video as background instead of only pictures?"
+Yes — but the answer splits on WHICH SCREEN, and that decided the whole design.
+
+`Settings.tvBackground` is a data URL string that reaches a paired television inside a Firestore
+document, which caps at 1 MiB — it is why `onPickBackground` downscales a photo in a loop until the
+base64 fits. A video cannot go down that pipe: a few seconds of 720p is megabytes before you start.
+So the work was split, and **only the first half is built**:
+
+1. **Done** — a gallery video plays behind big-screen mode **on the device showing it** (the phone
+   propped on the table, or the laptop). No backend, no upload, no size negotiation, works offline.
+2. **Not built** — reaching a separate paired TV. Needs **Firebase Storage**, which this project
+   does not have: `firebase.json` lists only Firestore and there is no `storage.rules`. Enabling it
+   in the Firebase console is a manual step only the user can do.
+
+The user chose "device first, then TV" knowing that, because step one is on the path to step two
+either way — same picker, same `<video>` layer, same scrim handling.
+
+#### How it is stored, and why not like a photo
+
+`Settings.tvBackgroundVideo` holds an **id** into a new `videos` object store in IndexedDB
+(`photoStore.ts`, DB version bumped 1 -> 2; `onupgradeneeded` creates only what is missing, so an
+install with saved photos keeps them). The file goes in as a **Blob**, not as the data URL the
+photos use:
+
+- base64 would add a third to a file that is already tens of megabytes;
+- `URL.createObjectURL` lets the `<video>` stream it from disk, so a 40 MB clip costs a handle
+  rather than 40 MB of JavaScript heap;
+- and it is never going anywhere near a Firestore document, so it never needed to be a string.
+
+Device-local in the strongest sense — pinned in `settingsScope`, and the scope test's two fixtures
+now DISAGREE on it. They had to: that loop compares each device-local key against the TV's own
+value, and two fields that are both absent compare equal, which is exactly how `countStyle` and
+`countPassHintSeen` sat unpinned for months. One video at a time (`VIDEO_LIMIT = 1`) and a 200 MB
+cap: nothing else bounds it, and IndexedDB will happily take a 2 GB holiday video and leave the app
+as the reason the phone is full.
+
+#### Two details worth keeping
+
+- **Tone and focal point are read off the VIDEO, not off `Settings.tvBackgroundTone`/`Focus`.**
+  Those two are synced and describe the picture the television is showing; overwriting them with a
+  video's luminance would dim the wrong screen. The first frame is sampled at `currentTime = 0.1` —
+  a seek to 0 often yields a black frame, which would report a bright clip as dark and lift the
+  readability scrim off the text.
+- **`.tv-bg-video` is `z-index: 0`, never -1.** An element's background paints under its positioned
+  descendants only at 0 and above, so -1 hides the video behind `.tv`'s own background and it never
+  appears at all. That leaves it one careless number from the opposite mistake, covering the clock —
+  hence the layering assertion in the test below.
+
+#### The test
+
+`e2e/smoke.spec.ts`: records a real clip in the page with MediaRecorder (no binary fixture in the
+repo, no assumption about what the runner can encode), hands it to the app's own
+`input[type=file][accept=video/*]` the way the gallery would, then opens big-screen mode and checks
+the `<video>` is there, muted, looping, sourced from a `blob:` URL, has reached a decoded frame —
+and is NOT what `elementFromPoint` returns at the centre of the screen. A visibility check would not
+notice occlusion; this is the same technique the two-column dialog test uses.
+`src/lib/videoPick.test.ts` covers the pure file guard (`rejectVideo`), including that an empty MIME
+type is allowed through — Android's picker returns one for files it can play perfectly well.
+
+#### Files
+
+New: `src/lib/tvVideo.ts`, `src/lib/videoPick.test.ts`.
+Changed: `src/lib/photoStore.ts`, `src/types.ts`, `src/store.tsx`, `src/lib/settingsScope.ts`
+(+ test), `src/screens/TvMode.tsx`, `src/components/TvBroadcast.tsx`, `src/styles.css`,
+`src/lib/i18n.ts` (7 keys x 2 languages), `e2e/smoke.spec.ts`.
+
+Bundle 172.0 -> 172.6 kB gzip. 34 test files, `tsc -b --force` clean.
+
+---
+
 ### Recent work 2026-09-29 (the dialog the two columns were painting over) — `a150ec9` + `2899ec6`, SHIPPED
 
 Reported from the Fold with one screenshot: "still pretty buggy". Opening "Wer spielt mit?" from

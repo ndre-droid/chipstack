@@ -67,6 +67,7 @@ const defaultSettings: Settings = {
   tvBackground: null,
   tvBackgroundFocus: null,
   tvBackgroundTone: null,
+  tvBackgroundVideo: null,
   appearance: 'dark',
   chipArt: 'deco',
   chipStyle: 'render3d',
@@ -957,6 +958,10 @@ function migrate(raw: string | null): AppState {
         : null;
   }
   if (typeof settings.tvBackgroundTone !== 'number') settings.tvBackgroundTone = null;
+  /* An id, not a file. A string that no longer matches anything in the video store
+     is harmless — the big screen falls back to the picture background — so this only
+     has to reject the wrong TYPE, which is what an imported preset would carry. */
+  if (typeof settings.tvBackgroundVideo !== 'string') settings.tvBackgroundVideo = null;
   if (settings.language !== 'en' && settings.language !== 'de') settings.language = 'en';
   if (settings.gameMode !== 'tournament' && settings.gameMode !== 'cash') settings.gameMode = defaultSettings.gameMode;
   if (typeof settings.cashUseTimer !== 'boolean') settings.cashUseTimer = false;

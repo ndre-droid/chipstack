@@ -2,7 +2,7 @@ import { memo, useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { IconCheck, IconChevron } from './Icons';
 import { TV_BACKGROUNDS, backgroundFolders, groupOfBackground, type TvBackgroundGroup } from '../lib/tvBackgrounds';
-import { addPhoto, deletePhoto, listPhotos, type SavedPhoto } from '../lib/photoStore';
+import { addPhoto, addVideo, deletePhoto, deleteVideo, listPhotos, rejectVideo, VIDEO_MAX_BYTES, type SavedPhoto } from '../lib/photoStore';
 import { useT } from '../lib/i18n';
 import { useQrDataUrl } from '../lib/qr';
 import { analyzeBackground } from '../lib/imageAnalysis';
@@ -154,6 +154,109 @@ function TvBroadcast() {
     } catch {
       setUrlCopied(false);
     }
+  };
+
+  /**
+   * A video from the gallery, for the big screen on THIS device.
+   *
+   * Nothing is downscaled or re-encoded: the file goes into IndexedDB as it came
+   * off the phone. It has no Firestore document to fit inside, because unlike the
+   * photo it is never sent anywhere — see Settings.tvBackgroundVideo.
+   *
+   * The first frame is still analysed, exactly as a photo is, so the readability
+   * scrim and the subject-aware layout behave the same over a video as over a
+   * picture. `currentTime = 0.1` rather than 0: a seek to the very start often
+   * yields a black or absent frame, and a black frame would report the background
+   * as dark and lift the scrim off the text over a clip that is actually bright.
+   */
+  const onPickVideo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBgError(null);
+
+    const why = rejectVideo(file);
+    if (why) {
+      setBgError(
+        why === 'size'
+          ? t('settings.bgVideoTooBig', { mb: String(Math.round(VIDEO_MAX_BYTES / (1024 * 1024))) })
+          : t('settings.bgVideoWrongType'),
+      );
+      return;
+    }
+
+    setBgBusy(true);
+    const url = URL.createObjectURL(file);
+    const probe = document.createElement('video');
+    probe.muted = true;
+    probe.preload = 'metadata';
+
+    /* The probe can go quiet: a codec the webview will not decode (8K, some HEVC
+       gallery clips) may never fire `seeked` OR `error`, and without a deadline the
+       button would sit on "…", disabled, until the screen remounted. A file whose
+       size and shape came back is kept with a neutral tone — the <video> element
+       gets the final say, as with an empty MIME type; one that did not even yield
+       metadata is refused. `settled` because the deadline and a late event can
+       both arrive. */
+    let settled = false;
+    const deadline = window.setTimeout(() => done(probe.videoWidth > 0), 8000);
+
+    const done = (ok: boolean, tone = 0.5, focus = { x: 50, y: 50 }) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(deadline);
+      probe.removeAttribute('src');
+      URL.revokeObjectURL(url);
+      if (!ok) {
+        setBgError(t('settings.bgVideoErr'));
+        setBgBusy(false);
+        return;
+      }
+      void addVideo({ blob: file, name: file.name, tone, focus })
+        .then((id) => {
+          if (!id) {
+            setBgError(t('settings.bgVideoErr'));
+            return;
+          }
+          dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackgroundVideo: id } });
+        })
+        .finally(() => setBgBusy(false));
+    };
+
+    /* Sampled on `seeked`, not `loadeddata`: the latter fires for frame 0 — the
+       black frame the 0.1s seek exists to avoid. The seek waits for metadata
+       because `currentTime` set before it is not reliably honoured, and the
+       duration of a recorded webm can be Infinity or NaN. */
+    probe.onloadedmetadata = () => {
+      const d = probe.duration;
+      probe.currentTime = Number.isFinite(d) && d > 0 ? Math.min(0.1, d / 2) : 0.1;
+    };
+    probe.onseeked = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.min(640, probe.videoWidth || 640);
+        canvas.height = Math.round(canvas.width * ((probe.videoHeight || 360) / (probe.videoWidth || 640)));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          done(true);
+          return;
+        }
+        ctx.drawImage(probe, 0, 0, canvas.width, canvas.height);
+        const { focus, tone } = analyzeBackground(ctx, canvas.width, canvas.height);
+        done(true, tone, focus);
+      } catch {
+        // a frame we cannot read is not a video we cannot play
+        done(true);
+      }
+    };
+    probe.onerror = () => done(false);
+    probe.src = url;
+  };
+
+  const clearVideo = () => {
+    const id = settings.tvBackgroundVideo;
+    dispatch({ type: 'UPDATE_SETTINGS', patch: { tvBackgroundVideo: null } });
+    if (id) void deleteVideo(id);
   };
 
   const onPickBackground = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -467,6 +570,27 @@ function TvBroadcast() {
                 </button>
               )}
             </div>
+
+            {/* A video plays on the big screen of THIS device only — the phone
+                propped on the table, or the laptop running big-screen mode. It
+                cannot reach a paired television: the live session travels in a
+                document that caps at 1 MiB and a video is tens of megabytes. Said
+                plainly under the button, because "why is it not on the telly" is
+                the obvious next question. */}
+            <div className="row" style={{ gap: 8, marginTop: 8 }}>
+              <label className="btn btn-ghost btn-sm" style={{ flex: 1, cursor: 'pointer' }}>
+                {bgBusy ? '…' : settings.tvBackgroundVideo ? t('settings.replaceVideo') : t('settings.chooseVideo')}
+                <input type="file" accept="video/*" onChange={onPickVideo} style={{ display: 'none' }} disabled={bgBusy} />
+              </label>
+              {settings.tvBackgroundVideo && (
+                <button className="btn btn-ghost btn-sm" onClick={clearVideo}>
+                  {t('settings.remove')}
+                </button>
+              )}
+            </div>
+            <p className="faint" style={{ fontSize: 12, margin: '6px 2px 0', lineHeight: 1.5 }}>
+              {settings.tvBackgroundVideo ? t('settings.bgVideoOnHint') : t('settings.bgVideoHint')}
+            </p>
           </div>
 
           {/* Fun extras: penalty spinner entries + break house rules */}

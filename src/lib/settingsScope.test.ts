@@ -48,6 +48,7 @@ const phone: Settings = {
   tvBackground: 'data:image/png;base64,AAAA',
   tvBackgroundFocus: { x: 30, y: 70 },
   tvBackgroundTone: 0.4,
+  tvBackgroundVideo: 'vid-on-the-phone',
   appearance: 'dark',
   chipArt: 'deco',
   language: 'de',
@@ -99,6 +100,7 @@ const tv: Settings = {
   tvBackground: null,
   tvBackgroundFocus: null,
   tvBackgroundTone: null,
+  tvBackgroundVideo: null,
   deviceIsTv: true,
   tvScale: 1,
   // this big screen was arranged on itself, so it keeps its own arrangement
@@ -136,6 +138,12 @@ check('this device is still the TV', legacy.deviceIsTv === true);
 check('and still in its own session', legacy.liveSessionCode === '2200' && legacy.liveSessionRole === 'tv');
 check('its zoom survives', legacy.tvScale === 1);
 check('its own background is not replaced', legacy.tvBackground === null);
+/* The two fixtures DISAGREE on this one on purpose. The loop above compares every
+   device-local key against the TV's own value, and two fields that are both absent
+   compare equal — which is how `countStyle` and `countPassHintSeen` sat on the list
+   unpinned for months. A video id is the worst case to get wrong: it points into
+   THIS device's IndexedDB and means nothing on any other. */
+check('and a video id from another phone is not adopted', legacy.tvBackgroundVideo === null);
 check('the shareable half did come through', legacy.skin === 'casino' && legacy.language === 'de');
 check('but not the device-local half beside it', legacy.countMode === 'money');
 check('and a phone’s setup cannot tell this screen its roster is its own', legacy.tableFromMirror === true);

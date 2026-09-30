@@ -6,9 +6,9 @@ import { useSideColumn } from '../lib/windowLayout';
  * The one thing on a screen you keep looking at while you work the rest of it.
  *
  * On a phone this is nothing at all: the children render exactly where they are
- * written, in the order they have always been in. On a Fold standing up — wide
- * enough for the rail, not wide enough for two equal panes — the same children
- * move into a narrow column pinned beside the page, and the page keeps scrolling
+ * written, in the order they have always been in. On an unfolded Fold — standing
+ * up or lying landscape — the same children move into a column pinned beside
+ * the page, and the page keeps scrolling
  * underneath them.
  *
  * MOVED, never copied. The alternative was a second condensed summary rendered
@@ -23,8 +23,10 @@ import { useSideColumn } from '../lib/windowLayout';
  * at about the width the cards were drawn for, so the stretching goes away as a
  * consequence of the layout rather than as forty tuned rules.
  *
- * ONE per screen. The slot is a single element and a second `<Support>` would
- * portal into the same box and land underneath the first.
+ * More than one per screen is fine: each block is its own card in the column,
+ * and the column orders them with CSS (`.support-<name> { order }`), because
+ * portals append in MOUNT order — a block that mounts later, like the clock once
+ * a timer is switched on, would otherwise land at the bottom.
  */
 
 /**
@@ -43,9 +45,25 @@ export const SupportSlot = createContext<HTMLElement | null>(null);
  * support-plan`) and used nowhere else, so a screen can style the moved block for
  * its new home without a rule that also hits it on the phone.
  */
-export default function Support({ name, children }: { name?: string; children: ReactNode }) {
+export default function Support({
+  name,
+  wideOnly = false,
+  columnOnly = false,
+  children,
+}: {
+  name?: string;
+  /** Only the ~300px landscape column has room for this; the 208px one leaves it
+   *  on the page. */
+  wideOnly?: boolean;
+  /** Exists ONLY in the column — nothing at all on the page when there is none.
+   *  For aids that the column's room makes possible (the Settings index), not for
+   *  content the screen has anyway. */
+  columnOnly?: boolean;
+  children: ReactNode;
+}) {
   const slot = useContext(SupportSlot);
-  const side = useSideColumn();
+  const column = useSideColumn();
+  const side = column === 'wide' || (column === 'narrow' && !wideOnly);
 
   /* A wrapper either way, and `display: contents` when it is not in the column —
      so the phone's box tree is the one it always was, while the side column has a
@@ -57,5 +75,6 @@ export default function Support({ name, children }: { name?: string; children: R
     </div>
   );
 
-  return side && slot ? createPortal(block, slot) : block;
+  if (side && slot) return createPortal(block, slot);
+  return columnOnly ? null : block;
 }

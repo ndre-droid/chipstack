@@ -433,9 +433,8 @@ function AppShell() {
             <ScreenStore live={v === view}>{SCREENS[v]}</ScreenStore>
           </SupportSlot.Provider>
           {/* The side column this screen's `<Support>` renders into on a window wide
-              enough for one. Empty on a phone and in the two-pane layout, and an
-              empty aside takes no space (`:empty`), so this costs those layouts
-              nothing. See components/Support.tsx. */}
+              enough for one. Empty on a phone, and an empty aside takes no space
+              (`:empty`), so this costs the phone nothing. See components/Support.tsx. */}
           <aside className="screen-support" ref={slotRef(v)} />
         </main>
       ))}

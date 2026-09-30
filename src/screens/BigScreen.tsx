@@ -1,4 +1,5 @@
-import { Suspense, lazy } from 'react';
+import { Suspense } from 'react';
+import { lazyChunk } from '../lib/lazyChunk';
 import ErrorBoundary from '../components/ErrorBoundary';
 
 /**
@@ -20,7 +21,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
  * The chunk is precached by the service worker like the rest of the app, so this is
  * one local read, not a download — including offline.
  */
-const TvMode = lazy(() => import('./TvMode'));
+const TvMode = lazyChunk('tv', () => import('./TvMode'));
 
 /**
  * Its own boundary, so the big screen can fail without taking the phone with it —

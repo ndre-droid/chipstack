@@ -58,6 +58,10 @@ export const DEVICE_LOCAL_SETTINGS = [
   'tvBackground',
   'tvBackgroundFocus',
   'tvBackgroundTone',
+  // and the video is the extreme case of the same rule: an id into THIS device's
+  // IndexedDB, meaningless anywhere else, so it must never ride along in a preset
+  // or a backup restored onto another phone
+  'tvBackgroundVideo',
 ] as const satisfies readonly (keyof Settings)[];
 
 type DeviceLocalKey = (typeof DEVICE_LOCAL_SETTINGS)[number];

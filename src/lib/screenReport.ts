@@ -41,7 +41,8 @@ export interface ScreenReport {
   segmentsKnown: boolean;
   /** What `windowLayout.ts` decides from the above, right now. */
   layout: string;
-  panes: number;
+  /** Which side column the page has: none, narrow (standing up) or wide (landscape). */
+  side: string;
   /** The key the ruler files a calibration under on this screen. */
   rulerSlot: string;
 }
@@ -84,7 +85,7 @@ export function readScreen(): ScreenReport {
     segments: known ? `${cols}x${rows}` : '—',
     segmentsKnown: known,
     layout: d?.layout === 'wide' ? 'wide' : 'compact',
-    panes: d?.panes === '2' ? 2 : 1,
+    side: d?.side ?? 'none',
     rulerSlot: screenKeyOf(readScreenShape()),
   };
 }
@@ -97,7 +98,7 @@ export function reportLines(r: ScreenReport): [string, string][] {
     ['Physical', r.physical],
     ['Aspect', `${r.aspect} (${r.orientation})`],
     ['Segments', r.segmentsKnown ? r.segments : 'not reported'],
-    ['Layout', `${r.layout}, ${r.panes} pane${r.panes === 1 ? '' : 's'}`],
+    ['Layout', `${r.layout}, side column: ${r.side}`],
     ['Ruler slot', r.rulerSlot],
   ];
 }
