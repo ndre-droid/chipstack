@@ -18,7 +18,13 @@ sound would hijack the user's Sonos).
   push to `main`, updates automatically, runs offline after first load. This is the main way the
   user runs it (and the only way the TV runs it — see TV/Live below).
 - **APK download:** https://github.com/ndre-droid/chipstack/releases/download/android-latest/ChipStack-debug.apk
-  (**CURRENT — rebuilt 2026-09-29 from `main` @ `2899ec6`**, 4.95 MB (5,188,322 B),
+  (**CURRENT — rebuilt 2026-09-30 from `main` @ `fdfb6a7`**, 5,190,776 B, run `36681909811`:
+  one page + a side column on every unfolded Fold, no more two columns, the Settings index,
+  the video background and the four fixes — see "Recent work 2026-09-30 (the Fold 8...)".
+  Pages run `36681898168` green from the same commit, so **APK / `main` / Pages are IN SYNC**.
+  Download verified: `200`, `application/vnd.android.package-archive`, 5,190,776 B.
+  **NOT SEEN ON THE PHYSICAL FOLD 8 YET.**
+  Previous build: 2026-09-29 from `main` @ `2899ec6`, 4.95 MB (5,188,322 B),
   run `36580684295`: the hotfix for the pass below — a dialog opened on a Fold lying down was
   being painted over by the other column (`position: sticky` on both panes created a stacking
   context and trapped every `position: fixed` sheet inside the pane it was opened from), the
